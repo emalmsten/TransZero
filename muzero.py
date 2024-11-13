@@ -174,6 +174,9 @@ class MuZero:
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
             ).remote(self.checkpoint, self.config)
 
+        print("num_gpus", self.num_gpus)
+        print("num_workers", self.config.num_workers)
+        print("num_gpus_per_worker", num_gpus_per_worker)
         self.self_play_workers = [
             self_play.SelfPlay.options(
                 num_cpus=0,
@@ -618,8 +621,7 @@ def load_model_menu(muzero, game_name):
         replay_buffer_path=replay_buffer_path,
     )
 
-
-if __name__ == "__main__":
+def main(choice = 2, option = 0):
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
@@ -630,7 +632,7 @@ if __name__ == "__main__":
         muzero = MuZero(sys.argv[1], config)
         muzero.train()
     else:
-        print("\nWelcome to MuZero! Here's a list of games:")
+        # print("\nWelcome to MuZero! Here's a list of games:")
         # Let user pick a game
         games = [
             filename.stem
@@ -638,9 +640,11 @@ if __name__ == "__main__":
             if filename.name != "abstract_game.py"
         ]
         for i in range(len(games)):
-            print(f"{i}. {games[i]}")
-        choice = input("Enter a number to choose the game: ")
-        valid_inputs = [str(i) for i in range(len(games))]
+            print(f"{i + 1}. {games[i]}")
+        choice -= 1
+        print("Running game: ", games[choice])
+        choice = str(choice) # input("Enter a number to choose the game: ")
+        valid_inputs = [str(i + 1) for i in range(len(games))]
         while choice not in valid_inputs:
             choice = input("Invalid input, enter a number listed above: ")
 
@@ -661,12 +665,14 @@ if __name__ == "__main__":
                 "Hyperparameter search",
                 "Exit",
             ]
-            print()
-            for i in range(len(options)):
-                print(f"{i}. {options[i]}")
+            # print()
+            # for i in range(len(options)):
+            #     print(f"{i}. {options[i]}")
 
-            choice = input("Enter a number to choose an action: ")
             valid_inputs = [str(i) for i in range(len(options))]
+            print("Running option: ", options[option])
+            choice = str(option) #input("choose action or smth")
+
             while choice not in valid_inputs:
                 choice = input("Invalid input, enter a number listed above: ")
             choice = int(choice)
@@ -710,3 +716,15 @@ if __name__ == "__main__":
             print("\nDone")
 
     ray.shutdown()
+
+if __name__ == "__main__":
+    from tensorboard import program
+
+    log_dir = "./results"  # Your log directory path
+    port = 6006
+
+    # Initialize TensorBoard programmatically
+    tb = program.TensorBoard()
+    tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
+    url = tb.launch()
+    main(choice=4)
