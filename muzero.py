@@ -39,7 +39,7 @@ class MuZero:
         >>> muzero.test(render=True)
     """
 
-    def __init__(self, game_name, config=None, split_resources_in=1):
+    def __init__(self, game_name, config=None, split_resources_in=1, seq_mode=False):
         # Load the game and the config from the module with the game name
         try:
             game_module = importlib.import_module("games." + game_name)
@@ -63,6 +63,10 @@ class MuZero:
                         )
             else:
                 self.config = config
+
+        if seq_mode:
+            self.config.selfplay_on_gpu = False
+            self.config.network += "_seq"
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -93,7 +97,7 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, local_mode=seq_mode)
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
@@ -621,7 +625,7 @@ def load_model_menu(muzero, game_name):
         replay_buffer_path=replay_buffer_path,
     )
 
-def main(choice = 2, option = 0):
+def main(choice = 3, option = 0, seq_mode=False):
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
@@ -651,7 +655,10 @@ def main(choice = 2, option = 0):
         # Initialize MuZero
         choice = int(choice)
         game_name = games[choice]
-        muzero = MuZero(game_name)
+        muzero = MuZero(game_name, seq_mode=seq_mode)
+        if option == 0:
+            muzero.train()
+            exit(0)
 
         while True:
             # Configure running options
@@ -665,9 +672,9 @@ def main(choice = 2, option = 0):
                 "Hyperparameter search",
                 "Exit",
             ]
-            # print()
-            # for i in range(len(options)):
-            #     print(f"{i}. {options[i]}")
+            print()
+            for i in range(len(options)):
+                print(f"{i}. {options[i]}")
 
             valid_inputs = [str(i) for i in range(len(options))]
             print("Running option: ", options[option])
@@ -727,4 +734,4 @@ if __name__ == "__main__":
     tb = program.TensorBoard()
     tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
     url = tb.launch()
-    main(choice=4)
+    main(choice=3, option=0, seq_mode=False)
