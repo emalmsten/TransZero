@@ -23,7 +23,7 @@ class MuZeroFullyConnectedNetwork(AbstractNetwork):
         self.seq_mode = seq_mode
 
         def cond_wrap(net):
-            return net if self.seq_mode else ParallelWrapper(net)
+            return net if self.seq_mode else torch.nn.DataParallel(net)
 
         self.representation_network = cond_wrap(
             mlp(

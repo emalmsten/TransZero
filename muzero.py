@@ -735,4 +735,4 @@ if __name__ == "__main__":
     tb = program.TensorBoard()
     tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
     url = tb.launch()
-    main(choice=3, option=0, seq_mode=True)
+    main(choice=6, option=0, seq_mode=False)

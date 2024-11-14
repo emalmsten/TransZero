@@ -7,9 +7,52 @@ import torch
 
 from .abstract_game import AbstractGame
 
+Maps = {
+    "2x2_no_hole": [
+        "SF",
+        "FG",
+    ],
+    "2x2_1_hole": [
+        "SF",
+        "HG",
+    ],
+    "3x3_no_hole": [
+        "SFF",
+        "FFF",
+        "FGF",
+    ],
+    "3x3_1_hole_1": [
+        "SFH",
+        "FFF",
+        "FGF",
+    ],
+    "3x3_1_hole_2": [
+        "SFF",
+        "HFF",
+        "GFF",
+    ],
+    "3x3_2_hole_1": [
+        "SFH",
+        "FFF",
+        "HFG",
+    ],
+    "3x3_2_hole_2": [
+        "SFH",
+        "FHF",
+        "FFG",
+    ],
+    "3x3_3_hole_1": [
+        "SFH",
+        "HFF",
+        "FHG",
+    ],
+}
+
 
 class MuZeroConfig:
     def __init__(self):
+        self.custom_map = "2x2_no_hole"
+
         # fmt: off
         self.seed = 42
         self.max_num_gpus = 1
@@ -26,8 +69,8 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1
-        self.selfplay_on_gpu = False
-        self.max_moves = 100  # Reduced max moves for Frozen Lake
+        self.selfplay_on_gpu = True
+        self.max_moves = 25  # Reduced max moves for Frozen Lake
         self.num_simulations = 50
         self.discount = 0.997
         self.temperature_threshold = None
@@ -39,7 +82,7 @@ class MuZeroConfig:
         self.pb_c_init = 1.25
 
         ### Network
-        self.network = "fullyconnected"
+        self.network = "resnet"
         self.support_size = 10
 
         self.downsample = False
@@ -60,7 +103,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         ### Training
-        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / self.custom_map / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
         self.save_model = True
         self.training_steps = 10000
         self.batch_size = 128
@@ -105,9 +148,13 @@ class Game(AbstractGame):
     Game wrapper for Frozen Lake.
     """
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, custom_map=None):
         # Changed environment to Frozen Lake
-        self.env = gym.make("FrozenLake-v1", is_slippery=True)
+        if custom_map is not None:
+            print(f"Using custom map: {custom_map}")
+            custom_map = Maps[custom_map]
+            [print(row) for row in custom_map]
+        self.env = gym.make("FrozenLake-v1", is_slippery=False, desc=custom_map)
         if seed is not None:
             self.env.reset(seed=seed)
 
