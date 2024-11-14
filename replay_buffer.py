@@ -6,6 +6,7 @@ import ray
 import torch
 
 import models
+import networks.muzero_network as mz_net
 
 # TODO consider library for this
 
@@ -319,7 +320,7 @@ class Reanalyse:
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
+        self.model = mz_net.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()

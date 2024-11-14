@@ -4,6 +4,7 @@ import seaborn
 import torch
 
 import models
+import networks.muzero_network as mz_net
 from self_play import MCTS, Node, SelfPlay
 
 
@@ -21,7 +22,7 @@ class DiagnoseModel:
         self.config = config
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
+        self.model = mz_net.MuZeroNetwork(self.config)
         self.model.set_weights(checkpoint["weights"])
         self.model.to(
             torch.device("cuda" if torch.cuda.is_available() else "cpu")

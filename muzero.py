@@ -14,12 +14,13 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 import diagnose_model
-import models
 import replay_buffer
 import self_play
 import shared_storage
 import trainer
 
+import models
+import networks.muzero_network as mz_net
 
 class MuZero:
     """
@@ -66,7 +67,7 @@ class MuZero:
 
         if seq_mode:
             self.config.selfplay_on_gpu = False
-            self.config.network += "_seq"
+            self.config.seq_mode = True
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -493,7 +494,7 @@ class CPUActor:
         pass
 
     def get_initial_weights(self, config):
-        model = models.MuZeroNetwork(config)
+        model = mz_net.MuZeroNetwork(config)
         weigths = model.get_weights()
         summary = str(model).replace("\n", " \n\n")
         return weigths, summary
@@ -734,4 +735,4 @@ if __name__ == "__main__":
     tb = program.TensorBoard()
     tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
     url = tb.launch()
-    main(choice=3, option=0, seq_mode=False)
+    main(choice=3, option=0, seq_mode=True)

@@ -6,6 +6,7 @@ import ray
 import torch
 
 import models
+import networks.muzero_network as mz_net
 
 
 @ray.remote
@@ -23,7 +24,7 @@ class SelfPlay:
         torch.manual_seed(seed)
 
         # Initialize the network
-        self.model = models.MuZeroNetwork(self.config)
+        self.model = mz_net.MuZeroNetwork(self.config)
         self.model.set_weights(initial_checkpoint["weights"])
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
