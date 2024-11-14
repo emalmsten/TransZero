@@ -626,15 +626,17 @@ def load_model_menu(muzero, game_name):
         replay_buffer_path=replay_buffer_path,
     )
 
-def main(choice = 3, option = 0, seq_mode=False):
+def main(choice = 3, option = 0, seq_mode=False, config=None, game_name=None):
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
         muzero.train()
-    elif len(sys.argv) == 3:
+    elif len(sys.argv) == 3 or (game_name and config):
         # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
-        config = json.loads(sys.argv[2])
-        muzero = MuZero(sys.argv[1], config)
+        config = json.loads(sys.argv[2]) if not config else config
+        game_name = sys.argv[1] if not game_name else game_name
+        print(f"Directly running game: {game_name}")
+        muzero = MuZero(game_name, config, seq_mode=seq_mode)
         muzero.train()
     else:
         # print("\nWelcome to MuZero! Here's a list of games:")
@@ -725,6 +727,8 @@ def main(choice = 3, option = 0, seq_mode=False):
 
     ray.shutdown()
 
+
+
 if __name__ == "__main__":
     from tensorboard import program
 
@@ -735,4 +739,5 @@ if __name__ == "__main__":
     tb = program.TensorBoard()
     tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
     url = tb.launch()
-    main(choice=6, option=0, seq_mode=False)
+
+    main(choice=6, option=0, seq_mode=True)

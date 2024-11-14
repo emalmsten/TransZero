@@ -51,7 +51,7 @@ Maps = {
 
 class MuZeroConfig:
     def __init__(self):
-        self.custom_map = "2x2_no_hole"
+        self.custom_map = "2x2_1_hole"
 
         # fmt: off
         self.seed = 42
@@ -103,7 +103,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         ### Training
-        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / self.custom_map / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
         self.save_model = True
         self.training_steps = 10000
         self.batch_size = 128
