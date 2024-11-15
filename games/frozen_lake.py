@@ -52,6 +52,7 @@ Maps = {
 class MuZeroConfig:
     def __init__(self):
         self.custom_map = "2x2_no_hole"
+        self.test_run = True  # Turn this to True to run a test
 
         # fmt: off
         self.seed = 42
