@@ -18,8 +18,9 @@ import replay_buffer
 import self_play
 import shared_storage
 import trainer
+import wandb
 
-import models
+from config import PROJECT_ROOT
 import networks.muzero_network as mz_net
 
 class MuZero:
@@ -134,14 +135,14 @@ class MuZero:
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
 
-    def train(self, log_in_tensorboard=True):
+    def train(self, logger = None):
         """
         Spawn ray workers and launch the training.
 
         Args:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
-        if log_in_tensorboard or self.config.save_model:
+        if logger is not None or self.config.save_model:
             self.config.results_path.mkdir(parents=True, exist_ok=True)
 
         # Manage GPUs
@@ -149,7 +150,7 @@ class MuZero:
             num_gpus_per_worker = self.num_gpus / (
                 self.config.train_on_gpu
                 + self.config.num_workers * self.config.selfplay_on_gpu
-                + log_in_tensorboard * self.config.selfplay_on_gpu
+                + (logger is not None) * self.config.selfplay_on_gpu
                 + self.config.use_last_model_value * self.config.reanalyse_on_gpu
             )
             if 1 < num_gpus_per_worker:
@@ -210,10 +211,121 @@ class MuZero:
                 self.replay_buffer_worker, self.shared_storage_worker
             )
 
-        if log_in_tensorboard:
+        if logger == "tensorboard":
             self.logging_loop(
                 num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             )
+        elif logger == "wandb":
+            self.logging_loop_wandb(
+                num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+            )
+
+
+    def logging_loop_wandb(self, num_gpus):
+        """
+        Keep track of the training performance using Weights & Biases.
+        """        # Initialize Weights & Biases
+        wandb.init(
+            entity="elhmalmsten-tu-delft",
+            project="TransZero",
+            name=datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),
+            config=self.config.__dict__,
+            dir=self.config.results_path,
+        )
+
+        # Launch the test worker to get performance metrics
+        self.test_worker = self_play.SelfPlay.options(
+            num_cpus=0,
+            num_gpus=num_gpus,
+        ).remote(
+            self.checkpoint,
+            self.Game,
+            self.config,
+            self.config.seed + self.config.num_workers,
+        )
+        self.test_worker.continuous_self_play.remote(
+            self.shared_storage_worker, None, True
+        )
+
+        print(
+            "\nTraining...\nGo to https://wandb.ai/ to see real-time training performance.\n"
+        )
+
+        # Log hyperparameters to WandB
+        wandb.config.update(self.config.__dict__)
+
+        # Loop for updating the training performance
+        counter = 0
+        keys = [
+            "total_reward",
+            "muzero_reward",
+            "opponent_reward",
+            "episode_length",
+            "mean_value",
+            "training_step",
+            "lr",
+            "total_loss",
+            "value_loss",
+            "reward_loss",
+            "policy_loss",
+            "num_played_games",
+            "num_played_steps",
+            "num_reanalysed_games",
+        ]
+        info = ray.get(self.shared_storage_worker.get_info.remote(keys))
+        try:
+            while info["training_step"] < self.config.training_steps:
+                info = ray.get(self.shared_storage_worker.get_info.remote(keys))
+                metrics = {
+                    "Total_reward": info["total_reward"],
+                    "Mean_value": info["mean_value"],
+                    "Episode_length": info["episode_length"],
+                    "MuZero_reward": info["muzero_reward"],
+                    "Opponent_reward": info["opponent_reward"],
+                    "Self_played_games": info["num_played_games"],
+                    "Training_steps": info["training_step"],
+                    "Self_played_steps": info["num_played_steps"],
+                    "Reanalysed_games": info["num_reanalysed_games"],
+                    "Training_steps_per_self_played_step_ratio": info["training_step"] / max(1,
+                                                                                             info["num_played_steps"]),
+                    "Learning_rate": info["lr"],
+                    "Total_weighted_loss": info["total_loss"],
+                    "Value_loss": info["value_loss"],
+                    "Reward_loss": info["reward_loss"],
+                    "Policy_loss": info["policy_loss"],
+                }
+
+                # Log metrics to WandB
+                wandb.log(metrics, step=counter)
+                if counter % 10 == 0 or counter < 3:
+                    print(
+                        f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
+                        # end="\r", flush=True,
+                    )
+                counter += 1
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+
+        self.terminate_workers()
+
+        if self.config.save_model:
+            # Persist replay buffer to disk
+            path = self.config.results_path / "replay_buffer.pkl"
+            print(f"\n\nPersisting replay buffer games to disk at {path}")
+            pickle.dump(
+                {
+                    "buffer": self.replay_buffer,
+                    "num_played_games": self.checkpoint["num_played_games"],
+                    "num_played_steps": self.checkpoint["num_played_steps"],
+                    "num_reanalysed_games": self.checkpoint["num_reanalysed_games"],
+                },
+                open(path, "wb"),
+            )
+            # Optionally save the replay buffer to WandB
+            wandb.save(str(path))
+
+        wandb.finish()
 
     def logging_loop(self, num_gpus):
         """
@@ -328,6 +440,7 @@ class MuZero:
                 writer.add_scalar("3.Loss/Value_loss", info["value_loss"], counter)
                 writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
                 writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
+                print()
                 print(
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
                     end="\r",
@@ -501,7 +614,7 @@ class CPUActor:
 
 
 def hyperparameter_search(
-    game_name, parametrization, budget, parallel_experiments, num_tests
+    game_name, parametrization, budget, parallel_experiments, num_tests, logger="tensorboard"
 ):
     """
     Search for hyperparameters by launching parallel experiments.
@@ -532,7 +645,7 @@ def hyperparameter_search(
                 print(f"Launching new experiment: {param.value}")
                 muzero = MuZero(game_name, param.value, parallel_experiments)
                 muzero.param = param
-                muzero.train(False)
+                muzero.train(logger)
                 running_experiments.append(muzero)
                 budget -= 1
 
@@ -558,7 +671,7 @@ def hyperparameter_search(
                         print(f"Launching new experiment: {param.value}")
                         muzero = MuZero(game_name, param.value, parallel_experiments)
                         muzero.param = param
-                        muzero.train(False)
+                        muzero.train(logger)
                         running_experiments[i] = muzero
                         budget -= 1
                     else:
@@ -626,18 +739,18 @@ def load_model_menu(muzero, game_name):
         replay_buffer_path=replay_buffer_path,
     )
 
-def main(choice = 3, option = 0, seq_mode=False, config=None, game_name=None):
+def main(choice = 3, option = 0, seq_mode=False, logger = None, config=None, game_name=None):
     if len(sys.argv) == 2:
         # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
-        muzero.train()
+        muzero.train(logger)
     elif len(sys.argv) == 3 or (game_name and config):
         # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
         config = json.loads(sys.argv[2]) if not config else config
         game_name = sys.argv[1] if not game_name else game_name
         print(f"Directly running game: {game_name}")
         muzero = MuZero(game_name, config, seq_mode=seq_mode)
-        muzero.train()
+        muzero.train(logger)
     else:
         # print("\nWelcome to MuZero! Here's a list of games:")
         # Let user pick a game
@@ -660,7 +773,7 @@ def main(choice = 3, option = 0, seq_mode=False, config=None, game_name=None):
         game_name = games[choice]
         muzero = MuZero(game_name, seq_mode=seq_mode)
         if option == 0:
-            muzero.train()
+            muzero.train(logger)
             exit(0)
 
         while True:
@@ -730,14 +843,21 @@ def main(choice = 3, option = 0, seq_mode=False, config=None, game_name=None):
 
 
 if __name__ == "__main__":
-    from tensorboard import program
+    import datetime
+    logger = "wandb"
 
-    log_dir = "./results"  # Your log directory path
-    port = 6006
+    if logger == "tensorboard":
+        from tensorboard import program
+        log_dir = "./results"  # Your log directory path
+        port = 6006
 
-    # Initialize TensorBoard programmatically
-    tb = program.TensorBoard()
-    tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
-    url = tb.launch()
+        # Initialize TensorBoard programmatically
+        tb = program.TensorBoard()
+        tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
+        url = tb.launch()
+    elif logger == "wandb":
+        with open("wandb_api_key") as f:
+            wandb_key = f.readline()
+        wandb.login(key=wandb_key, relogin=False)
 
-    main(choice=6, option=0, seq_mode=True)
+    main(choice=6, option=0, seq_mode=False, logger=logger) #, game_name=game_name, config=config)

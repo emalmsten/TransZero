@@ -94,3 +94,5 @@ dmypy.json
 
 results/
 old_results/
+
+wandb_api_key
