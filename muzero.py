@@ -508,16 +508,15 @@ def main(choice = 3, option = 0, seq_mode=False, logger = None, config=None, gam
         # Train directly with: python muzero.py cartpole
         muzero = MuZero(sys.argv[1])
         muzero.train(logger)
-    elif len(sys.argv) == 3 or (game_name and config):
+    elif len(sys.argv) > 3 or (game_name and config):
         # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
         config = json.loads(sys.argv[2]) if not config else config
         game_name = sys.argv[1] if not game_name else game_name
-        print(f"Directly running game: {game_name}")
+        logger = logger if len(sys.argv) == 3 else sys.argv[3]
+        print(f"Directly running game: {game_name} on config: {config}")
         muzero = MuZero(game_name, config, seq_mode=seq_mode)
         muzero.train(logger)
     else:
-        # print("\nWelcome to MuZero! Here's a list of games:")
-        # Let user pick a game
         games = [
             filename.stem
             for filename in sorted(list((pathlib.Path.cwd() / "games").glob("*.py")))
@@ -603,7 +602,6 @@ def main(choice = 3, option = 0, seq_mode=False, logger = None, config=None, gam
             print("\nDone")
 
     ray.shutdown()
-
 
 
 if __name__ == "__main__":
