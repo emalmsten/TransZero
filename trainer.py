@@ -96,6 +96,10 @@ class Trainer:
                 )
                 if self.config.save_model:
                     shared_storage.save_checkpoint.remote()
+                    shared_storage.save_buffer.remote(replay_buffer, self.training_step,
+                        shared_storage.get_info.remote("num_played_games"),
+                        shared_storage.get_info.remote("num_reanalysed_games"))
+
             shared_storage.set_info.remote(
                 {
                     "training_step": self.training_step,

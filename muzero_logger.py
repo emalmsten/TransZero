@@ -4,6 +4,7 @@ import pickle
 import wandb
 import ray
 from torch.utils.tensorboard import SummaryWriter
+import torch
 
 # TODO save more checkpoints
 
@@ -121,22 +122,26 @@ def logging_loop(muzero, logger):
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
                     # end="\r", flush=True,
                 )
-            if logger == "wandb" and counter % muzero.config.checkpoint_interval == 0 and counter > 0:
-                save_model(muzero)
-                save_buffer(muzero)
+            # if logger == "wandb" and counter % muzero.config.checkpoint_interval == 0 and counter > 0:
+            #     # save_model(muzero)
+            #     save_buffer(muzero)
 
             counter += 1
             time.sleep(0.5)
     except KeyboardInterrupt:
-        pass
+        end_script(muzero, writer, logger)
 
+    end_script(muzero, writer, logger)
+
+
+def end_script(muzero, writer, logger):
     muzero.terminate_workers()
 
     if muzero.config.save_model:
         # Persist replay buffer to disk
         save_buffer(muzero)
         # Persist model to disk
-        save_model(muzero)
+        # save_model(muzero)
 
     if logger == "tensorboard":
         writer.close()
@@ -144,15 +149,15 @@ def logging_loop(muzero, logger):
         wandb.finish()
 
 
-def save_model(muzero):
-    path = muzero.config.results_path / "model.ckpt"
-    print(f"\n\nPersisting model to disk at {path}")
-    wandb.save(str(path))
+# def save_model(muzero):
+#     path = muzero.config.results_path / "model.ckpt"
+#     print(f"\n\nPersisting model to disk at {path}")
+#     torch.save(muzero.state_dict(), str(path))
 
 
 def save_buffer(muzero):
     path = muzero.config.results_path / "replay_buffer.pkl"
-    print(f"\n\nPersisting replay buffer games to disk at {path}")
+    print(f"\n\nPersisting replay buffer games to disk at {path}, num steps = {muzero.checkpoint['num_played_steps']}")
     pickle.dump(
         {
             "buffer": muzero.replay_buffer,
@@ -162,7 +167,6 @@ def save_buffer(muzero):
         },
         open(path, "wb"),
     )
-
 
 
 def init_tensorboard(muzero):
@@ -183,13 +187,5 @@ def init_tensorboard(muzero):
 
 
 def init_wandb(muzero):
-    wandb.init(
-        entity="elhmalmsten-tu-delft",
-        project="TransZero",
-        name=muzero.config.name,
-        config=muzero.config.__dict__,
-        dir=muzero.config.results_path,
-    )
-
     wandb.config.update(muzero.config.__dict__)
     print("Training...\nGo to https://wandb.ai/ to see real-time training performance.\n")

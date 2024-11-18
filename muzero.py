@@ -42,7 +42,7 @@ class MuZero:
         >>> muzero.test(render=True)
     """
 
-    def __init__(self, game_name, config=None, split_resources_in=1, seq_mode=False):
+    def __init__(self, game_name, config=None, split_resources_in=1):
         # Load the game and the config from the module with the game name
         try:
             game_module = importlib.import_module("games." + game_name)
@@ -71,9 +71,16 @@ class MuZero:
             else:
                 self.config = config
 
-        if seq_mode:
-            self.config.selfplay_on_gpu = False
-            self.config.seq_mode = True
+        if self.config.logger == "wandb":
+            self.wandb_run = wandb.init(
+                entity="elhmalmsten-tu-delft",
+                project="TransZero",
+                name=self.config.name,
+                config=self.config.__dict__,
+                dir=self.config.results_path,
+            )
+        else:
+            self.wandb_run = None
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -104,7 +111,7 @@ class MuZero:
         if 1 < self.num_gpus:
             self.num_gpus = math.floor(self.num_gpus)
 
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, local_mode=seq_mode)
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True, local_mode=self.config.debug_mode)
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = {
@@ -140,13 +147,15 @@ class MuZero:
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
 
-    def train(self, logger = None):
+    def train(self):
         """
         Spawn ray workers and launch the training.
 
         Args:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
+        logger = self.config.logger if hasattr(self.config, "logger") else None
+
         if logger is not None or self.config.save_model:
             if type(self.config.results_path) is str:
                 self.config.results_path = pathlib.Path(self.config.results_path)
@@ -174,6 +183,8 @@ class MuZero:
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             self.checkpoint,
             self.config,
+            self.wandb_run,
+
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
@@ -339,6 +350,7 @@ class MuZero:
             self.checkpoint["num_played_steps"] = replay_buffer_infos[
                 "num_played_steps"
             ]
+            print(self.checkpoint["num_played_steps"])
             self.checkpoint["num_played_games"] = replay_buffer_infos[
                 "num_played_games"
             ]
@@ -595,32 +607,29 @@ def cmd_line_init():
         print("\nDone")
 
 def main(args):
-    if args.game_name is not None:
-        print(f"Selected game: {args.game_name}")
-        muzero = MuZero(args.game_name, args.config, seq_mode=args.seq_mode)
-        muzero.train(args.logger)
-    else:
+    if args.game_name is None:
         cmd_line_init()
+    else:
+        print(f"Selected game: {args.game_name}")
+        muzero = MuZero(args.game_name, args.config)
+        muzero.train()
 
     ray.shutdown()
 
 def setup():
     parser = argparse.ArgumentParser(description="Process config file.")
     parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
-    parser.add_argument('-gn', '--game_name', type=str, help='name of the game')
-    parser.add_argument('-l', '--logger', type=str, default=None, help='logger to use')
-    # default is false
-    parser.add_argument('-sm', '--seq_mode', action='store_true', help='sequential mode for debugging')
-    parser.add_argument('-rfk', '--run_from_cluster', default=None, help='run from cluster')
+    parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='From which cluster to run, none if local')
+    parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
     args = parser.parse_args()
 
+    print(args.run_from_cluster)
     if args.run_from_cluster is None:
-        # Setting manually
-        args.logger = "wandb"
+        # manual override
         args.game_name = "frozen_lake"
-        args.seq_mode = False
+        logger = "wandb"
 
-        if args.logger == "tensorboard":
+        if logger == "tensorboard":
             from tensorboard import program
             log_dir = "./results"  # Your log directory path
             port = 6006
@@ -629,10 +638,11 @@ def setup():
             tb = program.TensorBoard()
             tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
             url = tb.launch()
-        elif args.logger == "wandb":
+        elif logger == "wandb":
             with open("wandb_api_key") as f:
                 wandb_key = f.readline()
             wandb.login(key=wandb_key, relogin=True)
+
     if args.config is not None and type(args.config) is str and args.config.endswith(".json"):
         print("Getting config from file")
         with open(args.config) as f:
@@ -643,5 +653,13 @@ def setup():
 
 
 if __name__ == "__main__":
+    # buffer_path = "/home/emil/Documents/Thesis/TransZero/results/frozen_lake/2x2_no_hole/resnet/20241118_144352_test/replay_buffer.pkl"
+    # ckpt_path = "/home/emil/Documents/Thesis/TransZero/results/frozen_lake/2x2_no_hole/resnet/20241118_144352_test/model.checkpoint"
+    # muzero = MuZero("frozen_lake")
+    # muzero.load_model(
+    #     checkpoint_path=ckpt_path,
+    #     replay_buffer_path=buffer_path,
+    # )
+
     args = setup()
     main(args)

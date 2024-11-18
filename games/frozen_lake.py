@@ -52,10 +52,13 @@ Maps = {
 class MuZeroConfig:
     def __init__(self, root=None):
         root = root or pathlib.Path(__file__).resolve().parents[1]
+        cuda = torch.cuda.is_available()
 
         self.game_name = "frozen_lake"
+        self.logger = "wandb"
+        self.debug_mode = False
+
         self.custom_map = "2x2_no_hole"
-        self.checkpoint_interval = 100
 
         # fmt: off
         self.seed = 42
@@ -73,7 +76,7 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1
-        self.selfplay_on_gpu = True
+        self.selfplay_on_gpu = cuda and not self.debug_mode
         self.max_moves = 25  # Reduced max moves for Frozen Lake
         self.num_simulations = 50
         self.discount = 0.997
@@ -108,7 +111,7 @@ class MuZeroConfig:
 
         ### Training
         append = "_test"  # Turn this to True to run a test
-        path = root / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        path = root / "results" / self.game_name / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{append}'
         self.results_path = path / self.name
 
@@ -117,7 +120,7 @@ class MuZeroConfig:
         self.batch_size = 128
         self.checkpoint_interval = 10
         self.value_loss_weight = 1
-        self.train_on_gpu = torch.cuda.is_available()
+        self.train_on_gpu = cuda and not self.debug_mode
 
         self.optimizer = "Adam"
         self.weight_decay = 1e-4
@@ -135,7 +138,7 @@ class MuZeroConfig:
         self.PER_alpha = 0.5
 
         self.use_last_model_value = True
-        self.reanalyse_on_gpu = False
+        self.reanalyse_on_gpu = cuda and not self.debug_mode
 
         self.self_play_delay = 0
         self.training_delay = 0

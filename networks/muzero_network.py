@@ -4,10 +4,7 @@ from networks.resnet import MuZeroResidualNetwork
 
 class MuZeroNetwork:
     def __new__(cls, config):
-        if hasattr(config, "seq_mode"):
-            seq_mode = config.seq_mode
-        else:
-            seq_mode = False
+        seq_mode = hasattr(config, "debug_mode") and config.debug_mode
 
         if config.network == "fullyconnected":
             return MuZeroFullyConnectedNetwork(

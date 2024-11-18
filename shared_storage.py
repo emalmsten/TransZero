@@ -2,6 +2,8 @@ import copy
 
 import ray
 import torch
+import wandb
+import pickle
 
 
 @ray.remote
@@ -10,15 +12,40 @@ class SharedStorage:
     Class which run in a dedicated thread to store the network weights and some information.
     """
 
-    def __init__(self, checkpoint, config):
+    def __init__(self, checkpoint, config, wandb_run=None):
         self.config = config
         self.current_checkpoint = copy.deepcopy(checkpoint)
+        self.wandb_run = wandb_run
 
     def save_checkpoint(self, path=None):
         if not path:
             path = self.config.results_path / "model.checkpoint"
 
         torch.save(self.current_checkpoint, path)
+        # save to wandb
+        if self.config.logger == "wandb" and self.wandb_run is not None:
+            artifact = wandb.Artifact(
+                name=f"model_step-{self.current_checkpoint['num_played_steps']}_name-{self.config.name}", type="model")
+            artifact.add_file(str(path))
+            self.wandb_run.log_artifact(artifact)
+
+    def save_buffer(self, replay_buffer, num_played_steps, num_played_games, num_reanalysed_games, path=None):
+        if not path:
+            path = self.config.results_path / "replay_buffer.pkl"
+        pickle.dump(
+            {
+                "buffer": replay_buffer,
+                "num_played_games": num_played_games,
+                "num_played_steps": num_played_steps,
+                "num_reanalysed_games": num_reanalysed_games,
+            },
+            open(path, "wb"),
+        )
+
+        if self.wandb_run is not None:
+            rb_artifact = wandb.Artifact(name=f'buffer_step-{num_played_steps}_name-{self.config.name}', type="data")
+            rb_artifact.add_file(str(path))
+            wandb.log_artifact(rb_artifact)
 
     def get_checkpoint(self):
         return copy.deepcopy(self.current_checkpoint)
