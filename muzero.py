@@ -603,6 +603,7 @@ def setup():
     parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
     parser.add_argument('-gn', '--game_name', type=str, help='name of the game')
     parser.add_argument('-l', '--logger', type=str, default=None, help='logger to use')
+    # default is false
     parser.add_argument('-sm', '--seq_mode', action='store_true', help='sequential mode for debugging')
     parser.add_argument('-rfk', '--run_from_cluster', default=None, help='run from cluster')
     args = parser.parse_args()
@@ -626,6 +627,7 @@ def setup():
             with open("wandb_api_key") as f:
                 wandb_key = f.readline()
             wandb.login(key=wandb_key, relogin=False)
+    print(args)
 
     return args
 
