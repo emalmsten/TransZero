@@ -17,7 +17,7 @@ class SharedStorage:
         self.current_checkpoint = copy.deepcopy(checkpoint)
         self.wandb_run = wandb_run
 
-    def save_checkpoint(self, path=None):
+    def save_checkpoint(self, num_played_steps, path=None):
         if not path:
             path = self.config.results_path / "model.checkpoint"
 
@@ -25,7 +25,7 @@ class SharedStorage:
         # save to wandb
         if self.config.logger == "wandb" and self.wandb_run is not None:
             artifact = wandb.Artifact(
-                name=f"model_step-{self.current_checkpoint['num_played_steps']}_name-{self.config.name}", type="model")
+                name=f"model_step-{num_played_steps}_name-{self.config.name}", type="model")
             artifact.add_file(str(path))
             self.wandb_run.log_artifact(artifact)
 
