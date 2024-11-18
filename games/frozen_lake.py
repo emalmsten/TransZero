@@ -53,6 +53,7 @@ class MuZeroConfig:
     def __init__(self, root=None):
         root = root or pathlib.Path(__file__).resolve().parents[1]
 
+        self.game_name = "frozen_lake"
         self.custom_map = "2x2_no_hole"
         self.test_run = True  # Turn this to True to run a test
 
