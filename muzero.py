@@ -148,6 +148,8 @@ class MuZero:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
         if logger is not None or self.config.save_model:
+            if type(self.config.results_path) is str:
+                self.config.results_path = pathlib.Path(self.config.results_path)
             self.config.results_path.mkdir(parents=True, exist_ok=True)
 
         # Manage GPUs
