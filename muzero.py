@@ -56,7 +56,11 @@ class MuZero:
 
         # Overwrite the config
         if config:
+            if type(config) is str:
+                print(f"Config is string")
+                config = json.loads(config)
             if type(config) is dict:
+                print(f"Config is dict")
                 for param, value in config.items():
                     if hasattr(self.config, param):
                         setattr(self.config, param, value)
@@ -627,6 +631,7 @@ def setup():
             with open("wandb_api_key") as f:
                 wandb_key = f.readline()
             wandb.login(key=wandb_key, relogin=False)
+
     print(args)
 
     return args
