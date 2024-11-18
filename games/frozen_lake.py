@@ -50,7 +50,9 @@ Maps = {
 
 
 class MuZeroConfig:
-    def __init__(self):
+    def __init__(self, root=None):
+        root = root or pathlib.Path(__file__).resolve().parents[1]
+
         self.custom_map = "2x2_no_hole"
         self.test_run = True  # Turn this to True to run a test
 
@@ -104,7 +106,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         ### Training
-        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        self.results_path = root / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
         print(f"Results path: {self.results_path}")
         self.save_model = True
         self.training_steps = 10000

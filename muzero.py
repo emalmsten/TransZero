@@ -11,7 +11,6 @@ import nevergrad
 import numpy
 import ray
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
 import diagnose_model
 import replay_buffer
@@ -19,6 +18,8 @@ import self_play
 import shared_storage
 import trainer
 import wandb
+import argparse
+
 
 import networks.muzero_network as mz_net
 from muzero_logger import logging_loop
@@ -503,123 +504,132 @@ def load_model_menu(muzero, game_name):
         replay_buffer_path=replay_buffer_path,
     )
 
-def main(choice = 3, option = 0, seq_mode=False, logger = None, config=None, game_name=None):
-    if len(sys.argv) == 2:
-        # Train directly with: python muzero.py cartpole
-        muzero = MuZero(sys.argv[1])
-        muzero.train(logger)
-    elif len(sys.argv) > 3 or (game_name and config):
-        # Train directly with: python muzero.py cartpole '{"lr_init": 0.01}'
-        config = json.loads(sys.argv[2]) if not config else config
-        game_name = sys.argv[1] if not game_name else game_name
-        logger = logger if len(sys.argv) == 3 else sys.argv[3]
-        print(f"Directly running game: {game_name} on config: {config}")
-        muzero = MuZero(game_name, config, seq_mode=seq_mode)
-        muzero.train(logger)
-    else:
-        games = [
-            filename.stem
-            for filename in sorted(list((pathlib.Path.cwd() / "games").glob("*.py")))
-            if filename.name != "abstract_game.py"
+def cmd_line_init():
+    games = [
+        filename.stem
+        for filename in sorted(list((pathlib.Path.cwd() / "games").glob("*.py")))
+        if filename.name != "abstract_game.py"
+    ]
+    for i in range(len(games)):
+        print(f"{i + 1}. {games[i]}")
+    choice = input("Enter a number to choose the game: ")
+    valid_inputs = [str(i + 1) for i in range(len(games))]
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
+
+    # Initialize MuZero
+    choice = int(choice)
+    game_name = games[choice]
+    print(f"Selected game: {game_name}")
+    muzero = MuZero(game_name)
+
+    while True:
+        # Configure running options
+        options = [
+            "Train",
+            "Load pretrained model",
+            "Diagnose model",
+            "Render some self play games",
+            "Play against MuZero",
+            "Test the game manually",
+            "Hyperparameter search",
+            "Debug",
+            "Exit",
         ]
-        for i in range(len(games)):
-            print(f"{i + 1}. {games[i]}")
-        choice -= 1
-        print("Running game: ", games[choice])
-        choice = str(choice) # input("Enter a number to choose the game: ")
-        valid_inputs = [str(i + 1) for i in range(len(games))]
+        print()
+        for i in range(len(options)):
+            print(f"{i}. {options[i]}")
+
+        valid_inputs = [str(i) for i in range(len(options))]
+        choice = input("Choose how to run")
+
         while choice not in valid_inputs:
             choice = input("Invalid input, enter a number listed above: ")
-
-        # Initialize MuZero
         choice = int(choice)
-        game_name = games[choice]
-        muzero = MuZero(game_name, seq_mode=seq_mode)
-        if option == 0:
-            muzero.train(logger)
-            exit(0)
+        if choice == 0:
+            muzero.train()
+        elif choice == 1:
+            load_model_menu(muzero, game_name)
+        elif choice == 2:
+            muzero.diagnose_model(30)
+        elif choice == 3:
+            muzero.test(render=True, opponent="self", muzero_player=None)
+        elif choice == 4:
+            muzero.test(render=True, opponent="human", muzero_player=0)
+        elif choice == 5:
+            env = muzero.Game()
+            env.reset()
+            env.render()
 
-        while True:
-            # Configure running options
-            options = [
-                "Train",
-                "Load pretrained model",
-                "Diagnose model",
-                "Render some self play games",
-                "Play against MuZero",
-                "Test the game manually",
-                "Hyperparameter search",
-                "Exit",
-            ]
-            print()
-            for i in range(len(options)):
-                print(f"{i}. {options[i]}")
-
-            valid_inputs = [str(i) for i in range(len(options))]
-            print("Running option: ", options[option])
-            choice = str(option) #input("choose action or smth")
-
-            while choice not in valid_inputs:
-                choice = input("Invalid input, enter a number listed above: ")
-            choice = int(choice)
-            if choice == 0:
-                muzero.train()
-            elif choice == 1:
-                load_model_menu(muzero, game_name)
-            elif choice == 2:
-                muzero.diagnose_model(30)
-            elif choice == 3:
-                muzero.test(render=True, opponent="self", muzero_player=None)
-            elif choice == 4:
-                muzero.test(render=True, opponent="human", muzero_player=0)
-            elif choice == 5:
-                env = muzero.Game()
-                env.reset()
+            done = False
+            while not done:
+                action = env.human_to_action()
+                observation, reward, done = env.step(action)
+                print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
                 env.render()
+        elif choice == 6:
+            # Define here the parameters to tune
+            # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
+            muzero.terminate_workers()
+            del muzero
+            budget = 20
+            parallel_experiments = 2
+            lr_init = nevergrad.p.Log(lower=0.0001, upper=0.1)
+            discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
+            parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
+            best_hyperparameters = hyperparameter_search(
+                game_name, parametrization, budget, parallel_experiments, 20
+            )
+            muzero = MuZero(game_name, best_hyperparameters)
+        elif choice == 7:
+            print("TODO implement debug") # TODO
+            pass
+        else:
+            break
+        print("\nDone")
 
-                done = False
-                while not done:
-                    action = env.human_to_action()
-                    observation, reward, done = env.step(action)
-                    print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
-                    env.render()
-            elif choice == 6:
-                # Define here the parameters to tune
-                # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
-                muzero.terminate_workers()
-                del muzero
-                budget = 20
-                parallel_experiments = 2
-                lr_init = nevergrad.p.Log(lower=0.0001, upper=0.1)
-                discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
-                parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
-                best_hyperparameters = hyperparameter_search(
-                    game_name, parametrization, budget, parallel_experiments, 20
-                )
-                muzero = MuZero(game_name, best_hyperparameters)
-            else:
-                break
-            print("\nDone")
+def main(args):
+    if args.game_name is not None:
+        print(f"Selected game: {args.game_name}")
+        muzero = MuZero(args.game_name, args.config, seq_mode=args.seq_mode)
+        muzero.train(args.logger)
+    else:
+        cmd_line_init()
 
     ray.shutdown()
 
+def setup():
+    parser = argparse.ArgumentParser(description="Process config file.")
+    parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
+    parser.add_argument('-gn', '--game_name', type=str, help='name of the game')
+    parser.add_argument('-l', '--logger', type=str, default=None, help='logger to use')
+    parser.add_argument('-sm', '--seq_mode', action='store_true', help='sequential mode for debugging')
+    parser.add_argument('-rfk', '--run_from_cluster', default=None, help='run from cluster')
+    args = parser.parse_args()
+
+    if args.run_from_cluster is None:
+        # Setting manually
+        args.logger = "wandb"
+        args.game_name = "frozen_lake"
+        args.seq_mode = False
+
+        if args.logger == "tensorboard":
+            from tensorboard import program
+            log_dir = "./results"  # Your log directory path
+            port = 6006
+
+            # Initialize TensorBoard programmatically
+            tb = program.TensorBoard()
+            tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
+            url = tb.launch()
+        elif args.logger == "wandb":
+            with open("wandb_api_key") as f:
+                wandb_key = f.readline()
+            wandb.login(key=wandb_key, relogin=False)
+
+    return args
+
 
 if __name__ == "__main__":
-    import datetime
-    logger = "wandb"
-
-    if logger == "tensorboard":
-        from tensorboard import program
-        log_dir = "./results"  # Your log directory path
-        port = 6006
-
-        # Initialize TensorBoard programmatically
-        tb = program.TensorBoard()
-        tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
-        url = tb.launch()
-    elif logger == "wandb":
-        with open("wandb_api_key") as f:
-            wandb_key = f.readline()
-        wandb.login(key=wandb_key, relogin=False)
-
-    main(choice=6, option=0, seq_mode=False, logger=logger) #, game_name=game_name, config=config)
+    args = setup()
+    main(args)
