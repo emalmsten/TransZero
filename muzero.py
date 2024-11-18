@@ -632,7 +632,7 @@ def setup():
         elif args.logger == "wandb":
             with open("wandb_api_key") as f:
                 wandb_key = f.readline()
-            wandb.login(key=wandb_key, relogin=False)
+            wandb.login(key=wandb_key, relogin=True)
     if args.config is not None and type(args.config) is str and args.config.endswith(".json"):
         print("Getting config from file")
         with open(args.config) as f:

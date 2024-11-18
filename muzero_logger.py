@@ -121,7 +121,7 @@ def logging_loop(muzero, logger):
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
                     # end="\r", flush=True,
                 )
-            if counter % muzero.config.checkpoint_interval == 0 and logger == "wandb":
+            if logger == "wandb" and counter % muzero.config.checkpoint_interval == 0 and counter > 0:
                 save_model(muzero)
                 save_buffer(muzero)
 
@@ -143,10 +143,12 @@ def logging_loop(muzero, logger):
     elif logger == "wandb":
         wandb.finish()
 
+
 def save_model(muzero):
     path = muzero.config.results_path / "model.ckpt"
     print(f"\n\nPersisting model to disk at {path}")
     wandb.save(str(path))
+
 
 def save_buffer(muzero):
     path = muzero.config.results_path / "replay_buffer.pkl"
@@ -181,11 +183,10 @@ def init_tensorboard(muzero):
 
 
 def init_wandb(muzero):
-    test_str = "_test" if muzero.config.test_run else ""
     wandb.init(
         entity="elhmalmsten-tu-delft",
         project="TransZero",
-        name=datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S") + test_str,
+        name=muzero.config.name,
         config=muzero.config.__dict__,
         dir=muzero.config.results_path,
     )

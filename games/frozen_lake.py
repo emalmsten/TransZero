@@ -55,7 +55,6 @@ class MuZeroConfig:
 
         self.game_name = "frozen_lake"
         self.custom_map = "2x2_no_hole"
-        self.test_run = True  # Turn this to True to run a test
         self.checkpoint_interval = 100
 
         # fmt: off
@@ -108,8 +107,11 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         ### Training
-        self.results_path = root / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
-        print(f"Results path: {self.results_path}")
+        append = "_test"  # Turn this to True to run a test
+        path = root / "results" / pathlib.Path(__file__).stem / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{append}'
+        self.results_path = path / self.name
+
         self.save_model = True
         self.training_steps = 10000
         self.batch_size = 128
