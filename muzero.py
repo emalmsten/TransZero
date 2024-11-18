@@ -647,6 +647,8 @@ def setup():
         print("Getting config from file")
         with open(args.config) as f:
             args.config = json.load(f)
+        args.config["observation_shape"] = tuple(args.config["observation_shape"])
+
 
     print(args)
     return args
