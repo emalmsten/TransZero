@@ -75,7 +75,7 @@ class MuZero:
             self.wandb_run = wandb.init(
                 entity="elhmalmsten-tu-delft",
                 project="TransZero",
-                name=self.config.name,
+                name=self.config.log_name,
                 config=self.config.__dict__,
                 dir=self.config.results_path,
             )
@@ -648,7 +648,6 @@ def setup():
         with open(args.config) as f:
             args.config = json.load(f)
         args.config["observation_shape"] = tuple(args.config["observation_shape"])
-
 
     print(args)
     return args

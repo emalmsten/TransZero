@@ -111,8 +111,10 @@ class MuZeroConfig:
 
         ### Training
         append = "_test"  # Turn this to True to run a test
+
         path = root / "results" / self.game_name / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{append}'
+        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
         self.results_path = path / self.name
 
         self.save_model = True
