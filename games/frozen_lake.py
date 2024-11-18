@@ -56,6 +56,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.custom_map = "2x2_no_hole"
         self.test_run = True  # Turn this to True to run a test
+        self.checkpoint_interval = 100
 
         # fmt: off
         self.seed = 42

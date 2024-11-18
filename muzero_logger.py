@@ -121,6 +121,10 @@ def logging_loop(muzero, logger):
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
                     # end="\r", flush=True,
                 )
+            if counter % muzero.config.checkpoint_interval == 0 and logger == "wandb":
+                save_model(muzero)
+                save_buffer(muzero)
+
             counter += 1
             time.sleep(0.5)
     except KeyboardInterrupt:
@@ -130,24 +134,33 @@ def logging_loop(muzero, logger):
 
     if muzero.config.save_model:
         # Persist replay buffer to disk
-        path = muzero.config.results_path / "replay_buffer.pkl"
-        print(f"\n\nPersisting replay buffer games to disk at {path}")
-        pickle.dump(
-            {
-                "buffer": muzero.replay_buffer,
-                "num_played_games": muzero.checkpoint["num_played_games"],
-                "num_played_steps": muzero.checkpoint["num_played_steps"],
-                "num_reanalysed_games": muzero.checkpoint["num_reanalysed_games"],
-            },
-            open(path, "wb"),
-        )
-        if logger == "wandb":
-            wandb.save(str(path))
+        save_buffer(muzero)
+        # Persist model to disk
+        save_model(muzero)
 
     if logger == "tensorboard":
         writer.close()
     elif logger == "wandb":
         wandb.finish()
+
+def save_model(muzero):
+    path = muzero.config.results_path / "model.ckpt"
+    print(f"\n\nPersisting model to disk at {path}")
+    wandb.save(str(path))
+
+def save_buffer(muzero):
+    path = muzero.config.results_path / "replay_buffer.pkl"
+    print(f"\n\nPersisting replay buffer games to disk at {path}")
+    pickle.dump(
+        {
+            "buffer": muzero.replay_buffer,
+            "num_played_games": muzero.checkpoint["num_played_games"],
+            "num_played_steps": muzero.checkpoint["num_played_steps"],
+            "num_reanalysed_games": muzero.checkpoint["num_reanalysed_games"],
+        },
+        open(path, "wb"),
+    )
+
 
 
 def init_tensorboard(muzero):
