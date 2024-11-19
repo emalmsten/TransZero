@@ -71,7 +71,7 @@ class MuZero:
             else:
                 self.config = config
 
-        self.config.recheck()
+        self.config.refresh()
         print(f"Config: {self.config.print_config()}")
 
         # Fix random generator seed

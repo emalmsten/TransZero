@@ -99,7 +99,7 @@ Maps = {
 
 class MuZeroConfig:
     def __init__(self, root=None):
-        root = root or pathlib.Path(__file__).resolve().parents[1]
+        self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
         self.testing = False
@@ -159,14 +159,14 @@ class MuZeroConfig:
         self.fc_value_layers = [16]
         self.fc_policy_layers = [16]
 
-        ### Training
-        append = "_test"  # Turn this to True to run a test
-
-        path = root / "results" / self.game_name / self.custom_map / self.network #/ datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
-        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{append}'
+        # Naming
+        self.append = "_test"  # Turn this to True to run a test
+        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
         self.results_path = path / self.name
 
+        ### Training
         self.save_model = True
         self.training_steps = 10000
         self.batch_size = 128
@@ -196,7 +196,13 @@ class MuZeroConfig:
         self.ratio = 1.5
         # fmt: on
 
-    def recheck(self):
+    def reset_names(self):
+        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
+        self.results_path = path / self.name
+
+    def refresh(self):
         if self.testing:
             self.debug_mode = True
             self.logger = None
@@ -207,6 +213,9 @@ class MuZeroConfig:
             self.train_on_gpu = False
             self.selfplay_on_gpu = False
             self.reanalyse_on_gpu = False
+        # todo, maybe add param that checks if wanted / necessary
+        self.reset_names()
+
 
 
     def print_config(self):
