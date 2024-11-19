@@ -640,9 +640,10 @@ def setup(test=False):
         # manual override
         args.game_name = "frozen_lake"
         if test:
-            args.test_mode = "self"                     # todo, implement difference in testing
-            args.checkpoint_path = "models/model_500.checkpoint"
-            args.config={"testing": True, "custom_map": "3x3_2_hole_1"}
+            custom_map = "3x3_2_hole_1"
+            args.test_mode = "self"                     # todo, implement difference in testing?
+            args.checkpoint_path = f"wandb_data/base_run_resnet_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
+            args.config={"testing": True, "custom_map": custom_map}
 
         logger = "wandb"
 
@@ -668,8 +669,6 @@ def setup(test=False):
 
     print(args)
     return args
-
-
 
 
 if __name__ == "__main__":
