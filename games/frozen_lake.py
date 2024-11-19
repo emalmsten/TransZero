@@ -14,14 +14,21 @@ Maps = {
         "SF",
         "FG",
     ],
-    "2x2_1_hole": [
-        "SF",
-        "HG",
-    ],
     "3x3_no_hole": [
         "SFF",
         "FFF",
         "FGF",
+    ],
+    "4x4_no_hole": [
+        "SFFF",
+        "FFFF",
+        "FFFG",
+        "FFFF",
+    ],
+    ### 1 is for easy map, 2 is for medium, 3 is for hard
+    "2x2_1_hole_1": [
+        "SF",
+        "HG",
     ],
     "3x3_1_hole_1": [
         "SFH",
@@ -43,12 +50,51 @@ Maps = {
         "FHF",
         "FFG",
     ],
-    "3x3_3_hole_1": [
+    "3x3_3_hole_2": [
         "SFH",
         "HFF",
         "FHG",
     ],
+    "4x4_1_hole_1": [
+        "SFFF",
+        "FFFF",
+        "FFFG",
+        "FFFH",
+    ],
+    "4x4_2_hole_1": [
+        "SFFF",
+        "FFHF",
+        "FFFF",
+        "FGFH",
+    ],
+    "4x4_2_hole_2": [
+        "SFFF",
+        "FFFF",
+        "FFFH",
+        "FHFG",
+    ],
+    "4x4_3_hole_1": [
+        "SFHF",
+        "FFFF",
+        "HFFF",
+        "FHFG",
+    ],
+    "4x4_3_hole_2": [
+        "SFHF",
+        "FFHF",
+        "FFFF",
+        "FHGF",
+    ],
+    # almost impossible with slipperiness
+    "4x4_5_hole_3": [
+        "SFFF",
+        "HHHF",
+        "FFFF",
+        "HGHF",
+    ],
 }
+
+
 
 
 class MuZeroConfig:
@@ -161,10 +207,6 @@ class MuZeroConfig:
             self.train_on_gpu = False
             self.selfplay_on_gpu = False
             self.reanalyse_on_gpu = False
-
-
-
-
 
 
     def print_config(self):
