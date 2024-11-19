@@ -28,7 +28,14 @@ class SelfPlay:
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
-        self.model.set_weights(initial_checkpoint["weights"])
+        try:
+            self.model.set_weights(initial_checkpoint["weights"])
+        except Exception:
+            print(f"trying new weights")
+            self.model.set_weights(self.remove_module_prefix(initial_checkpoint["weights"]))
+
+
+
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
         self.model.eval()
@@ -163,9 +170,7 @@ class SelfPlay:
 
                     if render:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
-                        print(
-                            f"Root value for player {self.game.to_play()}: {root.value():.2f}"
-                        )
+                        print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
                 else:
                     action, root = self.select_opponent_action(
                         opponent, stacked_observations
@@ -175,6 +180,7 @@ class SelfPlay:
 
                 if render:
                     print(f"Played action: {self.game.action_to_string(action)}")
+                    print(f"Obtained reward: {reward}")
                     self.game.render()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -248,6 +254,17 @@ class SelfPlay:
             action = numpy.random.choice(actions, p=visit_count_distribution)
 
         return action
+
+    def remove_module_prefix(self, state_dict):
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            # Check if ".module." appears in the key
+            if ".module." in k:
+                new_key = k.replace(".module.", ".")
+            else:
+                new_key = k
+            new_state_dict[new_key] = v
+        return new_state_dict
 
 
 # Game independent

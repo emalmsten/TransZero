@@ -1,5 +1,6 @@
 import datetime
 import pathlib
+import time
 
 import gym
 import numpy
@@ -59,6 +60,7 @@ class MuZeroConfig:
         self.debug_mode = False
 
         self.custom_map = "2x2_no_hole"
+        self.checkpoint_interval = 10
 
         # fmt: off
         self.seed = 42
@@ -120,7 +122,6 @@ class MuZeroConfig:
         self.save_model = True
         self.training_steps = 10000
         self.batch_size = 128
-        self.checkpoint_interval = 10
         self.value_loss_weight = 1
         self.train_on_gpu = cuda and not self.debug_mode
 
@@ -212,7 +213,8 @@ class Game(AbstractGame):
         Display the game observation.
         """
         self.env.render()
-        input("Press enter to take a step ")
+        time.sleep(1)
+        #input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
         """

@@ -94,5 +94,6 @@ dmypy.json
 
 results/
 old_results/
+models/
 
 wandb_api_key

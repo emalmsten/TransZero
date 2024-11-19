@@ -71,16 +71,6 @@ class MuZero:
             else:
                 self.config = config
 
-        if self.config.logger == "wandb":
-            self.wandb_run = wandb.init(
-                entity="elhmalmsten-tu-delft",
-                project="TransZero",
-                name=self.config.log_name,
-                config=self.config.__dict__,
-                dir=self.config.results_path,
-            )
-        else:
-            self.wandb_run = None
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -160,6 +150,17 @@ class MuZero:
             if type(self.config.results_path) is str:
                 self.config.results_path = pathlib.Path(self.config.results_path)
             self.config.results_path.mkdir(parents=True, exist_ok=True)
+
+        if self.config.logger == "wandb":
+            self.wandb_run = wandb.init(
+                entity="elhmalmsten-tu-delft",
+                project="TransZero",
+                name=self.config.log_name,
+                config=self.config.__dict__,
+                dir=self.config.results_path,
+            )
+        else:
+            self.wandb_run = None
 
         # Manage GPUs
         if 0 < self.num_gpus:
@@ -653,14 +654,19 @@ def setup():
     return args
 
 
+
+
 if __name__ == "__main__":
     # buffer_path = "/home/emil/Documents/Thesis/TransZero/results/frozen_lake/2x2_no_hole/resnet/20241118_144352_test/replay_buffer.pkl"
-    # ckpt_path = "/home/emil/Documents/Thesis/TransZero/results/frozen_lake/2x2_no_hole/resnet/20241118_144352_test/model.checkpoint"
-    # muzero = MuZero("frozen_lake")
+    # ckpt_path = "models/model_500.checkpoint"
+    # muzero = MuZero("frozen_lake", config={"debug_mode": True, "custom_map": "3x3_2_hole_1", "logger": None})
     # muzero.load_model(
     #     checkpoint_path=ckpt_path,
-    #     replay_buffer_path=buffer_path,
+    #     #replay_buffer_path=buffer_path,
     # )
+    # muzero.test(render=True, opponent="self", muzero_player=None)
+    # exit(0)
 
     args = setup()
     main(args)
+    wandb.finish()
