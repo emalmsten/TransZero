@@ -673,7 +673,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=True)
+    args = setup(test=False)
     main(args)
     wandb.finish()
     ray.shutdown()
