@@ -71,6 +71,8 @@ class MuZero:
             else:
                 self.config = config
 
+        self.config.recheck()
+        print(f"Config: {self.config.print_config()}")
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -607,27 +609,41 @@ def cmd_line_init():
             break
         print("\nDone")
 
+
+
 def main(args):
     if args.game_name is None:
         cmd_line_init()
+        return
+
+    print(f"Selected game: {args.game_name}")
+    muzero = MuZero(args.game_name, args.config)
+    if args.checkpoint_path is not None:
+        muzero.load_model(checkpoint_path=args.checkpoint_path)
+
+    if args.test_mode is not None:
+        muzero.test(render=True, opponent="self", muzero_player=None)
     else:
-        print(f"Selected game: {args.game_name}")
-        muzero = MuZero(args.game_name, args.config)
         muzero.train()
 
-    ray.shutdown()
 
-def setup():
+def setup(test=False):
     parser = argparse.ArgumentParser(description="Process config file.")
     parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
+    parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test')
+    parser.add_argument('-ckpt', '--checkpoint_path', type=str, default=None, help='Load MuZero from checkpoint')
     parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='From which cluster to run, none if local')
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
     args = parser.parse_args()
 
-    print(args.run_from_cluster)
     if args.run_from_cluster is None:
         # manual override
         args.game_name = "frozen_lake"
+        if test:
+            args.test_mode = "self"                     # todo, implement difference in testing
+            args.checkpoint_path = "models/model_500.checkpoint"
+            args.config={"testing": True, "custom_map": "3x3_2_hole_1"}
+
         logger = "wandb"
 
         if logger == "tensorboard":
@@ -648,7 +664,7 @@ def setup():
         print("Getting config from file")
         with open(args.config) as f:
             args.config = json.load(f)
-        args.config["observation_shape"] = tuple(args.config["observation_shape"])
+        args.config["observation_shape"] = tuple(args.config["observation_shape"]) # todo clean up
 
     print(args)
     return args
@@ -657,16 +673,8 @@ def setup():
 
 
 if __name__ == "__main__":
-    # buffer_path = "/home/emil/Documents/Thesis/TransZero/results/frozen_lake/2x2_no_hole/resnet/20241118_144352_test/replay_buffer.pkl"
-    # ckpt_path = "models/model_500.checkpoint"
-    # muzero = MuZero("frozen_lake", config={"debug_mode": True, "custom_map": "3x3_2_hole_1", "logger": None})
-    # muzero.load_model(
-    #     checkpoint_path=ckpt_path,
-    #     #replay_buffer_path=buffer_path,
-    # )
-    # muzero.test(render=True, opponent="self", muzero_player=None)
-    # exit(0)
-
-    args = setup()
+    args = setup(test=True)
     main(args)
     wandb.finish()
+    ray.shutdown()
+

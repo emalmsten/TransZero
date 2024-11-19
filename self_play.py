@@ -17,8 +17,8 @@ class SelfPlay:
 
     def __init__(self, initial_checkpoint, Game, config, seed):
         self.config = config
-        if hasattr(self.config, "custom_map"):
-            self.game = Game(seed, custom_map = self.config.custom_map)
+        if hasattr(self.config, "game_name") and self.config.game_name == "frozen_lake":
+            self.game = Game(seed, config=config)
         else:
             self.game = Game()
 

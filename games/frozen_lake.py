@@ -1,8 +1,9 @@
+# todo fix such that all environments are loaded from gymnasium
 import datetime
 import pathlib
 import time
 
-import gym
+import gymnasium as gym
 import numpy
 import torch
 
@@ -55,9 +56,10 @@ class MuZeroConfig:
         root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
+        self.testing = False
         self.game_name = "frozen_lake"
-        self.logger = "wandb"
-        self.debug_mode = False
+        self.logger = "wandb" if not self.testing else None
+        self.debug_mode = False or self.testing
 
         self.custom_map = "2x2_no_hole"
         self.checkpoint_interval = 10
@@ -148,6 +150,27 @@ class MuZeroConfig:
         self.ratio = 1.5
         # fmt: on
 
+    def recheck(self):
+        if self.testing:
+            self.debug_mode = True
+            self.logger = None
+            self.save_model = False
+            print("Testing mode enabled. Disabling [logger, model saving], enabling [debug mode]")
+        if self.debug_mode:
+            print("Debug mode enabled. Disabling GPU")
+            self.train_on_gpu = False
+            self.selfplay_on_gpu = False
+            self.reanalyse_on_gpu = False
+
+
+
+
+
+
+    def print_config(self):
+        for attr, value in vars(self).items():
+            print(f"{attr}: {value}")
+
     def visit_softmax_temperature_fn(self, trained_steps):
         if trained_steps < 0.5 * self.training_steps:
             return 1.0
@@ -162,13 +185,16 @@ class Game(AbstractGame):
     Game wrapper for Frozen Lake.
     """
 
-    def __init__(self, seed=None, custom_map=None):
+    def __init__(self, seed=None, config=None):
         # Changed environment to Frozen Lake
-        if custom_map is not None:
-            print(f"Using custom map: {custom_map}")
-            custom_map = Maps[custom_map]
+        if config is not None:
+            print(f"Using custom map: {config.custom_map}")
+            custom_map = Maps[config.custom_map]
             [print(row) for row in custom_map]
-        self.env = gym.make("FrozenLake-v1", is_slippery=False, desc=custom_map)
+            self.env = gym.make("FrozenLake-v1", is_slippery=False, desc=custom_map,
+                                render_mode="human" if config.testing else None)
+        else:
+            self.env = gym.make("FrozenLake-v1", is_slippery=False)
         if seed is not None:
             self.env.reset(seed=seed)
 
@@ -183,8 +209,8 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         # Updated for Frozen Lake: observation is a single integer
-        observation, reward, done, _ = self.env.step(action)
-        return numpy.array([[[observation]]]), reward, done  # Observation wrapped to match shape (1, 1, 1)
+        observation, reward, done, truncated, info = self.env.step(action)
+        return numpy.array([[[observation]]]), reward, done or truncated  # Observation wrapped to match shape (1, 1, 1)
 
     def legal_actions(self):
         """
@@ -199,7 +225,7 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        observation = self.env.reset()
+        observation, info = self.env.reset()
         return numpy.array([[[observation]]])  # Observation wrapped to match shape (1, 1, 1)
 
     def close(self):
