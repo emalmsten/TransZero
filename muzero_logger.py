@@ -107,6 +107,7 @@ def logging_loop(muzero, logger):
         writer = init_tensorboard(muzero)
     elif logger == "wandb":
         init_wandb(muzero)
+        writer = None
 
     # Loop for updating the training performance
     counter = 0
