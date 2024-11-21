@@ -370,7 +370,7 @@ class MCTS:
                     parent.hidden_state,
                     torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
                     root_hidden_state = root.hidden_state,
-                    actions = torch.tensor([actions]).to(parent.hidden_state.device),
+                    action_sequence= torch.tensor([actions]).to(parent.hidden_state.device),
                 )
             else:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(

@@ -149,9 +149,8 @@ class Trainer:
         device = next(self.model.parameters()).device
         if self.config.PER:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
-        observation_batch = (
-            torch.tensor(numpy.array(observation_batch)).float().to(device)
-        )
+        observation_batch = torch.tensor(numpy.array(observation_batch)).float().to(device)
+
         action_batch = torch.tensor(action_batch).long().to(device).unsqueeze(-1)
         target_value = torch.tensor(target_value).float().to(device)
         target_reward = torch.tensor(target_reward).float().to(device)
@@ -178,9 +177,10 @@ class Trainer:
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
             if is_trans_net:
-                print("Not implemented yet")
+                action_sequence = action_batch[:, :i]
+                # send through the same actions
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i]
+                    hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(

@@ -253,9 +253,7 @@ class ReplayBuffer:
         ):
             # The value is oriented from the perspective of the current player
             value += (
-                reward
-                if game_history.to_play_history[index]
-                == game_history.to_play_history[index + i]
+                reward if game_history.to_play_history[index] == game_history.to_play_history[index + i]
                 else -reward
             ) * self.config.discount**i
 
