@@ -639,6 +639,9 @@ def setup(test=False):
     if args.run_from_cluster is None:
         # manual override
         args.game_name = "frozen_lake"
+        args.config = {
+            "debug_mode": False or (sys.gettrace() is not None)
+        }
         if test:
             custom_map = "3x3_2_hole_1"
             args.test_mode = "self"                     # todo, implement difference in testing?
@@ -676,4 +679,6 @@ if __name__ == "__main__":
     main(args)
     wandb.finish()
     ray.shutdown()
+
+
 

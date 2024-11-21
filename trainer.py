@@ -130,6 +130,7 @@ class Trainer:
         """
         Perform one training step.
         """
+        is_trans_net = self.config.network == "transformer"
 
         (
             observation_batch,
@@ -176,9 +177,15 @@ class Trainer:
         )
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
-            value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                hidden_state, action_batch[:, i]
-            )
+            if is_trans_net:
+                print("Not implemented yet")
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    hidden_state, action_batch[:, i]
+                )
+            else:
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    hidden_state, action_batch[:, i]
+                )
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
             predictions.append((value, reward, policy_logits))

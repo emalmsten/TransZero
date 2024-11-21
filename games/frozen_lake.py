@@ -103,9 +103,10 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.testing = False
-        self.game_name = "frozen_lake"
-        self.logger = "wandb" if not self.testing else None
         self.debug_mode = False or self.testing
+
+        self.game_name = "frozen_lake"
+        self.logger = "wandb" if not self.debug_mode else None
 
         self.custom_map = "2x2_no_hole"
         self.checkpoint_interval = 10
@@ -127,8 +128,8 @@ class MuZeroConfig:
         ### Self-Play
         self.num_workers = 1
         self.selfplay_on_gpu = cuda and not self.debug_mode
-        self.max_moves = 25  # Reduced max moves for Frozen Lake
-        self.num_simulations = 50
+        self.max_moves = 50  # Reduced max moves for Frozen Lake
+        self.num_simulations = 15 # todo changed
         self.discount = 0.997
         self.temperature_threshold = None
 
@@ -139,7 +140,7 @@ class MuZeroConfig:
         self.pb_c_init = 1.25
 
         ### Network
-        self.network = "resnet"
+        self.network = "transformer"
         self.support_size = 10
 
         self.downsample = False
@@ -205,11 +206,11 @@ class MuZeroConfig:
     def refresh(self):
         if self.testing:
             self.debug_mode = True
+            print("Testing mode enabled. Enabling debug_mode")
+        if self.debug_mode:
             self.logger = None
             self.save_model = False
-            print("Testing mode enabled. Disabling [logger, model saving], enabling [debug mode]")
-        if self.debug_mode:
-            print("Debug mode enabled. Disabling GPU")
+            print("Debug mode enabled. Disabling GPU operations, logger, and model saving")
             self.train_on_gpu = False
             self.selfplay_on_gpu = False
             self.reanalyse_on_gpu = False

@@ -152,7 +152,7 @@ class SelfPlay:
                 )
 
                 # Choose the action
-                if opponent == "self" or muzero_player == self.game.to_play():
+                if opponent == "self" or muzero_player == self.game.to_play(): # note to Emil, where you go when using frozen_lake
                     root, mcts_info = MCTS(self.config).run(
                         self.model,
                         stacked_observations,
@@ -294,26 +294,31 @@ class MCTS:
         We then run a Monte Carlo Tree Search using only action sequences and the model
         learned by the network.
         """
+        is_trans_net = self.config.network == "transformer" # todo better implementation later
+        # print(f"is trans net: {is_trans_net}")
         if override_root_with:
             root = override_root_with
             root_predicted_value = None
         else:
             root = Node(0)
+            # Observation in right shape
             observation = (
                 torch.tensor(observation)
                 .float()
                 .unsqueeze(0)
                 .to(next(model.parameters()).device)
             )
+
+            # Initial step
             (
                 root_predicted_value,
                 reward,
                 policy_logits,
                 hidden_state,
             ) = model.initial_inference(observation)
-            root_predicted_value = models.support_to_scalar(
-                root_predicted_value, self.config.support_size
-            ).item()
+
+            # Make the root predicted value and reward a scalar
+            root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
             assert (
                 legal_actions
@@ -342,12 +347,14 @@ class MCTS:
             virtual_to_play = to_play
             node = root
             search_path = [node]
+            actions = []
             current_tree_depth = 0
 
             while node.expanded():
                 current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)
                 search_path.append(node)
+                actions.append(action)
 
                 # Players play turn by turn
                 if virtual_to_play + 1 < len(self.config.players):
@@ -358,10 +365,18 @@ class MCTS:
             # Inside the search tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             parent = search_path[-2]
-            value, reward, policy_logits, hidden_state = model.recurrent_inference(
-                parent.hidden_state,
-                torch.tensor([[action]]).to(parent.hidden_state.device),
-            )
+            if is_trans_net:
+                value, reward, policy_logits, hidden_state = model.recurrent_inference(
+                    parent.hidden_state,
+                    torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
+                    root_hidden_state = root.hidden_state,
+                    actions = torch.tensor([actions]).to(parent.hidden_state.device),
+                )
+            else:
+                value, reward, policy_logits, hidden_state = model.recurrent_inference(
+                    parent.hidden_state,
+                    torch.tensor([[action]]).to(parent.hidden_state.device),
+                )
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
@@ -453,7 +468,7 @@ class MCTS:
 
 
 class Node:
-    def __init__(self, prior):
+    def __init__(self, prior, name="root"):
         self.visit_count = 0
         self.to_play = -1
         self.prior = prior
@@ -461,6 +476,9 @@ class Node:
         self.children = {}
         self.hidden_state = None
         self.reward = 0
+
+        # for debugging
+        self.name = name
 
     def expanded(self):
         return len(self.children) > 0
@@ -484,7 +502,8 @@ class Node:
         ).tolist()
         policy = {a: policy_values[i] for i, a in enumerate(actions)}
         for action, p in policy.items():
-            self.children[action] = Node(p)
+            child_name = f"{self.name}_{action}" if self.name != "r" else f"a_{action}"
+            self.children[action] = Node(p, name=child_name)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -496,6 +515,9 @@ class Node:
         frac = exploration_fraction
         for a, n in zip(actions, noise):
             self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
+
+    def __repr__(self):
+        return self.name
 
 
 class GameHistory:

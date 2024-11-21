@@ -86,9 +86,7 @@ class ReplayBuffer:
         ):
             game_pos, pos_prob = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(
-                game_history, game_pos
-            )
+            values, rewards, policies, actions = self.make_target(game_history, game_pos)
 
             index_batch.append([game_id, game_pos])
             observation_batch.append(

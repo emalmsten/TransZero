@@ -1,5 +1,6 @@
 from networks.fully_connected import MuZeroFullyConnectedNetwork
 from networks.resnet import MuZeroResidualNetwork
+from networks.transformer import MuZeroTransformerNetwork
 
 
 class MuZeroNetwork:
@@ -8,6 +9,20 @@ class MuZeroNetwork:
 
         if config.network == "fullyconnected":
             return MuZeroFullyConnectedNetwork(
+                config.observation_shape,
+                config.stacked_observations,
+                len(config.action_space),
+                config.encoding_size,
+                config.fc_reward_layers,
+                config.fc_value_layers,
+                config.fc_policy_layers,
+                config.fc_representation_layers,
+                config.fc_dynamics_layers,
+                config.support_size,
+                seq_mode,
+            )
+        elif config.network == "transformer":
+            return MuZeroTransformerNetwork(
                 config.observation_shape,
                 config.stacked_observations,
                 len(config.action_space),
