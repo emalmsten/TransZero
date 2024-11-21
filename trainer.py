@@ -178,8 +178,11 @@ class Trainer:
         for i in range(1, action_batch.shape[1]):
             if is_trans_net:
                 action_sequence = action_batch[:, :i]
+                assert action_sequence.shape[-1] == 1
+                action_sequence = action_batch.squeeze(-1)
+
                 # send through the same actions
-                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                value, reward, policy_logits, hidden_state, trans_value = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
             else:
