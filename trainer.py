@@ -133,7 +133,7 @@ class Trainer:
         """
         Perform one training step.
         """
-        is_trans_net = self.config.network == "transformer"
+        is_trans_net = self.config.network == "transformer" and self.config.use_network != "org"
 
         (
             observation_batch,
@@ -227,10 +227,17 @@ class Trainer:
             target_policy[:, 0],
         )
 
-        if is_trans_net:
+        if is_trans_net: # todo temp
             trans_value_loss = current_value_loss[batch_size:]
-            value = value[:batch_size]
-            current_value_loss = current_value_loss[:batch_size]
+            trans_value = value[batch_size:]
+
+            if self.config.use_network == "trans": # todo temp
+                value = trans_value
+                current_value_loss = trans_value_loss
+            else: # both
+                value = value[:batch_size]
+                current_value_loss = current_value_loss[:batch_size]
+
 
         value_loss += current_value_loss
         policy_loss += current_policy_loss
@@ -263,15 +270,21 @@ class Trainer:
             )
 
             if is_trans_net:
+                trans_value = value[batch_size:]
                 current_trans_value_loss = current_value_loss[:batch_size]
+
                 value = value[:batch_size]
                 current_value_loss = current_value_loss[:batch_size]
 
-                current_trans_value_loss.register_hook(
-                    lambda grad: grad / gradient_scale_batch[:, i]
-                )
+                if self.config.use_network == 'both':
+                    current_trans_value_loss.register_hook(
+                        lambda grad: grad / gradient_scale_batch[:, i]
+                    )
+                    trans_value_loss += current_trans_value_loss
 
-                trans_value_loss += current_trans_value_loss
+                elif self.config.use_network == 'trans':
+                    value = trans_value
+                    current_value_loss = current_trans_value_loss
 
             # Scale gradient by the number of unroll steps (See paper appendix Training)
             current_value_loss.register_hook(
@@ -312,7 +325,7 @@ class Trainer:
         # Mean over batch dimension (pseudocode do a sum)
         loss = loss.mean()
 
-        if is_trans_net:
+        if is_trans_net and self.config.use_network == "both":
             # Scale the transformer value loss
             trans_value_loss = trans_value_loss.mean() * self.config.trans_loss_weight
             # Combine with the original loss
@@ -331,7 +344,8 @@ class Trainer:
             value_loss.mean().item(),
             reward_loss.mean().item(),
             policy_loss.mean().item(),
-            trans_value_loss.item() if is_trans_net else 0
+            # only show the trans loss if we are using both networks
+            trans_value_loss.item() if (self.config.use_network == "both") else 0
         )
 
     def update_lr(self):

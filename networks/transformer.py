@@ -23,7 +23,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # todo define in config
         transformer_layers=2,
         transformer_heads=2,
-        transformer_hidden_size=32,
+        transformer_hidden_size=16,
         max_seq_length=50,
         positional_embedding_type='sinus',  # sinus or learned
 

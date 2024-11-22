@@ -1,4 +1,5 @@
 import math
+import os
 import time
 
 import numpy
@@ -49,6 +50,7 @@ class SelfPlay:
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
+                played_games = ray.get(shared_storage.get_info.remote("num_played_games")) # todo temp
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -59,6 +61,7 @@ class SelfPlay:
                     False,
                     "self",
                     0,
+                    played_games
                 )
 
                 replay_buffer.save_game.remote(game_history, shared_storage)
@@ -120,7 +123,7 @@ class SelfPlay:
         self.close_game()
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player
+        self, temperature, temperature_threshold, render, opponent, muzero_player, played_games=0 # todo temp
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
@@ -159,6 +162,7 @@ class SelfPlay:
                         self.game.legal_actions(),
                         self.game.to_play(),
                         True,
+                        played_games = played_games
                     )
                     action = self.select_action(
                         root,
@@ -171,6 +175,15 @@ class SelfPlay:
                     if render:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
+
+                    if self.config.show_trans_values: # todo temp
+                        import json
+                        json_file = f"trans_values/{played_games}.json"
+                        os.makedirs(os.path.dirname(json_file), exist_ok=True)
+                        # append the info to the file with a new line
+                        with open(json_file, "a") as f:
+                            f.write(json.dumps(mcts_info["trans_info"]) + "\n")
+
                 else:
                     action, root = self.select_opponent_action(
                         opponent, stacked_observations
@@ -287,6 +300,7 @@ class MCTS:
         to_play,
         add_exploration_noise,
         override_root_with=None,
+        played_games=0
     ):
         """
         At the root of the search tree we use the representation function to obtain a
@@ -295,6 +309,13 @@ class MCTS:
         learned by the network.
         """
         is_trans_net = self.config.network == "transformer" # todo better implementation later
+        if self.config.show_trans_values: # todo temp
+            trans_dict = {
+                "played_games": played_games,
+                "observation": observation.squeeze().item(),
+                "predictions": []
+            }
+
         # print(f"is trans net: {is_trans_net}")
         if override_root_with:
             root = override_root_with
@@ -379,7 +400,20 @@ class MCTS:
                     parent.hidden_state,
                     torch.tensor([[action]]).to(parent.hidden_state.device),
                 )
-            value = models.support_to_scalar(value, self.config.support_size).item()
+
+            if (not is_trans_net) or (self.config.use_network != "trans"):
+                value = models.support_to_scalar(value, self.config.support_size).item()
+            else:
+                value = trans_value
+
+            if self.config.show_trans_values: # todo temp
+                trans_dict["predictions"].append(
+                    {
+                        "trans_value": trans_value,
+                        "value": value,
+                        "action_sequence": [int(a) for a in actions],
+                    }
+                )
 
             reward = models.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
@@ -398,6 +432,8 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
+        if self.config.show_trans_values: # todo temp
+            extra_info["trans_info"] = trans_dict
         return root, extra_info
 
     def select_child(self, node, min_max_stats):
