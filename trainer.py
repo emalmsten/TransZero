@@ -1,5 +1,6 @@
 import copy
 import time
+from idlelib.pyparse import trans
 
 import numpy
 import ray
@@ -78,6 +79,7 @@ class Trainer:
                 value_loss,
                 reward_loss,
                 policy_loss,
+                trans_value_loss,
             ) = self.update_weights(batch)
 
             if self.config.PER:
@@ -108,6 +110,7 @@ class Trainer:
                     "value_loss": value_loss,
                     "reward_loss": reward_loss,
                     "policy_loss": policy_loss,
+                    "trans_value_loss": trans_value_loss
                 }
             )
 
@@ -146,6 +149,8 @@ class Trainer:
         target_value_scalar = numpy.array(target_value, dtype="float32")
         priorities = numpy.zeros_like(target_value_scalar)
 
+        batch_size = len(target_value_scalar)
+
         device = next(self.model.parameters()).device
         if self.config.PER:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
@@ -170,33 +175,48 @@ class Trainer:
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
+
         ## Generate predictions
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
+
+        # needed since we don't predict the first value with the transformer yet, TODO
+        if is_trans_net:
+            value = torch.cat((value, value), dim=0)
+            target_value = torch.cat((target_value, target_value), dim=0)
+
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
             if is_trans_net:
+                # Instead of an action, we send the whole action sequence from start to the current action
                 action_sequence = action_batch[:, :i]
                 assert action_sequence.shape[-1] == 1
                 action_sequence = action_batch.squeeze(-1)
 
-                # send through the same actions
                 value, reward, policy_logits, hidden_state, trans_value = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
+
+                # add the transvalue here to later be decomposed
+                value = torch.cat((
+                    value,
+                    trans_value), dim=0)
+
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i]
                 )
+
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             hidden_state.register_hook(lambda grad: grad * 0.5)
-            predictions.append((value, reward, policy_logits))
+            predictions.append((value, reward, policy_logits)) # temp
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 
         ## Compute losses
         value_loss, reward_loss, policy_loss = (0, 0, 0)
         value, reward, policy_logits = predictions[0]
+
         # Ignore reward loss for the first batch step
         current_value_loss, _, current_policy_loss = self.loss_function(
             value.squeeze(-1),
@@ -206,6 +226,12 @@ class Trainer:
             target_reward[:, 0],
             target_policy[:, 0],
         )
+
+        if is_trans_net:
+            trans_value_loss = current_value_loss[batch_size:]
+            value = value[:batch_size]
+            current_value_loss = current_value_loss[:batch_size]
+
         value_loss += current_value_loss
         policy_loss += current_policy_loss
         # Compute priorities for the prioritized replay (See paper appendix Training)
@@ -236,10 +262,22 @@ class Trainer:
                 target_policy[:, i],
             )
 
+            if is_trans_net:
+                current_trans_value_loss = current_value_loss[:batch_size]
+                value = value[:batch_size]
+                current_value_loss = current_value_loss[:batch_size]
+
+                current_trans_value_loss.register_hook(
+                    lambda grad: grad / gradient_scale_batch[:, i]
+                )
+
+                trans_value_loss += current_trans_value_loss
+
             # Scale gradient by the number of unroll steps (See paper appendix Training)
             current_value_loss.register_hook(
                 lambda grad: grad / gradient_scale_batch[:, i]
             )
+
             current_reward_loss.register_hook(
                 lambda grad: grad / gradient_scale_batch[:, i]
             )
@@ -266,11 +304,19 @@ class Trainer:
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
         loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
+
+
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
             loss *= weight_batch
         # Mean over batch dimension (pseudocode do a sum)
         loss = loss.mean()
+
+        if is_trans_net:
+            # Scale the transformer value loss
+            trans_value_loss = trans_value_loss.mean() * self.config.trans_loss_weight
+            # Combine with the original loss
+            loss += trans_value_loss
 
         # Optimize
         self.optimizer.zero_grad()
@@ -285,6 +331,7 @@ class Trainer:
             value_loss.mean().item(),
             reward_loss.mean().item(),
             policy_loss.mean().item(),
+            trans_value_loss.item() if is_trans_net else 0
         )
 
     def update_lr(self):
@@ -309,7 +356,5 @@ class Trainer:
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(
-            1
-        )
+        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
         return value_loss, reward_loss, policy_loss
