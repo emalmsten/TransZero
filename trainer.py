@@ -79,7 +79,6 @@ class Trainer:
                 value_loss,
                 reward_loss,
                 policy_loss,
-                trans_value_loss,
             ) = self.update_weights(batch)
 
             if self.config.PER:
@@ -110,7 +109,6 @@ class Trainer:
                     "value_loss": value_loss,
                     "reward_loss": reward_loss,
                     "policy_loss": policy_loss,
-                    "trans_value_loss": trans_value_loss
                 }
             )
 
@@ -133,7 +131,7 @@ class Trainer:
         """
         Perform one training step.
         """
-        is_trans_net = self.config.network == "transformer" and self.config.use_network != "org"
+        is_trans_net = self.config.network == "transformer"
 
         (
             observation_batch,
@@ -148,8 +146,6 @@ class Trainer:
         # Keep values as scalars for calculating the priorities for the prioritized replay
         target_value_scalar = numpy.array(target_value, dtype="float32")
         priorities = numpy.zeros_like(target_value_scalar)
-
-        batch_size = len(target_value_scalar)
 
         device = next(self.model.parameters()).device
         if self.config.PER:
@@ -175,16 +171,10 @@ class Trainer:
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
-
         ## Generate predictions
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
-
-        # needed since we don't predict the first value with the transformer yet, TODO
-        if is_trans_net:
-            value = torch.cat((value, value), dim=0)
-            target_value = torch.cat((target_value, target_value), dim=0)
 
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
@@ -194,14 +184,9 @@ class Trainer:
                 assert action_sequence.shape[-1] == 1
                 action_sequence = action_batch.squeeze(-1)
 
-                value, reward, policy_logits, hidden_state, trans_value = self.model.recurrent_inference(
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
-
-                # add the transvalue here to later be decomposed
-                value = torch.cat((
-                    value,
-                    trans_value), dim=0)
 
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
@@ -226,18 +211,6 @@ class Trainer:
             target_reward[:, 0],
             target_policy[:, 0],
         )
-
-        if is_trans_net: # todo temp
-            trans_value_loss = current_value_loss[batch_size:]
-            trans_value = value[batch_size:]
-
-            if self.config.use_network == "trans": # todo temp
-                value = trans_value
-                current_value_loss = trans_value_loss
-            else: # both
-                value = value[:batch_size]
-                current_value_loss = current_value_loss[:batch_size]
-
 
         value_loss += current_value_loss
         policy_loss += current_policy_loss
@@ -268,23 +241,6 @@ class Trainer:
                 target_reward[:, i],
                 target_policy[:, i],
             )
-
-            if is_trans_net:
-                trans_value = value[batch_size:]
-                current_trans_value_loss = current_value_loss[:batch_size]
-
-                value = value[:batch_size]
-                current_value_loss = current_value_loss[:batch_size]
-
-                if self.config.use_network == 'both':
-                    current_trans_value_loss.register_hook(
-                        lambda grad: grad / gradient_scale_batch[:, i]
-                    )
-                    trans_value_loss += current_trans_value_loss
-
-                elif self.config.use_network == 'trans':
-                    value = trans_value
-                    current_value_loss = current_trans_value_loss
 
             # Scale gradient by the number of unroll steps (See paper appendix Training)
             current_value_loss.register_hook(
@@ -325,12 +281,6 @@ class Trainer:
         # Mean over batch dimension (pseudocode do a sum)
         loss = loss.mean()
 
-        if is_trans_net and self.config.use_network == "both":
-            # Scale the transformer value loss
-            trans_value_loss = trans_value_loss.mean() * self.config.trans_loss_weight
-            # Combine with the original loss
-            loss += trans_value_loss
-
         # Optimize
         self.optimizer.zero_grad()
         loss.backward()
@@ -344,8 +294,6 @@ class Trainer:
             value_loss.mean().item(),
             reward_loss.mean().item(),
             policy_loss.mean().item(),
-            # only show the trans loss if we are using both networks
-            trans_value_loss.item() if (self.config.use_network == "both") else 0
         )
 
     def update_lr(self):

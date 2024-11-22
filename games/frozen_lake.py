@@ -104,7 +104,6 @@ class MuZeroConfig:
 
         self.trans_loss_weight = 1
         self.show_trans_values = False
-        self.use_network = "trans" # org, trans or both
 
         self.testing = False
         self.debug_mode = False or self.testing
@@ -112,7 +111,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "2x2_no_hole"
+        self.custom_map = "3x3_1_hole_1"
         self.checkpoint_interval = 10
 
         # fmt: off

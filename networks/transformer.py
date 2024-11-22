@@ -62,9 +62,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.prediction_policy_network = cond_wrap(
             mlp(encoding_size, fc_policy_layers, self.action_space_size)
         )
-        self.prediction_value_network = cond_wrap(
-            mlp(encoding_size, fc_value_layers, self.full_support_size)
-        )
+        # self.prediction_value_network = cond_wrap(
+        #     mlp(encoding_size, fc_value_layers, self.full_support_size)
+        # )
 
         # Transformer components for value prediction
         self.transformer_hidden_size = transformer_hidden_size
@@ -110,8 +110,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def prediction(self, encoded_state):
         policy_logits = self.prediction_policy_network(encoded_state)
-        value = self.prediction_value_network(encoded_state)
-        return policy_logits, value
+        # value = self.prediction_value_network(encoded_state)
+        return policy_logits
 
     def representation(self, observation):
         encoded_state = self.representation_network(
@@ -154,7 +154,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
-        policy_logits, value = self.prediction(encoded_state)
+        policy_logits = self.prediction(encoded_state)
+        value = self.transformer_value_prediction(encoded_state)
         # reward equal to 0 for consistency
         reward = torch.log(
             (
@@ -187,12 +188,19 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
 
-    def transformer_value_prediction(self, root_hidden_state, action_sequence):
+    def transformer_value_prediction(self, root_hidden_state, action_sequence=None):
         # root hidden state: (batch_size, x)
         # action sequence: (batch_size, y)
 
         # Embed the action sequence
-        embedded_actions = self.action_embedding(action_sequence)  # Shape: (batch_size, y, transformer_hidden_size)
+        if action_sequence is None:
+            batch_size = root_hidden_state.size(0)
+            device = root_hidden_state.device
+            # Create an empty embedded_actions tensor
+            embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=device)
+        else:
+            # Embed the action sequence
+            embedded_actions = self.action_embedding(action_sequence)  # Shape: (batch_size, y, transformer_hidden_size)
 
         # Project the root hidden state to the transformer hidden size
         state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (batch_size, transformer_hidden_size)
@@ -225,7 +233,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        policy_logits, value = self.prediction(next_encoded_state)
-        trans_value = self.transformer_value_prediction(root_hidden_state, action_sequence)
-        assert(trans_value.shape != value.shape, f"Transformer value shape {trans_value.shape} does not match value shape {value.shape}")
-        return value, reward, policy_logits, next_encoded_state, trans_value
+        policy_logits = self.prediction(next_encoded_state)
+        value = self.transformer_value_prediction(root_hidden_state, action_sequence)
+        return value, reward, policy_logits, next_encoded_state

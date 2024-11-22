@@ -387,13 +387,12 @@ class MCTS:
             # state given an action and the previous hidden state
             parent = search_path[-2]
             if is_trans_net:
-                value, reward, policy_logits, hidden_state, trans_value = model.recurrent_inference(
+                value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
                     torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
                     root_hidden_state = root.hidden_state,
                     action_sequence= torch.tensor([actions]).to(parent.hidden_state.device),
                 )
-                trans_value = models.support_to_scalar(trans_value, self.config.support_size).item()
 
             else:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
@@ -401,15 +400,12 @@ class MCTS:
                     torch.tensor([[action]]).to(parent.hidden_state.device),
                 )
 
-            if (not is_trans_net) or (self.config.use_network != "trans"):
-                value = models.support_to_scalar(value, self.config.support_size).item()
-            else:
-                value = trans_value
+            value = models.support_to_scalar(value, self.config.support_size).item()
 
             if self.config.show_trans_values: # todo temp
                 trans_dict["predictions"].append(
                     {
-                        "trans_value": trans_value,
+                        "trans_value": None,
                         "value": value,
                         "action_sequence": [int(a) for a in actions],
                     }

@@ -18,7 +18,6 @@ keys = [
     "lr",
     "total_loss",
     "value_loss",
-    "trans_value_loss",
     "reward_loss",
     "policy_loss",
     "num_played_games",
@@ -97,7 +96,6 @@ def wandb_logging(info, counter):
         "Learning_rate": info["lr"],
         "Total_weighted_loss": info["total_loss"],
         "Value_loss": info["value_loss"],
-        "Trans_value_loss": info["trans_value_loss"],
         "Reward_loss": info["reward_loss"],
         "Policy_loss": info["policy_loss"],
     }
