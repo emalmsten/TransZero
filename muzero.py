@@ -6,6 +6,8 @@ import pathlib
 import pickle
 import sys
 import time
+import models
+
 
 import nevergrad
 import numpy
@@ -610,6 +612,41 @@ def cmd_line_init():
         print("\nDone")
 
 
+def seq_testing(muzero, file):
+    action_map = {'L': 0,'D': 1,'R': 2,'U': 3,}
+    model = mz_net.MuZeroNetwork(muzero.config)
+    with open(file, 'r') as f:
+        seqs = f.readlines()
+
+    summary = []
+
+    seqs = [seq.strip().split(',') for seq in seqs if len(seq) > 1 and (not seq.startswith("#"))]
+    print(seqs)
+    for seq in seqs:
+        print(seq)
+        (
+            value,
+            _,
+            _,
+            encoded_state,
+        ) = model.initial_inference(torch.tensor([[[int(seq[0])]]], dtype=torch.float32))
+        if len(seq) > 1:
+            actions = [action_map[a] for a in seq[1:]]
+            value = model.transformer_value_prediction(encoded_state, torch.tensor([actions]))
+
+        value = models.support_to_scalar(value, muzero.config.support_size).item()
+        summary.append((seq, value))
+        print(f"""
+            Inital state {seq[0]}
+            Actions: {seq[1:]}
+            Value: {value}
+        """)
+
+    for seq, value in summary:
+        print(f"{seq}: {value}")
+
+
+
 
 def main(args):
     if args.game_name is None:
@@ -621,7 +658,10 @@ def main(args):
     if args.checkpoint_path is not None:
         muzero.load_model(checkpoint_path=args.checkpoint_path)
 
-    if args.test_mode is not None:
+    if args.test_mode == "seq":
+        print("seq testing")
+        seq_testing(muzero, args.seq_file)
+    elif args.test_mode is not None:
         muzero.test(render=True, opponent="self", muzero_player=None)
     else:
         muzero.train()
@@ -630,7 +670,8 @@ def main(args):
 def setup(test=False):
     parser = argparse.ArgumentParser(description="Process config file.")
     parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
-    parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test')
+    parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test') # seq or other
+    parser.add_argument('-sf', '--seq_file', type=str, default=None, help='If seq testing, load from this file')
     parser.add_argument('-ckpt', '--checkpoint_path', type=str, default=None, help='Load MuZero from checkpoint')
     parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='From which cluster to run, none if local')
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
@@ -643,10 +684,13 @@ def setup(test=False):
             "debug_mode": False or (sys.gettrace() is not None)
         }
         if test:
-            custom_map = "3x3_2_hole_1"
-            args.test_mode = "self"                     # todo, implement difference in testing?
-            args.checkpoint_path = f"wandb_data/base_run_resnet_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
-            args.config={"testing": True, "custom_map": custom_map}
+            custom_map = "3x3_1_hole_1"
+            args.test_mode = "seq"                     # todo, implement difference in testing?
+            args.seq_file = "manual_seqs/test_1.txt"
+            args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
+            args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
+            args.checkpoint_path = f"models/model.checkpoint"
+            args.config={"testing": True, "custom_map": custom_map, "show_trans_values": True}
 
         logger = "wandb"
 
@@ -675,7 +719,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=False)
+    args = setup(test=True)
     main(args)
     wandb.finish()
     ray.shutdown()

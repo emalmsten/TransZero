@@ -98,6 +98,7 @@ Maps = {
 
 
 class MuZeroConfig:
+    # todo prio, option to not save locally
     def __init__(self, root=None):
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
@@ -112,7 +113,7 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
 
         self.custom_map = "3x3_1_hole_1"
-        self.checkpoint_interval = 10
+        self.checkpoint_interval = 100
 
         # fmt: off
         self.seed = 42
@@ -186,7 +187,7 @@ class MuZeroConfig:
         self.lr_decay_steps = 1000
 
         ### Replay Buffer
-        self.replay_buffer_size = 500
+        self.replay_buffer_size = 1500
         self.num_unroll_steps = 10
         self.td_steps = 50
         self.PER = True

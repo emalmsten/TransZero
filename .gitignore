@@ -96,5 +96,6 @@ results/
 old_results/
 models/
 wandb_data/
+manual_seqs/
 
 wandb_api_key
