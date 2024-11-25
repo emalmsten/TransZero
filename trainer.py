@@ -179,7 +179,6 @@ class Trainer:
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
             if is_trans_net:
-                # TODO prio, make replay buffer not contain action sequence that do not exist
                 # Instead of an action, we send the whole action sequence from start to the current action
                 action_sequence = action_batch[:, :i]
                 assert action_sequence.shape[-1] == 1
@@ -188,6 +187,7 @@ class Trainer:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
+
 
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(

@@ -685,7 +685,7 @@ def setup(test=False):
         }
         if test:
             custom_map = "3x3_1_hole_1"
-            args.test_mode = "seq"                     # todo, implement difference in testing?
+            args.test_mode = "not seq"                     # todo, implement difference in testing?
             args.seq_file = "manual_seqs/test_1.txt"
             args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
             args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
@@ -719,7 +719,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=True)
+    args = setup(test=False)
     main(args)
     wandb.finish()
     ray.shutdown()

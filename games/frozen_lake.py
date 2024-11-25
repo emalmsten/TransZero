@@ -98,7 +98,7 @@ Maps = {
 
 
 class MuZeroConfig:
-    # todo prio, option to not save locally
+
     def __init__(self, root=None):
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
@@ -113,7 +113,8 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
 
         self.custom_map = "3x3_1_hole_1"
-        self.checkpoint_interval = 100
+        self.checkpoint_interval = 500
+        self.save_locally = True # todo prio, option to save locally
 
         # fmt: off
         self.seed = 42
@@ -165,7 +166,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         # Naming
-        self.append = "_test"  # Turn this to True to run a test
+        self.append = "_policy_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"

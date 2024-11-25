@@ -285,7 +285,7 @@ class ReplayBuffer:
                     ]
                 )
                 actions.append(game_history.action_history[current_index])
-            else:
+            else: # todo consider adding mask for random actions
                 # States past the end of games are treated as absorbing states
                 target_values.append(0)
                 target_rewards.append(0)

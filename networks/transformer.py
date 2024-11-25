@@ -26,12 +26,16 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         transformer_hidden_size=16,
         max_seq_length=50,
         positional_embedding_type='sinus',  # sinus or learned
+        value_network = "transformer",
+        policy_network = "transformer",
 
     ):
         super().__init__()
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
         self.seq_mode = seq_mode
+        self.value_network = value_network
+        self.policy_network = policy_network
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
@@ -59,12 +63,15 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             mlp(encoding_size, fc_reward_layers, self.full_support_size)
         )
 
-        self.prediction_policy_network = cond_wrap(
-            mlp(encoding_size, fc_policy_layers, self.action_space_size)
-        )
-        # self.prediction_value_network = cond_wrap(
-        #     mlp(encoding_size, fc_value_layers, self.full_support_size)
-        # )
+        if self.policy_network == "fully_connected":
+            self.prediction_policy_network = cond_wrap(
+                mlp(encoding_size, fc_policy_layers, self.action_space_size)
+            )
+
+        if self.value_network == "fully_connected":
+            self.prediction_value_network = cond_wrap(
+                mlp(encoding_size, fc_value_layers, self.full_support_size)
+            )
 
         # Transformer components for value prediction
         self.transformer_hidden_size = transformer_hidden_size
@@ -86,7 +93,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.transformer_layer,
             num_layers=transformer_layers,
         )
+
         self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+        self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
 
 
     def sinusoidal_positional_embedding(self, length, d_model, n=10000.0):
@@ -108,10 +117,50 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return pe
 
 
-    def prediction(self, encoded_state):
-        policy_logits = self.prediction_policy_network(encoded_state)
-        # value = self.prediction_value_network(encoded_state)
-        return policy_logits
+    def prediction(self, encoded_state, action_sequence=None, root_hidden_state=None):
+        root_hidden_state = root_hidden_state if root_hidden_state is not None else encoded_state
+        rand_policy_logits, rand_value = self.random_prediction(device = encoded_state.device)
+        trans_policy_logits, trans_value = self.transformer_prediction(root_hidden_state, action_sequence)
+        fully_connected_policy_logits, fully_connected_value = self.fully_connected_prediction(encoded_state)
+
+        policy_dict = {"random": rand_policy_logits, "transformer": trans_policy_logits, "fully_connected": fully_connected_policy_logits}
+        val_dict = {"random": rand_value, "transformer": trans_value, "fully_connected": fully_connected_value}
+
+        return policy_dict[self.policy_network], val_dict[self.value_network],
+
+
+    def fully_connected_prediction(self, encoded_state):
+        policy_logits, value = None, None
+        if self.policy_network == "fully_connected":
+            policy_logits = self.prediction_policy_network(encoded_state)
+        if self.value_network == "fully_connected":
+            value = self.prediction_value_network(encoded_state)
+        return policy_logits, value
+
+
+    def transformer_prediction(self, root_hidden_state, action_sequence=None):
+        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
+
+        # Pass through the transformer encoder
+        transformer_output = self.transformer_encoder(input_sequence)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+
+        # Obtain the value prediction from the last token's output
+        transformer_output_last = transformer_output[:, -1, :]  # Shape: (batch_size, transformer_hidden_size)
+
+        policy_logits, value = None, None
+        if self.policy_network == "transformer":
+            policy_logits = self.policy_head(transformer_output_last) # Shape: (batch_size, action_space_size)
+        if self.value_network == "transformer":
+            value = self.value_head(transformer_output_last) # Shape: (batch_size, full_support_size)
+
+        return policy_logits, value
+
+
+    def random_prediction(self, device):
+        policy_logits = torch.rand((1, self.action_space_size), device=device, requires_grad=True)
+        value = torch.rand((1, self.full_support_size), device=device, requires_grad=True)
+        return policy_logits, value
+
 
     def representation(self, observation):
         encoded_state = self.representation_network(
@@ -126,6 +175,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             encoded_state - min_encoded_state
         ) / scale_encoded_state
         return encoded_state_normalized
+
 
     def dynamics(self, encoded_state, action):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
@@ -154,8 +204,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
-        policy_logits = self.prediction(encoded_state)
-        value = self.transformer_value_prediction(encoded_state)
+
+        policy_logits, value = self.prediction(encoded_state)
+
         # reward equal to 0 for consistency
         reward = torch.log(
             (
@@ -187,45 +238,37 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return pos_encoding
 
 
-
-    def transformer_value_prediction(self, root_hidden_state, action_sequence=None):
+    def create_input_sequence(self, root_hidden_state, action_sequence):
         # root hidden state: (batch_size, x)
         # action sequence: (batch_size, y)
 
         # Embed the action sequence
         if action_sequence is None:
             batch_size = root_hidden_state.size(0)
-            device = root_hidden_state.device
             # Create an empty embedded_actions tensor
-            embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=device)
+            embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=root_hidden_state.device)
         else:
             # Embed the action sequence
             embedded_actions = self.action_embedding(action_sequence)  # Shape: (batch_size, y, transformer_hidden_size)
 
         # Project the root hidden state to the transformer hidden size
         state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (batch_size, transformer_hidden_size)
-        state_embedding = state_embedding.unsqueeze(1) # Shape: (batch_size, 1, transformer_hidden_size)
+        state_embedding = state_embedding.unsqueeze(1)  # Shape: (batch_size, 1, transformer_hidden_size)
 
         # Total sequence length (including the root hidden state)
         sequence_length = embedded_actions.size(1) + 1  # +1 for the root hidden state
 
         # Get positional encoding
-        pos_encoding = self.get_positional_encoding(sequence_length, embedded_actions) # Shape: (batch_size, y+1 transformer_hidden_size)
+        pos_encoding = self.get_positional_encoding(sequence_length,
+                                                    embedded_actions)  # Shape: (batch_size, y+1 transformer_hidden_size)
 
         # Construct the input sequence by concatenating the state embedding and action embeddings
-        state_action_sequence = torch.cat([state_embedding, embedded_actions], dim=1)  # Shape: (batch_size, y+1, transformer_hidden_size)
+        state_action_sequence = torch.cat([state_embedding, embedded_actions],
+                                          dim=1)  # Shape: (batch_size, y+1, transformer_hidden_size)
 
         # Add positional encodings
-        input_sequence = state_action_sequence + pos_encoding
+        return state_action_sequence + pos_encoding
 
-        # Pass through the transformer encoder
-        transformer_output = self.transformer_encoder(input_sequence)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
-
-        # Obtain the value prediction from the last token's output
-        transformer_output_last = transformer_output[:, -1, :]  # Shape: (batch_size, transformer_hidden_size)
-        value_prediction = self.value_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
-
-        return value_prediction
 
 
     def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):
@@ -233,6 +276,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
         next_encoded_state, reward = self.dynamics(encoded_state, action)
-        policy_logits = self.prediction(next_encoded_state)
-        value = self.transformer_value_prediction(root_hidden_state, action_sequence)
+
+        policy_logits, value = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
+
         return value, reward, policy_logits, next_encoded_state
