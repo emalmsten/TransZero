@@ -112,7 +112,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_1_hole_1"
+        self.custom_map = "3x3_3_hole_2"
         self.checkpoint_interval = 500
         self.save_locally = True # todo prio, option to save locally
 
