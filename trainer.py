@@ -187,6 +187,7 @@ class Trainer:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
+                # todo if cum reward is predicted, we need to add cum reward as target?
 
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
@@ -229,6 +230,7 @@ class Trainer:
 
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
+            #new_target_reward = target_reward[:, 1:i].sum(dim=1) # todo test correctness
             (
                 current_value_loss,
                 current_reward_loss,
@@ -238,7 +240,7 @@ class Trainer:
                 reward.squeeze(-1),
                 policy_logits,
                 target_value[:, i],
-                target_reward[:, i],
+                target_reward[:, i], #if False else new_target_reward, # todo
                 target_policy[:, i],
             )
 

@@ -152,7 +152,7 @@ class MuZeroConfig:
         self.positional_embedding_type='sinus'  # sinus or learned
         self.value_network = "transformer"
         self.policy_network = "transformer"
-        self.reward_network = "fully_connected"
+        self.reward_network = "transformer"
 
         ### Network
         self.network = "transformer"
@@ -176,7 +176,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         # Naming
-        self.append = "_all_test"  # Turn this to True to run a test
+        self.append = "_" + "local_reward_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"

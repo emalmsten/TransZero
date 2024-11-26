@@ -57,7 +57,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             )
         )
 
-        if not self.full_transformer:
+        if True: # #not self.full_transformer:
             self.dynamics_encoded_state_network = cond_wrap(
                 mlp(
                     encoding_size + self.action_space_size,
@@ -96,7 +96,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.transformer_layer = nn.TransformerEncoderLayer(
             d_model=transformer_hidden_size,
             nhead=transformer_heads,
+            batch_first=True, # todo test
         )
+        # todo consider norm
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
             num_layers=transformer_layers,
@@ -172,7 +174,11 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         if self.value_network == "transformer":
             value = self.value_head(transformer_output_last) # Shape: (batch_size, full_support_size)
         if self.reward_network == "transformer":
-            reward = self.reward_head(transformer_output_last) # Shape: (batch_size, full_support_size)
+            # calculate cumulative reward over sequence # todo test
+            if False:
+                reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
+            else:
+                reward = self.reward_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
 
         return policy_logits, value, reward
 
@@ -294,10 +300,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
-        if self.full_transformer:
-            next_encoded_state = root_hidden_state
-        else:
-            next_encoded_state = self.dynamics(encoded_state, action)
+        next_encoded_state = self.dynamics(encoded_state, action)
 
         policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
 

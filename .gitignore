@@ -95,7 +95,7 @@ dmypy.json
 results/
 old_results/
 models/
-wandb_data/
+../WandbPlotter/wandb_data/
 manual_seqs/
 
 wandb_api_key
