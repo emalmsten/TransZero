@@ -112,7 +112,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_3_hole_2"
+        self.custom_map = "3x3_1_hole_1"
         self.checkpoint_interval = 500
         self.save_locally = True # todo prio, option to save locally
 
@@ -144,6 +144,16 @@ class MuZeroConfig:
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
 
+        # Transformer
+        self.transformer_layers=2
+        self.transformer_heads=2
+        self.transformer_hidden_size=16
+        self.max_seq_length=50
+        self.positional_embedding_type='sinus'  # sinus or learned
+        self.value_network = "transformer"
+        self.policy_network = "transformer"
+        self.reward_network = "fully_connected"
+
         ### Network
         self.network = "transformer"
         self.support_size = 10
@@ -166,7 +176,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]
 
         # Naming
-        self.append = "_policy_test"  # Turn this to True to run a test
+        self.append = "_all_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"

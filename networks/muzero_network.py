@@ -5,9 +5,9 @@ from networks.transformer import MuZeroTransformerNetwork
 
 class MuZeroNetwork:
     def __new__(cls, config):
-        seq_mode = hasattr(config, "debug_mode") and config.debug_mode
+        debug_mode = hasattr(config, "debug_mode") and config.debug_mode
 
-        if config.network == "fullyconnected":
+        if config.network == "fully_connected":
             return MuZeroFullyConnectedNetwork(
                 config.observation_shape,
                 config.stacked_observations,
@@ -19,7 +19,7 @@ class MuZeroNetwork:
                 config.fc_representation_layers,
                 config.fc_dynamics_layers,
                 config.support_size,
-                seq_mode,
+                debug_mode,
             )
         elif config.network == "transformer":
             return MuZeroTransformerNetwork(
@@ -33,7 +33,18 @@ class MuZeroNetwork:
                 config.fc_representation_layers,
                 config.fc_dynamics_layers,
                 config.support_size,
-                seq_mode,
+
+                config.transformer_layers,
+                config.transformer_heads,
+                config.transformer_hidden_size,
+                config.max_seq_length,
+                config.positional_embedding_type,  # sinus or learned
+
+                config.value_network,
+                config.policy_network,
+                config.reward_network,
+
+                debug_mode,
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
@@ -50,9 +61,10 @@ class MuZeroNetwork:
                 config.resnet_fc_policy_layers,
                 config.support_size,
                 config.downsample,
-                seq_mode,
+                debug_mode
+
             )
         else:
             raise NotImplementedError(
-                'The network parameter should be "fullyconnected" or "resnet".'
+                f'The network parameter should be "transformer", "fully_connected" or "resnet". Received: {config.network}'
             )

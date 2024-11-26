@@ -626,13 +626,13 @@ def seq_testing(muzero, file):
         print(seq)
         (
             value,
-            _,
-            _,
+            policy_logits,
+            reward,
             encoded_state,
         ) = model.initial_inference(torch.tensor([[[int(seq[0])]]], dtype=torch.float32))
         if len(seq) > 1:
             actions = [action_map[a] for a in seq[1:]]
-            value = model.transformer_value_prediction(encoded_state, torch.tensor([actions]))
+            policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
 
         value = models.support_to_scalar(value, muzero.config.support_size).item()
         summary.append((seq, value))
@@ -640,6 +640,8 @@ def seq_testing(muzero, file):
             Inital state {seq[0]}
             Actions: {seq[1:]}
             Value: {value}
+            Policy: {policy_logits}
+            Reward: {reward}
         """)
 
     for seq, value in summary:

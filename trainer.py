@@ -188,7 +188,6 @@ class Trainer:
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
                 )
 
-
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i]

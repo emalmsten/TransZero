@@ -18,17 +18,18 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         fc_representation_layers,
         fc_dynamics_layers,
         support_size,
-        seq_mode,
 
-        # todo define in config
-        transformer_layers=2,
-        transformer_heads=2,
-        transformer_hidden_size=16,
-        max_seq_length=50,
-        positional_embedding_type='sinus',  # sinus or learned
-        value_network = "transformer",
-        policy_network = "transformer",
-        reward_network = "fully_connected",
+        transformer_layers,
+        transformer_heads,
+        transformer_hidden_size,
+        max_seq_length,
+        positional_embedding_type,  # sinus or learned
+
+        value_network,
+        policy_network,
+        reward_network,
+
+        seq_mode
 
     ):
         super().__init__()
@@ -37,6 +38,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.seq_mode = seq_mode
         self.value_network = value_network
         self.policy_network = policy_network
+        self.reward_network = reward_network
+        self.full_transformer = all(network == "transformer" for network in [self.reward_network, self.policy_network, self.value_network])
+        print(f"Full transformer: {self.full_transformer}")
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
@@ -53,13 +57,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             )
         )
 
-        self.dynamics_encoded_state_network = cond_wrap(
-            mlp(
-                encoding_size + self.action_space_size,
-                fc_dynamics_layers,
-                encoding_size,
+        if not self.full_transformer:
+            self.dynamics_encoded_state_network = cond_wrap(
+                mlp(
+                    encoding_size + self.action_space_size,
+                    fc_dynamics_layers,
+                    encoding_size,
+                )
             )
-        )
 
         if reward_network == "fully_connected":
             self.dynamics_reward_network = cond_wrap(
@@ -128,6 +133,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def prediction(self, encoded_state, action_sequence=None, root_hidden_state=None):
         root_hidden_state = root_hidden_state if root_hidden_state is not None else encoded_state
+
         rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = encoded_state.device)
         trans_policy_logits, trans_value, trans_reward = self.transformer_prediction(root_hidden_state, action_sequence)
         fully_connected_policy_logits, fully_connected_value, fully_connected_reward = self.fully_connected_prediction(encoded_state)
@@ -166,7 +172,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         if self.value_network == "transformer":
             value = self.value_head(transformer_output_last) # Shape: (batch_size, full_support_size)
         if self.reward_network == "transformer":
-            reward = self.reward_head(transformer_output_last)
+            reward = self.reward_head(transformer_output_last) # Shape: (batch_size, full_support_size)
 
         return policy_logits, value, reward
 
@@ -288,7 +294,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
-        next_encoded_state = self.dynamics(encoded_state, action)
+        if self.full_transformer:
+            next_encoded_state = root_hidden_state
+        else:
+            next_encoded_state = self.dynamics(encoded_state, action)
 
         policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
 
