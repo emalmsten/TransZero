@@ -9,91 +9,91 @@ import torch
 
 from .abstract_game import AbstractGame
 
-Maps = {
-    "2x2_no_hole": [
+maps = {
+    "2x2_0h_0d": [
         "SF",
         "FG",
     ],
-    "3x3_no_hole": [
+    "3x3_0h_0d": [
         "SFF",
         "FFF",
         "FGF",
     ],
-    "4x4_no_hole": [
+    "4x4_0h_0d": [
         "SFFF",
         "FFFF",
         "FFFG",
         "FFFF",
     ],
     ### 1 is for easy map, 2 is for medium, 3 is for hard
-    "2x2_1_hole_1": [
+    "2x2_1h_1d": [
         "SF",
         "HG",
     ],
-    "3x3_1_hole_1": [
+    "3x3_1h_1d": [
         "SFH",
         "FFF",
         "FGF",
     ],
-    "3x3_1_hole_2": [
+    "3x3_1h_2d": [
         "SFF",
         "HFF",
         "GFF",
     ],
-    "3x3_2_hole_1": [
+    "3x3_2h_1d": [
         "SFH",
         "FFF",
         "HFG",
     ],
-    "3x3_2_hole_2": [
+    "3x3_2h_2d": [
         "SFH",
         "FHF",
         "FFG",
     ],
-    "3x3_3_hole_2": [
+    "3x3_3h_2d": [
         "SFH",
         "HFF",
         "FHG",
     ],
-    "4x4_1_hole_1": [
+    "4x4_1h_1d": [
         "SFFF",
         "FFFF",
         "FFFG",
         "FFFH",
     ],
     # y
-    "4x4_2_hole_1": [
+    "4x4_2h_1d": [
         "SFFF",
         "FFHF",
         "FFFF",
         "FGFH",
     ],
-    "4x4_2_hole_2": [
+    "4x4_2h_2d": [
         "SFFF",
         "FFFF",
         "FFFH",
         "FHFG",
     ],
-    "4x4_3_hole_1": [
+    "4x4_3h_1d": [
         "SFHF",
         "FFFF",
         "HFFF",
         "FHFG",
     ],
-    "4x4_3_hole_2": [
+    "4x4_3h_2d": [
         "SFHF",
         "FFHF",
         "FFFF",
         "FHGF",
     ],
     # almost impossible with slipperiness
-    "4x4_5_hole_3": [
+    "4x4_5h_3d": [
         "SFFF",
         "HHHF",
         "FFFF",
         "HGHF",
     ],
-    "5x5_3_hole_2": [
+    "5x5_3h_2d": [
         "SFHFF",
         "FFFFF",
         "FFFFF",
@@ -101,8 +101,6 @@ Maps = {
         "HFFGF",
     ]
 }
-
-
 
 
 class MuZeroConfig:
@@ -120,7 +118,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_1_hole_1"
+        self.custom_map = "3x3_2h_2d"
         self.checkpoint_interval = 500
         self.save_locally = True # todo prio, option to save locally
 
@@ -142,7 +140,7 @@ class MuZeroConfig:
         self.num_workers = 1
         self.selfplay_on_gpu = cuda and not self.debug_mode
         self.max_moves = 50  # Reduced max moves for Frozen Lake
-        self.num_simulations = 15 # todo changed
+        self.num_simulations = 25 # todo changed
         self.discount = 0.997
         self.temperature_threshold = None
 
@@ -158,6 +156,7 @@ class MuZeroConfig:
         self.transformer_hidden_size=16
         self.max_seq_length=50
         self.positional_embedding_type='sinus'  # sinus or learned
+
         self.value_network = "transformer"
         self.policy_network = "transformer"
         self.reward_network = "transformer"
@@ -206,7 +205,7 @@ class MuZeroConfig:
         self.lr_decay_steps = 1000
 
         ### Replay Buffer
-        self.replay_buffer_size = 1500
+        self.replay_buffer_size = 10000
         self.num_unroll_steps = 10
         self.td_steps = 50
         self.PER = True
@@ -264,7 +263,7 @@ class Game(AbstractGame):
         # Changed environment to Frozen Lake
         if config is not None:
             print(f"Using custom map: {config.custom_map}")
-            custom_map = Maps[config.custom_map]
+            custom_map = maps[config.custom_map]
             [print(row) for row in custom_map]
             self.env = gym.make("FrozenLake-v1", is_slippery=False, desc=custom_map,
                                 render_mode="human" if config.testing else None)

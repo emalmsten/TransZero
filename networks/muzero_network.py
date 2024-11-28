@@ -1,6 +1,7 @@
 from networks.fully_connected import MuZeroFullyConnectedNetwork
 from networks.resnet import MuZeroResidualNetwork
 from networks.transformer import MuZeroTransformerNetwork
+from networks.double import MuZeroDoubleNetwork
 
 
 class MuZeroNetwork:
@@ -27,11 +28,8 @@ class MuZeroNetwork:
                 config.stacked_observations,
                 len(config.action_space),
                 config.encoding_size,
-                config.fc_reward_layers,
-                config.fc_value_layers,
-                config.fc_policy_layers,
+
                 config.fc_representation_layers,
-                config.fc_dynamics_layers,
                 config.support_size,
 
                 config.transformer_layers,
@@ -39,10 +37,6 @@ class MuZeroNetwork:
                 config.transformer_hidden_size,
                 config.max_seq_length,
                 config.positional_embedding_type,  # sinus or learned
-
-                config.value_network,
-                config.policy_network,
-                config.reward_network,
 
                 debug_mode,
             )
@@ -62,8 +56,33 @@ class MuZeroNetwork:
                 config.support_size,
                 config.downsample,
                 debug_mode
-
             )
+        elif "trans" in config.network:
+            return MuZeroDoubleNetwork(
+                config.observation_shape,
+                config.stacked_observations,
+                len(config.action_space),
+                config.encoding_size,
+                config.fc_reward_layers,
+                config.fc_value_layers,
+                config.fc_policy_layers,
+                config.fc_representation_layers,
+                config.fc_dynamics_layers,
+                config.support_size,
+
+                config.transformer_layers,
+                config.transformer_heads,
+                config.transformer_hidden_size,
+                config.max_seq_length,
+                config.positional_embedding_type,  # sinus or learned
+
+                config.value_network,
+                config.policy_network,
+                config.reward_network,
+
+                debug_mode,
+            )
+
         else:
             raise NotImplementedError(
                 f'The network parameter should be "transformer", "fully_connected" or "resnet". Received: {config.network}'
