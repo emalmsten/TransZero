@@ -61,6 +61,7 @@ Maps = {
         "FFFG",
         "FFFH",
     ],
+    # y
     "4x4_2_hole_1": [
         "SFFF",
         "FFHF",
@@ -92,6 +93,13 @@ Maps = {
         "FFFF",
         "HGHF",
     ],
+    "5x5_3_hole_2": [
+        "SFHFF",
+        "FFFFF",
+        "FFFFF",
+        "FFHFF",
+        "HFFGF",
+    ]
 }
 
 

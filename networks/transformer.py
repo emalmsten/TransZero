@@ -57,7 +57,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             )
         )
 
-        if True: # #not self.full_transformer:
+        if not self.full_transformer:
             self.dynamics_encoded_state_network = cond_wrap(
                 mlp(
                     encoding_size + self.action_space_size,
@@ -136,7 +136,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
     def prediction(self, encoded_state, action_sequence=None, root_hidden_state=None):
         root_hidden_state = root_hidden_state if root_hidden_state is not None else encoded_state
 
-        rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = encoded_state.device)
+        rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = root_hidden_state.device)
         trans_policy_logits, trans_value, trans_reward = self.transformer_prediction(root_hidden_state, action_sequence)
         fully_connected_policy_logits, fully_connected_value, fully_connected_reward = self.fully_connected_prediction(encoded_state)
 
@@ -300,7 +300,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
-        next_encoded_state = self.dynamics(encoded_state, action)
+        next_encoded_state = None
+        if not self.full_transformer:
+            next_encoded_state = self.dynamics(encoded_state, action)
 
         policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
 

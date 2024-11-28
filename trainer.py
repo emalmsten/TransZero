@@ -175,6 +175,7 @@ class Trainer:
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
+        root_hidden_state = hidden_state
 
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
@@ -185,7 +186,7 @@ class Trainer:
                 action_sequence = action_batch.squeeze(-1)
 
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=hidden_state
+                    hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=root_hidden_state
                 )
                 # todo if cum reward is predicted, we need to add cum reward as target?
 
@@ -195,7 +196,8 @@ class Trainer:
                 )
 
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
-            hidden_state.register_hook(lambda grad: grad * 0.5)
+            if hidden_state is not None:
+                hidden_state.register_hook(lambda grad: grad * 0.5)
             predictions.append((value, reward, policy_logits)) # temp
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
 

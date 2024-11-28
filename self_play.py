@@ -389,9 +389,9 @@ class MCTS:
             if is_trans_net:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
-                    torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
+                    torch.tensor([[actions[-1]]]).to(root.hidden_state.device),
                     root_hidden_state = root.hidden_state,
-                    action_sequence= torch.tensor([actions]).to(parent.hidden_state.device),
+                    action_sequence= torch.tensor([actions]).to(root.hidden_state.device),
                 )
 
             else:
