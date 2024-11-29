@@ -56,29 +56,25 @@ class MuZeroDoubleNetwork(AbstractNetwork):
             )
         )
 
-        if not self.full_transformer:
-            self.dynamics_encoded_state_network = cond_wrap(
-                mlp(
-                    encoding_size + self.action_space_size,
-                    fc_dynamics_layers,
-                    encoding_size,
-                )
+        self.dynamics_encoded_state_network = cond_wrap(
+            mlp(
+                encoding_size + self.action_space_size,
+                fc_dynamics_layers,
+                encoding_size,
             )
+        )
 
-        if reward_network == "fully_connected":
-            self.dynamics_reward_network = cond_wrap(
-                mlp(encoding_size, fc_reward_layers, self.full_support_size)
-            )
+        self.dynamics_reward_network = cond_wrap(
+            mlp(encoding_size, fc_reward_layers, self.full_support_size)
+        )
 
-        if self.policy_network == "fully_connected":
-            self.prediction_policy_network = cond_wrap(
-                mlp(encoding_size, fc_policy_layers, self.action_space_size)
-            )
+        self.prediction_policy_network = cond_wrap(
+            mlp(encoding_size, fc_policy_layers, self.action_space_size)
+        )
 
-        if self.value_network == "fully_connected":
-            self.prediction_value_network = cond_wrap(
-                mlp(encoding_size, fc_value_layers, self.full_support_size)
-            )
+        self.prediction_value_network = cond_wrap(
+            mlp(encoding_size, fc_value_layers, self.full_support_size)
+        )
 
         # Transformer components for value prediction
         self.transformer_hidden_size = transformer_hidden_size
@@ -103,14 +99,9 @@ class MuZeroDoubleNetwork(AbstractNetwork):
             num_layers=transformer_layers,
         )
 
-        if self.policy_network == "transformer":
-            self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
-
-        if self.value_network == "transformer":
-            self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
-
-        if self.reward_network == "transformer":
-            self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+        self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
+        self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+        self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
 
 
     def sinusoidal_positional_embedding(self, length, d_model, n=10000.0):
@@ -135,25 +126,21 @@ class MuZeroDoubleNetwork(AbstractNetwork):
     def prediction(self, encoded_state, action_sequence=None, root_hidden_state=None):
         root_hidden_state = root_hidden_state if root_hidden_state is not None else encoded_state
 
-        rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = root_hidden_state.device)
         trans_policy_logits, trans_value, trans_reward = self.transformer_prediction(root_hidden_state, action_sequence)
         fully_connected_policy_logits, fully_connected_value, fully_connected_reward = self.fully_connected_prediction(encoded_state)
 
-        policy_dict = {"random": rand_policy_logits, "transformer": trans_policy_logits, "fully_connected": fully_connected_policy_logits}
-        val_dict = {"random": rand_value, "transformer": trans_value, "fully_connected": fully_connected_value}
-        reward_dict = {"random": rand_reward, "transformer": trans_reward, "fully_connected": fully_connected_reward}
+        # concat the predictions along axis 0
+        policy_logits = torch.cat([fully_connected_policy_logits, trans_policy_logits], dim=0)
+        value = torch.cat([fully_connected_value, trans_value], dim=0)
+        reward = torch.cat([fully_connected_reward, trans_reward], dim=0)
 
-        return policy_dict[self.policy_network], val_dict[self.value_network], reward_dict[self.reward_network]
+        return policy_logits, value, reward
 
 
     def fully_connected_prediction(self, encoded_state):
-        policy_logits, value, reward = None, None, None
-        if self.policy_network == "fully_connected":
-            policy_logits = self.prediction_policy_network(encoded_state)
-        if self.value_network == "fully_connected":
-            value = self.prediction_value_network(encoded_state)
-        if self.reward_network == "fully_connected":
-            reward = self.dynamics_reward_network(encoded_state)
+        policy_logits = self.prediction_policy_network(encoded_state)
+        value = self.prediction_value_network(encoded_state)
+        reward = self.dynamics_reward_network(encoded_state)
 
         return policy_logits, value, reward
 
@@ -167,26 +154,12 @@ class MuZeroDoubleNetwork(AbstractNetwork):
         # Obtain the value prediction from the last token's output
         transformer_output_last = transformer_output[:, -1, :]  # Shape: (batch_size, transformer_hidden_size)
 
-        policy_logits, value, reward = None, None, None
-        if self.policy_network == "transformer":
-            policy_logits = self.policy_head(transformer_output_last) # Shape: (batch_size, action_space_size)
-        if self.value_network == "transformer":
-            value = self.value_head(transformer_output_last) # Shape: (batch_size, full_support_size)
-        if self.reward_network == "transformer":
-            # calculate cumulative reward over sequence # todo test
-            if False:
-                reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
-            else:
-                reward = self.reward_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
+        policy_logits = self.policy_head(transformer_output_last) # Shape: (batch_size, action_space_size)
+        value = self.value_head(transformer_output_last) # Shape: (batch_size, full_support_size)
+        reward = self.reward_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
 
         return policy_logits, value, reward
 
-
-    def random_prediction(self, device):
-        policy_logits = torch.rand((1, self.action_space_size), device=device, requires_grad=True)
-        value = torch.rand((1, self.full_support_size), device=device, requires_grad=True)
-        reward = torch.rand((1, self.full_support_size), device=device, requires_grad=True)
-        return policy_logits, value, reward
 
 
     def representation(self, observation):
@@ -299,9 +272,7 @@ class MuZeroDoubleNetwork(AbstractNetwork):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert root_hidden_state is not None, "Transformer needs a hidden state"
 
-        next_encoded_state = None
-        if not self.full_transformer:
-            next_encoded_state = self.dynamics(encoded_state, action)
+        next_encoded_state = self.dynamics(encoded_state, action)
 
         policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
 

@@ -132,6 +132,7 @@ class Trainer:
         Perform one training step.
         """
         is_trans_net = self.config.network == "transformer"
+        is_double_net = self.config.network == "double"
 
         (
             observation_batch,
@@ -165,9 +166,7 @@ class Trainer:
         # gradient_scale_batch: batch, num_unroll_steps+1
 
         target_value = models.scalar_to_support(target_value, self.config.support_size)
-        target_reward = models.scalar_to_support(
-            target_reward, self.config.support_size
-        )
+        target_reward = models.scalar_to_support(target_reward, self.config.support_size)
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
@@ -188,7 +187,6 @@ class Trainer:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=root_hidden_state
                 )
-                # todo if cum reward is predicted, we need to add cum reward as target?
 
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
@@ -204,6 +202,23 @@ class Trainer:
         ## Compute losses
         value_loss, reward_loss, policy_loss = (0, 0, 0)
         value, reward, policy_logits = predictions[0]
+
+        if is_double_net:
+            value, trans_value = value.chunk(2, dim=0)
+            reward, trans_reward = reward.chunk(2, dim=0)
+            policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
+            current_reward_loss = 0
+
+            current_trans_value_loss, _, current_trans_policy_loss = self.loss_function(
+                trans_value.squeeze(-1),
+                trans_reward.squeeze(-1),
+                trans_policy_logits,
+                target_value[:, 0],
+                target_reward[:, 0],
+                target_policy[:, 0],
+            )
+
+            trans_value_loss, trans_policy_loss, trans_reward_loss = current_trans_value_loss, current_trans_policy_loss, current_reward_loss
 
         # Ignore reward loss for the first batch step
         current_value_loss, _, current_policy_loss = self.loss_function(
@@ -246,17 +261,24 @@ class Trainer:
                 target_policy[:, i],
             )
 
-            # Scale gradient by the number of unroll steps (See paper appendix Training)
-            current_value_loss.register_hook(
-                lambda grad: grad / gradient_scale_batch[:, i]
-            )
+            if is_double_net:
+                current_trans_value_loss, current_trans_reward_loss, current_trans_policy_loss = self.loss_function(
+                    trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
+                    target_value[:, i], target_reward[:, i], target_policy[:, i],
+                )
+                current_trans_value_loss.register_hook( lambda grad: grad / gradient_scale_batch[:, i])
+                current_trans_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+                current_trans_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
 
-            current_reward_loss.register_hook(
-                lambda grad: grad / gradient_scale_batch[:, i]
-            )
-            current_policy_loss.register_hook(
-                lambda grad: grad / gradient_scale_batch[:, i]
-            )
+                trans_value_loss += current_trans_value_loss
+                trans_reward_loss += current_trans_reward_loss
+                trans_policy_loss += current_trans_policy_loss
+
+
+            # Scale gradient by the number of unroll steps (See paper appendix Training)
+            current_value_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+            current_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+            current_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
 
             value_loss += current_value_loss
             reward_loss += current_reward_loss
@@ -277,6 +299,8 @@ class Trainer:
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
         loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
+        if is_double_net:
+            loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss + trans_policy_loss
 
 
         if self.config.PER:
@@ -290,6 +314,11 @@ class Trainer:
         loss.backward()
         self.optimizer.step()
         self.training_step += 1
+
+        if is_double_net:
+            return (priorities, loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item(),
+                    trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item(),
+            )
 
         return (
             priorities,

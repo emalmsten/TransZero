@@ -110,7 +110,7 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.trans_loss_weight = 1
-        self.show_trans_values = False
+        self.show_preds = False
 
         self.testing = False
         self.debug_mode = False or self.testing
@@ -118,7 +118,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_2h_2d"
+        self.custom_map = "3x3_1h_1d"
         self.checkpoint_interval = 500
         self.save_locally = True # todo prio, option to save locally
 

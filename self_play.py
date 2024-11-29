@@ -1,6 +1,7 @@
 import math
 import os
 import time
+import json
 
 import numpy
 import ray
@@ -140,7 +141,13 @@ class SelfPlay:
         if render:
             self.game.render()
 
+        show_preds = self.config.show_preds and self.config.network == "double" # todo temp
+
+        if show_preds:
+            game_dict = {"game": played_games, "results": []}
+
         with torch.no_grad():
+
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
             ):
@@ -161,8 +168,7 @@ class SelfPlay:
                         stacked_observations,
                         self.game.legal_actions(),
                         self.game.to_play(),
-                        True,
-                        played_games = played_games
+                        True
                     )
                     action = self.select_action(
                         root,
@@ -176,13 +182,8 @@ class SelfPlay:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
 
-                    if self.config.show_trans_values: # todo temp
-                        import json
-                        json_file = f"trans_values/{played_games}.json"
-                        os.makedirs(os.path.dirname(json_file), exist_ok=True)
-                        # append the info to the file with a new line
-                        with open(json_file, "a") as f:
-                            f.write(json.dumps(mcts_info["trans_info"]) + "\n")
+                    if show_preds: # todo temp
+                        game_dict["results"].append(mcts_info["predictions"])
 
                 else:
                     action, root = self.select_opponent_action(
@@ -203,6 +204,14 @@ class SelfPlay:
                 game_history.observation_history.append(observation)
                 game_history.reward_history.append(reward)
                 game_history.to_play_history.append(self.game.to_play())
+
+        if self.config.show_preds:
+            # append to file that is made if it does not exist
+            file_path = "/predictions/test.json"
+            with open(file_path, "a") as f:
+                json.dump(game_dict, f)
+                f.write('\n')  # Add a newline after each JSON object
+
 
         return game_history
 
@@ -300,7 +309,6 @@ class MCTS:
         to_play,
         add_exploration_noise,
         override_root_with=None,
-        played_games=0
     ):
         """
         At the root of the search tree we use the representation function to obtain a
@@ -308,10 +316,12 @@ class MCTS:
         We then run a Monte Carlo Tree Search using only action sequences and the model
         learned by the network.
         """
-        is_trans_net = self.config.network == "transformer" # todo better implementation later
-        if self.config.show_trans_values: # todo temp
-            trans_dict = {
-                "played_games": played_games,
+        is_trans_net = "trans" in self.config.network # todo better implementation later
+        is_double_net = self.config.network == "double"
+        show_preds = self.config.show_preds and is_double_net
+
+        if show_preds: # todo temp
+            pred_dict = {
                 "observation": observation.squeeze().item(),
                 "predictions": []
             }
@@ -393,6 +403,18 @@ class MCTS:
                     root_hidden_state = root.hidden_state,
                     action_sequence= torch.tensor([actions]).to(root.hidden_state.device),
                 )
+            elif is_double_net:
+                value, reward, policy_logits, hidden_state = model.recurrent_inference(
+                    parent.hidden_state,
+                    torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
+                    root_hidden_state = root.hidden_state,
+                    action_sequence= torch.tensor([actions]).to(parent.hidden_state.device),
+                )
+                # value is first half of the output, transvalue is second half
+                value, trans_value = value.chunk(2, dim=0)
+                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
+                reward, trans_reward = reward.chunk(2, dim=0)
+                assert value.shape == trans_value.shape
 
             else:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
@@ -401,17 +423,23 @@ class MCTS:
                 )
 
             value = models.support_to_scalar(value, self.config.support_size).item()
+            reward = models.support_to_scalar(reward, self.config.support_size).item()
 
-            if self.config.show_trans_values: # todo temp
-                trans_dict["predictions"].append(
+            if show_preds: # todo temp
+                pred_dict["predictions"].append(
                     {
-                        "trans_value": None,
                         "value": value,
+                        "reward": reward,
+                        "policy_logits": policy_logits.tolist(),
+
+                        "trans_value": models.support_to_scalar(trans_value, self.config.support_size).item(),
+                        "trans_reward": models.support_to_scalar(trans_reward, self.config.support_size).item(),
+                        "trans_policy_logits": trans_policy_logits.tolist(),
+
                         "action_sequence": [int(a) for a in actions],
                     }
                 )
 
-            reward = models.support_to_scalar(reward, self.config.support_size).item()
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
@@ -428,8 +456,8 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
-        if self.config.show_trans_values: # todo temp
-            extra_info["trans_info"] = trans_dict
+        if self.config.show_preds: # todo temp
+            extra_info["predictions"] = pred_dict
         return root, extra_info
 
     def select_child(self, node, min_max_stats):
