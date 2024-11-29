@@ -203,7 +203,7 @@ class MuZeroDoubleNetwork(AbstractNetwork):
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
 
-        policy_logits, value, reward = self.prediction(encoded_state)
+        policy_logits, value, _ = self.prediction(encoded_state)
 
         # reward equal to 0 for consistency
         reward = torch.log(
@@ -214,6 +214,7 @@ class MuZeroDoubleNetwork(AbstractNetwork):
                 .to(observation.device)
             )
         )
+        reward = torch.cat([reward, reward], dim=0)
 
         return (
             value,

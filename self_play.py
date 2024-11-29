@@ -207,7 +207,7 @@ class SelfPlay:
 
         if self.config.show_preds:
             # append to file that is made if it does not exist
-            file_path = "/predictions/test.json"
+            file_path = "predictions/test.json"
             with open(file_path, "a") as f:
                 json.dump(game_dict, f)
                 f.write('\n')  # Add a newline after each JSON object
@@ -288,6 +288,20 @@ class SelfPlay:
             new_state_dict[new_key] = v
         return new_state_dict
 
+def update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits, action_sequence, support_size):
+    pred_dict["predictions"].append(
+        {
+            "v": value,
+            "r": reward,
+            "p": policy_logits.tolist(),
+
+            "tv": models.support_to_scalar(trans_value, support_size).item(),
+            "tr": models.support_to_scalar(trans_reward, support_size).item(),
+            "tp": trans_policy_logits.tolist(),
+
+            "as": action_sequence,
+        }
+    )
 
 # Game independent
 class MCTS:
@@ -348,9 +362,19 @@ class MCTS:
                 hidden_state,
             ) = model.initial_inference(observation)
 
+            if is_double_net:
+                # value is first half
+                root_predicted_value, root_predicted_trans_value = root_predicted_value.chunk(2, dim=0)
+                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
+                reward, trans_reward = reward.chunk(2, dim=0)
+
             # Make the root predicted value and reward a scalar
             root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
+
+            if show_preds: # todo temp
+                update_pred_dict(pred_dict, root_predicted_value, reward, policy_logits, root_predicted_trans_value, trans_reward, trans_policy_logits, [], self.config.support_size)
+
             assert (
                 legal_actions
             ), f"Legal actions should not be an empty array. Got {legal_actions}."
@@ -396,25 +420,13 @@ class MCTS:
             # Inside the search tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             parent = search_path[-2]
-            if is_trans_net:
+            if is_trans_net or is_double_net:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
                     torch.tensor([[actions[-1]]]).to(root.hidden_state.device),
                     root_hidden_state = root.hidden_state,
                     action_sequence= torch.tensor([actions]).to(root.hidden_state.device),
                 )
-            elif is_double_net:
-                value, reward, policy_logits, hidden_state = model.recurrent_inference(
-                    parent.hidden_state,
-                    torch.tensor([[actions[-1]]]).to(parent.hidden_state.device),
-                    root_hidden_state = root.hidden_state,
-                    action_sequence= torch.tensor([actions]).to(parent.hidden_state.device),
-                )
-                # value is first half of the output, transvalue is second half
-                value, trans_value = value.chunk(2, dim=0)
-                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
-                reward, trans_reward = reward.chunk(2, dim=0)
-                assert value.shape == trans_value.shape
 
             else:
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
@@ -422,23 +434,17 @@ class MCTS:
                     torch.tensor([[action]]).to(parent.hidden_state.device),
                 )
 
+            if is_double_net:
+                value, trans_value = value.chunk(2, dim=0)
+                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
+                reward, trans_reward = reward.chunk(2, dim=0)
+
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
             if show_preds: # todo temp
-                pred_dict["predictions"].append(
-                    {
-                        "value": value,
-                        "reward": reward,
-                        "policy_logits": policy_logits.tolist(),
-
-                        "trans_value": models.support_to_scalar(trans_value, self.config.support_size).item(),
-                        "trans_reward": models.support_to_scalar(trans_reward, self.config.support_size).item(),
-                        "trans_policy_logits": trans_policy_logits.tolist(),
-
-                        "action_sequence": [int(a) for a in actions],
-                    }
-                )
+                update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
+                                 [int(a) for a in actions], self.config.support_size)
 
             node.expand(
                 self.config.action_space,

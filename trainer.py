@@ -192,7 +192,7 @@ class Trainer:
 
         predictions = [(value, reward, policy_logits)]
         for i in range(1, action_batch.shape[1]):
-            if is_trans_net:
+            if is_trans_net or is_double_net:
                 # Instead of an action, we send the whole action sequence from start to the current action
                 action_sequence = action_batch[:, :i]
                 assert action_sequence.shape[-1] == 1
@@ -224,12 +224,8 @@ class Trainer:
             current_reward_loss = 0
 
             current_trans_value_loss, _, current_trans_policy_loss = self.loss_function(
-                trans_value.squeeze(-1),
-                trans_reward.squeeze(-1),
-                trans_policy_logits,
-                target_value[:, 0],
-                target_reward[:, 0],
-                target_policy[:, 0],
+                trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
+                target_value[:, 0], target_reward[:, 0], target_policy[:, 0],
             )
 
             trans_value_loss, trans_policy_loss, trans_reward_loss = current_trans_value_loss, current_trans_policy_loss, current_reward_loss
@@ -261,6 +257,24 @@ class Trainer:
 
         for i in range(1, len(predictions)):
             value, reward, policy_logits = predictions[i]
+
+            if is_double_net: # todo temp
+                value, trans_value = value.chunk(2, dim=0)
+                reward, trans_reward = reward.chunk(2, dim=0)
+                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
+
+                current_trans_value_loss, current_trans_reward_loss, current_trans_policy_loss = self.loss_function(
+                    trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
+                    target_value[:, i], target_reward[:, i], target_policy[:, i],
+                )
+                current_trans_value_loss.register_hook( lambda grad: grad / gradient_scale_batch[:, i])
+                current_trans_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+                current_trans_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+
+                trans_value_loss += current_trans_value_loss
+                trans_reward_loss += current_trans_reward_loss
+                trans_policy_loss += current_trans_policy_loss
+
             #new_target_reward = target_reward[:, 1:i].sum(dim=1) # todo test correctness
             (
                 current_value_loss,
@@ -274,20 +288,6 @@ class Trainer:
                 target_reward[:, i], #if False else new_target_reward, # todo
                 target_policy[:, i],
             )
-
-            if is_double_net:
-                current_trans_value_loss, current_trans_reward_loss, current_trans_policy_loss = self.loss_function(
-                    trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
-                    target_value[:, i], target_reward[:, i], target_policy[:, i],
-                )
-                current_trans_value_loss.register_hook( lambda grad: grad / gradient_scale_batch[:, i])
-                current_trans_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-                current_trans_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-
-                trans_value_loss += current_trans_value_loss
-                trans_reward_loss += current_trans_reward_loss
-                trans_policy_loss += current_trans_policy_loss
-
 
             # Scale gradient by the number of unroll steps (See paper appendix Training)
             current_value_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])

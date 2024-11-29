@@ -9,6 +9,8 @@ import torch
 
 from .abstract_game import AbstractGame
 
+### 0d is no holes, 1d is for easy map, 2d is for medium, 3d is for hard
+
 maps = {
     "2x2_0h_0d": [
         "SF",
@@ -25,7 +27,6 @@ maps = {
         "FFFG",
         "FFFF",
     ],
-    ### 1 is for easy map, 2 is for medium, 3 is for hard
     "2x2_1h_1d": [
         "SF",
         "HG",
@@ -110,7 +111,7 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.trans_loss_weight = 1
-        self.show_preds = False
+        self.show_preds = True
 
         self.testing = False
         self.debug_mode = False or self.testing
@@ -162,7 +163,7 @@ class MuZeroConfig:
         self.reward_network = "transformer"
 
         ### Network
-        self.network = "transformer"
+        self.network = "double"
         self.support_size = 10
 
         self.downsample = False
