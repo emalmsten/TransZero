@@ -309,6 +309,7 @@ class MuZero:
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
+            # todo add games played as last arg?
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(

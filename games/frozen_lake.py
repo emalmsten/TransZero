@@ -111,7 +111,7 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.trans_loss_weight = 1
-        self.show_preds = True
+        self.show_preds = True # todo
 
         self.testing = False
         self.debug_mode = False or self.testing

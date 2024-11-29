@@ -43,15 +43,17 @@ class SelfPlay:
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
+        game_number = 0 # todo temp
         while ray.get(
             shared_storage.get_info.remote("training_step")
         ) < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
+            game_number += 1
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
-                played_games = ray.get(shared_storage.get_info.remote("num_played_games")) # todo temp
+                # played_games = ray.get(shared_storage.get_info.remote("num_played_games")) # todo temp
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -62,7 +64,7 @@ class SelfPlay:
                     False,
                     "self",
                     0,
-                    played_games
+                    game_number
                 )
 
                 replay_buffer.save_game.remote(game_history, shared_storage)
@@ -75,6 +77,7 @@ class SelfPlay:
                     False,
                     "self" if len(self.config.players) == 1 else self.config.opponent,
                     self.config.muzero_player,
+                    game_number
                 )
 
                 # Save to the shared storage
@@ -124,7 +127,7 @@ class SelfPlay:
         self.close_game()
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player, played_games=0 # todo temp
+        self, temperature, temperature_threshold, render, opponent, muzero_player, game_number # todo temp
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
@@ -144,7 +147,7 @@ class SelfPlay:
         show_preds = self.config.show_preds and self.config.network == "double" # todo temp
 
         if show_preds:
-            game_dict = {"game": played_games, "results": []}
+            game_dict = {"game": game_number, "results": []}
 
         with torch.no_grad():
 
@@ -211,7 +214,7 @@ class SelfPlay:
             with open(file_path, "a") as f:
                 json.dump(game_dict, f)
                 f.write('\n')  # Add a newline after each JSON object
-
+                f.flush()
 
         return game_history
 
