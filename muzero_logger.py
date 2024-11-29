@@ -80,7 +80,7 @@ def tensorboard_logging(info, counter, writer):
     writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
     writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
 
-def wandb_logging(info, counter):
+def wandb_logging(info, counter, is_double_network):
     metrics = {
         "Total_reward": info["total_reward"],
         "Mean_value": info["mean_value"],
@@ -99,6 +99,12 @@ def wandb_logging(info, counter):
         "Reward_loss": info["reward_loss"],
         "Policy_loss": info["policy_loss"],
     }
+
+    if is_double_network:
+        metrics["Trans_value_loss"] = info["trans_value_loss"]
+        metrics["Trans_reward_loss"] = info["trans_reward_loss"]
+        metrics["Trans_policy_loss"] = info["trans_policy_loss"]
+
     wandb.log(metrics, step=counter)
 
 
@@ -109,6 +115,13 @@ def logging_loop(muzero, logger):
         init_wandb(muzero)
         writer = None
 
+    is_double_network = muzero.config.network == "double"
+
+    if is_double_network:
+        keys.append("trans_value_loss")
+        keys.append("trans_reward_loss")
+        keys.append("trans_policy_loss")
+
     # Loop for updating the training performance
     counter = 0
     try:
@@ -117,7 +130,7 @@ def logging_loop(muzero, logger):
             if logger == "tensorboard":
                 tensorboard_logging(info, counter, writer)
             elif logger == "wandb":
-                wandb_logging(info, counter)
+                wandb_logging(info, counter, is_double_network)
             if counter % 10 == 0 or counter < 3:
                 print(
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',

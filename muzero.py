@@ -127,6 +127,12 @@ class MuZero:
             "num_reanalysed_games": 0,
             "terminate": False,
         }
+        if self.config.network == "double":
+            self.checkpoint["trans_value_loss"] = 0
+            self.checkpoint["trans_reward_loss"] = 0
+            self.checkpoint["trans_policy_loss"] = 0
+
+
         self.replay_buffer = {}
 
         cpu_actor = CPUActor.remote()

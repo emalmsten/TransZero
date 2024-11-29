@@ -123,7 +123,7 @@ class MuZeroConfig:
         self.save_locally = True # todo prio, option to save locally
 
         # fmt: off
-        self.seed = 42
+        self.seed = 43
         self.max_num_gpus = 1
 
         ### Game

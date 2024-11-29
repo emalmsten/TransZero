@@ -101,6 +101,20 @@ class Trainer:
                         shared_storage.get_info.remote("num_played_games"),
                         shared_storage.get_info.remote("num_reanalysed_games"))
 
+            if self.config.network == "double":
+                value_loss, trans_value_loss = value_loss
+                reward_loss, trans_reward_loss = reward_loss
+                policy_loss, trans_policy_loss = policy_loss
+
+                shared_storage.set_info.remote(
+                    {
+                        "training_step": self.training_step,
+                        "trans_value_loss": trans_value_loss,
+                        "trans_reward_loss": trans_reward_loss,
+                        "trans_policy_loss": trans_policy_loss
+                    })
+
+
             shared_storage.set_info.remote(
                 {
                     "training_step": self.training_step,
@@ -302,7 +316,6 @@ class Trainer:
         if is_double_net:
             loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss + trans_policy_loss
 
-
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
             loss *= weight_batch
@@ -315,19 +328,19 @@ class Trainer:
         self.optimizer.step()
         self.training_step += 1
 
-        if is_double_net:
-            return (priorities, loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item(),
-                    trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item(),
-            )
-
-        return (
-            priorities,
-            # For log purpose
-            loss.item(),
-            value_loss.mean().item(),
-            reward_loss.mean().item(),
-            policy_loss.mean().item(),
+        loss, value_loss, reward_loss, policy_loss = (
+            loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
         )
+        if is_double_net:
+            trans_value_loss, trans_reward_loss, trans_policy_loss = (
+                trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item()
+            )
+            value_loss = (value_loss, trans_value_loss)
+            reward_loss = (reward_loss, trans_reward_loss)
+            policy_loss = (policy_loss, trans_policy_loss)
+
+        return priorities, loss, value_loss, reward_loss, policy_loss
+
 
     def update_lr(self):
         """
