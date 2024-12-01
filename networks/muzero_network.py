@@ -3,6 +3,7 @@ from networks.resnet import MuZeroResidualNetwork
 from networks.transformer import MuZeroTransformerNetwork
 from networks.mixed_network import MuZeroMixedNetwork
 from networks.double_network import MuZeroDoubleNetwork
+from networks.double_network_new import MuZeroNewDoubleNetwork
 
 
 class MuZeroNetwork:
@@ -23,6 +24,8 @@ class MuZeroNetwork:
                 config.support_size,
                 debug_mode,
             )
+
+
         elif config.network == "transformer":
             return MuZeroTransformerNetwork(
                 config.observation_shape,
@@ -107,6 +110,43 @@ class MuZeroNetwork:
                 config.reward_network,
 
                 debug_mode,
+            )
+        elif config.network == "double_new":
+            trans_network = MuZeroTransformerNetwork(
+                config.observation_shape,
+                config.stacked_observations,
+                len(config.action_space),
+                config.encoding_size,
+
+                config.fc_representation_layers,
+                config.support_size,
+
+                config.transformer_layers,
+                config.transformer_heads,
+                config.transformer_hidden_size,
+                config.max_seq_length,
+                config.positional_embedding_type,  # sinus or learned
+
+                debug_mode,
+            )
+            fully_network = MuZeroFullyConnectedNetwork(
+                config.observation_shape,
+                config.stacked_observations,
+                len(config.action_space),
+                config.encoding_size,
+                config.fc_reward_layers,
+                config.fc_value_layers,
+                config.fc_policy_layers,
+                config.fc_representation_layers,
+                config.fc_dynamics_layers,
+                config.support_size,
+                debug_mode,
+            )
+            trans_network.representation_network = trans_network.representation_network
+
+            return MuZeroNewDoubleNetwork(
+                trans_network,
+                fully_network,
             )
 
 

@@ -144,7 +144,7 @@ class SelfPlay:
         if render:
             self.game.render()
 
-        show_preds = self.config.show_preds and self.config.network == "double" # todo temp
+        show_preds = self.config.show_preds and self.config.network == "double_new" # todo temp
 
         if show_preds:
             game_dict = {"game": game_number, "results": []}
@@ -208,7 +208,7 @@ class SelfPlay:
                 game_history.reward_history.append(reward)
                 game_history.to_play_history.append(self.game.to_play())
 
-        if self.config.show_preds:
+        if show_preds:
             # append to file that is made if it does not exist
             file_path = "predictions/test.json"
             with open(file_path, "a") as f:
@@ -334,7 +334,8 @@ class MCTS:
         learned by the network.
         """
         is_trans_net = "trans" in self.config.network # todo better implementation later
-        is_double_net = self.config.network == "double"
+        is_double_net = self.config.network == "double_new"
+
         show_preds = self.config.show_preds and is_double_net
 
         if show_preds: # todo temp
@@ -465,7 +466,7 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
-        if self.config.show_preds: # todo temp
+        if show_preds: # todo temp
             extra_info["predictions"] = pred_dict
         return root, extra_info
 

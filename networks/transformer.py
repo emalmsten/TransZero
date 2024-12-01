@@ -93,7 +93,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return pe
 
 
-    def prediction(self, root_hidden_state, action_sequence=None, ):
+    def prediction(self, root_hidden_state, action_sequence=None):
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
 
         # Pass through the transformer encoder
@@ -138,7 +138,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
-
         policy_logits, value, reward = self.prediction(encoded_state)
 
         # reward equal to 0 for consistency

@@ -127,7 +127,7 @@ class MuZero:
             "num_reanalysed_games": 0,
             "terminate": False,
         }
-        if self.config.network == "double":
+        if self.config.network == "double_new":
             self.checkpoint["trans_value_loss"] = 0
             self.checkpoint["trans_reward_loss"] = 0
             self.checkpoint["trans_policy_loss"] = 0
@@ -654,6 +654,24 @@ def seq_testing(muzero, file):
     for seq, value in summary:
         print(f"{seq}: {value}")
 
+def visualize_model(muzero):
+    from torchviz import make_dot
+    network = "double_new"
+    muzero.config.network = network
+
+    model = mz_net.MuZeroNetwork(muzero.config)
+    batch_size = 1
+    observation = torch.randn(batch_size, *muzero.config.observation_shape)  # Example observation
+    action = torch.tensor([[0]])
+    _,_,_, hidden_state = model.initial_inference(observation)
+
+    if network == "fully_connected":
+        value, reward, policy_logits, hidden_state = model.recurrent_inference(hidden_state, action)
+    else:
+        value, reward, policy_logits, _ = model.recurrent_inference(hidden_state, action, hidden_state, action)
+
+    dot_representation = make_dot((value, reward, policy_logits, hidden_state), params=dict(model.named_parameters()))
+    dot_representation.render(f"graphs/representation_graph_{network}", format="png")
 
 
 
@@ -670,6 +688,9 @@ def main(args):
     if args.test_mode == "seq":
         print("seq testing")
         seq_testing(muzero, args.seq_file)
+    elif args.test_mode == "viz":
+        print("vizualizing")
+        visualize_model(muzero)
     elif args.test_mode is not None:
         muzero.test(render=True, opponent="self", muzero_player=None)
     else:
@@ -694,12 +715,12 @@ def setup(test=False):
         }
         if test:
             custom_map = "3x3_1_hole_1"
-            args.test_mode = "not seq"                     # todo, implement difference in testing?
+            args.test_mode = "viz"                     # todo, implement difference in testing?
             args.seq_file = "manual_seqs/test_1.txt"
             args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
             args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
-            args.checkpoint_path = f"models/model.checkpoint"
-            args.config={"testing": True, "custom_map": custom_map, "show_trans_values": True}
+            args.checkpoint_path = f"models/fulcon_model.checkpoint"
+            args.config={"testing": True, "custom_map": custom_map}
 
         logger = "wandb"
 
@@ -728,7 +749,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=False)
+    args = setup(test=True)
     main(args)
     wandb.finish()
     ray.shutdown()

@@ -163,7 +163,7 @@ class MuZeroConfig:
         self.reward_network = "transformer"
 
         ### Network
-        self.network = "double"
+        self.network = "fully_connected"
         self.support_size = 10
 
         self.downsample = False
@@ -241,10 +241,10 @@ class MuZeroConfig:
         self.reset_names()
 
 
-
     def print_config(self):
         for attr, value in vars(self).items():
             print(f"{attr}: {value}")
+
 
     def visit_softmax_temperature_fn(self, trained_steps):
         if trained_steps < 0.5 * self.training_steps:

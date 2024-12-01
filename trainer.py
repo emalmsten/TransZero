@@ -101,7 +101,7 @@ class Trainer:
                         shared_storage.get_info.remote("num_played_games"),
                         shared_storage.get_info.remote("num_reanalysed_games"))
 
-            if self.config.network == "double":
+            if self.config.network == "double_new":
                 value_loss, trans_value_loss = value_loss
                 reward_loss, trans_reward_loss = reward_loss
                 policy_loss, trans_policy_loss = policy_loss
@@ -141,12 +141,66 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
+
+
+    def loss_loop(self, predictions, target_value, target_reward, target_policy,
+                  target_value_scalar, priorities, gradient_scale_batch):
+        ## Compute losses
+        value_loss, reward_loss, policy_loss = (0, 0, 0)
+
+        for i in range(len(predictions)):
+            value, reward, policy_logits = predictions[i]
+
+            # new_target_reward = target_reward[:, 1:i].sum(dim=1) # todo test correctness
+            (
+                current_value_loss,
+                current_reward_loss,
+                current_policy_loss,
+            ) = self.loss_function(
+                value.squeeze(-1),
+                reward.squeeze(-1),
+                policy_logits,
+                target_value[:, i],
+                target_reward[:, i],  # if False else new_target_reward, # todo
+                target_policy[:, i],
+            )
+
+            if i == 0:
+                current_reward_loss = 0
+
+            # Scale gradient by the number of unroll steps (See paper appendix Training)
+            if i > 0:
+                current_value_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+                current_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+                current_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+
+            value_loss += current_value_loss
+            reward_loss += current_reward_loss
+            policy_loss += current_policy_loss
+
+            # Compute priorities for the prioritized replay (See paper appendix Training)
+            pred_value_scalar = (
+                models.support_to_scalar(value, self.config.support_size)
+                .detach()
+                .cpu()
+                .numpy()
+                .squeeze()
+            )
+
+            if priorities is not None:
+                priorities[:, i] = (
+                        numpy.abs(pred_value_scalar - target_value_scalar[:, i])
+                        ** self.config.PER_alpha
+                )
+
+        return value_loss, reward_loss, policy_loss, priorities
+
+
     def update_weights(self, batch):
         """
         Perform one training step.
         """
-        is_trans_net = self.config.network == "transformer"
-        is_double_net = self.config.network == "double"
+        double_net = self.config.network == "double_new"
 
         (
             observation_batch,
@@ -184,136 +238,56 @@ class Trainer:
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
-        ## Generate predictions
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
+        if double_net:
+            value, trans_value = torch.chunk(value, 2, dim=0)
+            reward, trans_reward = torch.chunk(reward, 2, dim=0)
+            policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
+            trans_predictions = [(trans_value, trans_reward, trans_policy_logits)]
+
+
         root_hidden_state = hidden_state
 
         predictions = [(value, reward, policy_logits)]
+
+        # todo consider non loop calculation for transformer
         for i in range(1, action_batch.shape[1]):
-            if is_trans_net or is_double_net:
-                # Instead of an action, we send the whole action sequence from start to the current action
-                action_sequence = action_batch[:, :i]
-                assert action_sequence.shape[-1] == 1
-                action_sequence = action_batch.squeeze(-1)
+            # Instead of an action, we send the whole action sequence from start to the current action
+            action_sequence = action_batch[:, :i].squeeze(-1)
 
-                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i], action_sequence= action_sequence, root_hidden_state=root_hidden_state
-                )
-
-            else:
-                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i]
-                )
+            value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
+            )
 
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             if hidden_state is not None:
                 hidden_state.register_hook(lambda grad: grad * 0.5)
-            predictions.append((value, reward, policy_logits)) # temp
+
+            if double_net:
+                value, trans_value = torch.chunk(value, 2, dim=0)
+                reward, trans_reward = torch.chunk(reward, 2, dim=0)
+                policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
+                trans_predictions.append((trans_value, trans_reward, trans_policy_logits))
+
+            predictions.append((value, reward, policy_logits))
+
+
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
+        value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
+            predictions, target_value, target_reward, target_policy,
+            target_value_scalar, priorities, gradient_scale_batch)
 
-        ## Compute losses
-        value_loss, reward_loss, policy_loss = (0, 0, 0)
-        value, reward, policy_logits = predictions[0]
+        if double_net:
+            trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop(
+                trans_predictions, target_value, target_reward, target_policy,
+                target_value_scalar, None, gradient_scale_batch)
 
-        if is_double_net:
-            value, trans_value = value.chunk(2, dim=0)
-            reward, trans_reward = reward.chunk(2, dim=0)
-            policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
-            current_reward_loss = 0
-
-            current_trans_value_loss, _, current_trans_policy_loss = self.loss_function(
-                trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
-                target_value[:, 0], target_reward[:, 0], target_policy[:, 0],
-            )
-
-            trans_value_loss, trans_policy_loss, trans_reward_loss = current_trans_value_loss, current_trans_policy_loss, current_reward_loss
-
-        # Ignore reward loss for the first batch step
-        current_value_loss, _, current_policy_loss = self.loss_function(
-            value.squeeze(-1),
-            reward.squeeze(-1),
-            policy_logits,
-            target_value[:, 0],
-            target_reward[:, 0],
-            target_policy[:, 0],
-        )
-
-        value_loss += current_value_loss
-        policy_loss += current_policy_loss
-        # Compute priorities for the prioritized replay (See paper appendix Training)
-        pred_value_scalar = (
-            models.support_to_scalar(value, self.config.support_size)
-            .detach()
-            .cpu()
-            .numpy()
-            .squeeze()
-        )
-        priorities[:, 0] = (
-            numpy.abs(pred_value_scalar - target_value_scalar[:, 0])
-            ** self.config.PER_alpha
-        )
-
-        for i in range(1, len(predictions)):
-            value, reward, policy_logits = predictions[i]
-
-            if is_double_net: # todo temp
-                value, trans_value = value.chunk(2, dim=0)
-                reward, trans_reward = reward.chunk(2, dim=0)
-                policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
-
-                current_trans_value_loss, current_trans_reward_loss, current_trans_policy_loss = self.loss_function(
-                    trans_value.squeeze(-1), trans_reward.squeeze(-1), trans_policy_logits,
-                    target_value[:, i], target_reward[:, i], target_policy[:, i],
-                )
-                current_trans_value_loss.register_hook( lambda grad: grad / gradient_scale_batch[:, i])
-                current_trans_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-                current_trans_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-
-                trans_value_loss += current_trans_value_loss
-                trans_reward_loss += current_trans_reward_loss
-                trans_policy_loss += current_trans_policy_loss
-
-            #new_target_reward = target_reward[:, 1:i].sum(dim=1) # todo test correctness
-            (
-                current_value_loss,
-                current_reward_loss,
-                current_policy_loss,
-            ) = self.loss_function(
-                value.squeeze(-1),
-                reward.squeeze(-1),
-                policy_logits,
-                target_value[:, i],
-                target_reward[:, i], #if False else new_target_reward, # todo
-                target_policy[:, i],
-            )
-
-            # Scale gradient by the number of unroll steps (See paper appendix Training)
-            current_value_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-            current_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-            current_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-
-            value_loss += current_value_loss
-            reward_loss += current_reward_loss
-            policy_loss += current_policy_loss
-
-            # Compute priorities for the prioritized replay (See paper appendix Training)
-            pred_value_scalar = (
-                models.support_to_scalar(value, self.config.support_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .squeeze()
-            )
-            priorities[:, i] = (
-                numpy.abs(pred_value_scalar - target_value_scalar[:, i])
-                ** self.config.PER_alpha
-            )
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
         loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
-        if is_double_net:
+        if double_net:
             loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss + trans_policy_loss
 
         if self.config.PER:
@@ -331,7 +305,7 @@ class Trainer:
         loss, value_loss, reward_loss, policy_loss = (
             loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
         )
-        if is_double_net:
+        if double_net:
             trans_value_loss, trans_reward_loss, trans_policy_loss = (
                 trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item()
             )
