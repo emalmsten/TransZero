@@ -101,7 +101,7 @@ class Trainer:
                         shared_storage.get_info.remote("num_played_games"),
                         shared_storage.get_info.remote("num_reanalysed_games"))
 
-            if self.config.network == "double_new":
+            if self.config.network == "double":
                 value_loss, trans_value_loss = value_loss
                 reward_loss, trans_reward_loss = reward_loss
                 policy_loss, trans_policy_loss = policy_loss
@@ -200,7 +200,8 @@ class Trainer:
         """
         Perform one training step.
         """
-        double_net = self.config.network == "double_new"
+        double_net = self.config.network == "double"
+        trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
 
         (
             observation_batch,
@@ -241,14 +242,14 @@ class Trainer:
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
         )
+        root_hidden_state = hidden_state
+
         if double_net:
             value, trans_value = torch.chunk(value, 2, dim=0)
             reward, trans_reward = torch.chunk(reward, 2, dim=0)
             policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
+            hidden_state, root_hidden_state = torch.chunk(hidden_state, 2, dim=0)
             trans_predictions = [(trans_value, trans_reward, trans_policy_logits)]
-
-
-        root_hidden_state = hidden_state
 
         predictions = [(value, reward, policy_logits)]
 
@@ -257,9 +258,14 @@ class Trainer:
             # Instead of an action, we send the whole action sequence from start to the current action
             action_sequence = action_batch[:, :i].squeeze(-1)
 
-            value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
-            )
+            if trans_net:
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
+                )
+            else:
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    hidden_state, action_batch[:, i]
+                )
 
             # Scale the gradient at the start of the dynamics function (See paper appendix Training)
             if hidden_state is not None:

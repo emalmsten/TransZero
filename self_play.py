@@ -144,9 +144,7 @@ class SelfPlay:
         if render:
             self.game.render()
 
-        show_preds = self.config.show_preds and self.config.network == "double_new" # todo temp
-
-        if show_preds:
+        if self.config.show_preds:
             game_dict = {"game": game_number, "results": []}
 
         with torch.no_grad():
@@ -185,7 +183,7 @@ class SelfPlay:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
 
-                    if show_preds: # todo temp
+                    if self.config.show_preds: # todo temp
                         game_dict["results"].append(mcts_info["predictions"])
 
                 else:
@@ -208,9 +206,9 @@ class SelfPlay:
                 game_history.reward_history.append(reward)
                 game_history.to_play_history.append(self.game.to_play())
 
-        if show_preds:
+        if self.config.show_preds:
             # append to file that is made if it does not exist
-            file_path = "predictions/test.json"
+            file_path = "predictions/run2.json"
             with open(file_path, "a") as f:
                 json.dump(game_dict, f)
                 f.write('\n')  # Add a newline after each JSON object
@@ -334,11 +332,9 @@ class MCTS:
         learned by the network.
         """
         is_trans_net = "trans" in self.config.network # todo better implementation later
-        is_double_net = self.config.network == "double_new"
+        is_double_net = self.config.network == "double"
 
-        show_preds = self.config.show_preds and is_double_net
-
-        if show_preds: # todo temp
+        if self.config.show_preds: # todo temp
             pred_dict = {
                 "observation": observation.squeeze().item(),
                 "predictions": []
@@ -371,12 +367,13 @@ class MCTS:
                 root_predicted_value, root_predicted_trans_value = root_predicted_value.chunk(2, dim=0)
                 policy_logits, trans_policy_logits = policy_logits.chunk(2, dim=0)
                 reward, trans_reward = reward.chunk(2, dim=0)
+                hidden_state, trans_root_hidden_state = hidden_state.chunk(2, dim=0)
 
             # Make the root predicted value and reward a scalar
             root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
-            if show_preds: # todo temp
+            if self.config.show_preds: # todo temp
                 update_pred_dict(pred_dict, root_predicted_value, reward, policy_logits, root_predicted_trans_value, trans_reward, trans_policy_logits, [], self.config.support_size)
 
             assert (
@@ -425,11 +422,13 @@ class MCTS:
             # state given an action and the previous hidden state
             parent = search_path[-2]
             if is_trans_net or is_double_net:
+                root_hidden_state = root.hidden_state if not is_double_net else trans_root_hidden_state
+
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
-                    torch.tensor([[actions[-1]]]).to(root.hidden_state.device),
-                    root_hidden_state = root.hidden_state,
-                    action_sequence= torch.tensor([actions]).to(root.hidden_state.device),
+                    torch.tensor([[actions[-1]]]).to(root_hidden_state.device),
+                    root_hidden_state = root_hidden_state,
+                    action_sequence= torch.tensor([actions]).to(root_hidden_state.device),
                 )
 
             else:
@@ -446,7 +445,7 @@ class MCTS:
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
-            if show_preds: # todo temp
+            if self.config.show_preds: # todo temp
                 update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
                                  [int(a) for a in actions], self.config.support_size)
 
@@ -466,7 +465,7 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
-        if show_preds: # todo temp
+        if self.config.show_preds: # todo temp
             extra_info["predictions"] = pred_dict
         return root, extra_info
 

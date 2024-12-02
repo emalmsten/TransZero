@@ -110,8 +110,11 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
+        self.network = "double"
+
         self.trans_loss_weight = 1
-        self.show_preds = True # todo
+        self.show_preds = True and self.network == "double"
+
 
         self.testing = False
         self.debug_mode = False or self.testing
@@ -163,7 +166,6 @@ class MuZeroConfig:
         self.reward_network = "transformer"
 
         ### Network
-        self.network = "fully_connected"
         self.support_size = 10
 
         self.downsample = False

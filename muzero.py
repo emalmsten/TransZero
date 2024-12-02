@@ -127,7 +127,7 @@ class MuZero:
             "num_reanalysed_games": 0,
             "terminate": False,
         }
-        if self.config.network == "double_new":
+        if self.config.network == "double":
             self.checkpoint["trans_value_loss"] = 0
             self.checkpoint["trans_reward_loss"] = 0
             self.checkpoint["trans_policy_loss"] = 0
@@ -656,23 +656,30 @@ def seq_testing(muzero, file):
 
 def visualize_model(muzero):
     from torchviz import make_dot
-    network = "double_new"
+    network = "double"
     muzero.config.network = network
 
     model = mz_net.MuZeroNetwork(muzero.config)
+
     batch_size = 1
     observation = torch.randn(batch_size, *muzero.config.observation_shape)  # Example observation
     action = torch.tensor([[0]])
     _,_,_, hidden_state = model.initial_inference(observation)
+
+    if network == "double":
+        org_hs = hidden_state
+        hidden_state, trans_hidden_state = torch.chunk(hidden_state, 2, dim=0)
 
     if network == "fully_connected":
         value, reward, policy_logits, hidden_state = model.recurrent_inference(hidden_state, action)
     else:
         value, reward, policy_logits, _ = model.recurrent_inference(hidden_state, action, hidden_state, action)
 
-    dot_representation = make_dot((value, reward, policy_logits, hidden_state), params=dict(model.named_parameters()))
-    dot_representation.render(f"graphs/representation_graph_{network}", format="png")
+    if network == "double":
+        hidden_state = org_hs
 
+    dot_representation = make_dot((value, reward, policy_logits, hidden_state), params=dict(model.named_parameters()))
+    dot_representation.render(f"graphs/representation_graph_{network}_shared", format="png")
 
 
 def main(args):
@@ -749,7 +756,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=True)
+    args = setup(test=False)
     main(args)
     wandb.finish()
     ray.shutdown()
