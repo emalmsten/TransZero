@@ -4,9 +4,7 @@ import pickle
 import wandb
 import ray
 from torch.utils.tensorboard import SummaryWriter
-import torch
 
-# TODO save more checkpoints
 
 keys = [
     "total_reward",

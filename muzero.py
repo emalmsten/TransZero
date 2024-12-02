@@ -309,7 +309,7 @@ class MuZero:
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
-            # todo add games played as last arg?
+            # todo remove games played as last arg?
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
@@ -318,6 +318,7 @@ class MuZero:
                         render,
                         opponent,
                         muzero_player,
+                        0
                     )
                 )
             )
@@ -720,9 +721,10 @@ def setup(test=False):
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None)
         }
+        # todo cleanup
         if test:
             custom_map = "3x3_1_hole_1"
-            args.test_mode = "viz"                     # todo, implement difference in testing?
+            args.test_mode = "viz"
             args.seq_file = "manual_seqs/test_1.txt"
             args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
             args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"

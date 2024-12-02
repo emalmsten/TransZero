@@ -8,8 +8,6 @@ import torch
 import models
 import networks.muzero_network as mz_net
 
-# TODO consider library for this
-
 @ray.remote
 class ReplayBuffer:
     """

@@ -43,7 +43,7 @@ class SelfPlay:
         self.model.eval()
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
-        game_number = 0 # todo temp
+        game_number = 0
         while ray.get(
             shared_storage.get_info.remote("training_step")
         ) < self.config.training_steps and not ray.get(
@@ -53,7 +53,6 @@ class SelfPlay:
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
-                # played_games = ray.get(shared_storage.get_info.remote("num_played_games")) # todo temp
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -127,7 +126,7 @@ class SelfPlay:
         self.close_game()
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player, game_number # todo temp
+        self, temperature, temperature_threshold, render, opponent, muzero_player, game_number
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
@@ -183,7 +182,7 @@ class SelfPlay:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
 
-                    if self.config.show_preds: # todo temp
+                    if self.config.show_preds:
                         game_dict["results"].append(mcts_info["predictions"])
 
                 else:
@@ -334,7 +333,7 @@ class MCTS:
         is_trans_net = "trans" in self.config.network # todo better implementation later
         is_double_net = self.config.network == "double"
 
-        if self.config.show_preds: # todo temp
+        if self.config.show_preds:
             pred_dict = {
                 "observation": observation.squeeze().item(),
                 "predictions": []
@@ -373,7 +372,7 @@ class MCTS:
             root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
-            if self.config.show_preds: # todo temp
+            if self.config.show_preds:
                 update_pred_dict(pred_dict, root_predicted_value, reward, policy_logits, root_predicted_trans_value, trans_reward, trans_policy_logits, [], self.config.support_size)
 
             assert (
@@ -445,7 +444,7 @@ class MCTS:
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
-            if self.config.show_preds: # todo temp
+            if self.config.show_preds:
                 update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
                                  [int(a) for a in actions], self.config.support_size)
 
@@ -465,7 +464,7 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
-        if self.config.show_preds: # todo temp
+        if self.config.show_preds:
             extra_info["predictions"] = pred_dict
         return root, extra_info
 
