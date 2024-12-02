@@ -1,6 +1,6 @@
 import copy
 import time
-from idlelib.pyparse import trans
+from torch.optim.lr_scheduler import LambdaLR
 
 import numpy
 import ray
@@ -321,14 +321,30 @@ class Trainer:
 
         return priorities, loss, value_loss, reward_loss, policy_loss
 
+    def warmup_lr_scheduler(self, optimizer, warmup_steps, total_steps):
+        def lr_lambda(current_step):
+            if current_step < warmup_steps:
+                return float(current_step) / float(max(1, warmup_steps))
+            return max(0.0, float(total_steps - current_step) / float(max(1, total_steps - warmup_steps)))
+
+        return LambdaLR(optimizer, lr_lambda)
+
 
     def update_lr(self):
         """
         Update learning rate
         """
-        lr = self.config.lr_init * self.config.lr_decay_rate ** (
-            self.training_step / self.config.lr_decay_steps
-        )
+        warmup_steps = self.config.warmup_steps
+        if self.training_step < warmup_steps:
+            # Linear warm-up phase
+            warmup_factor = self.training_step / warmup_steps
+            lr = self.config.lr_init * warmup_factor
+        else:
+            # Exponential decay phase
+            decay_steps = max(1, self.training_step - warmup_steps)
+            lr = self.config.lr_init * self.config.lr_decay_rate ** (decay_steps / self.config.lr_decay_steps)
+
+        # Apply the learning rate to the optimizer
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 

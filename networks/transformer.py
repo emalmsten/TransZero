@@ -22,6 +22,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         max_seq_length,
         positional_embedding_type,  # sinus or learned
 
+        norm_layer,
+
         seq_mode
 
     ):
@@ -61,12 +63,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.transformer_layer = nn.TransformerEncoderLayer(
             d_model=transformer_hidden_size,
             nhead=transformer_heads,
-            batch_first=True, # todo test
+            batch_first=True,
         )
-        # todo consider norm
+        norm_layer = nn.LayerNorm(transformer_hidden_size) if norm_layer else None
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
             num_layers=transformer_layers,
+            norm = norm_layer
         )
 
         self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)

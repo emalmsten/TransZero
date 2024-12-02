@@ -95,12 +95,12 @@ class MuZeroMixedNetwork(AbstractNetwork):
         self.transformer_layer = nn.TransformerEncoderLayer(
             d_model=transformer_hidden_size,
             nhead=transformer_heads,
-            batch_first=True, # todo test
+            batch_first=True,
         )
-        # todo consider norm
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
             num_layers=transformer_layers,
+            norm = nn.LayerNorm(transformer_hidden_size)
         )
 
         if self.policy_network == "transformer":

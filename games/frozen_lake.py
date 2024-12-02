@@ -1,4 +1,3 @@
-# todo fix such that all environments are loaded from gymnasium
 import datetime
 import pathlib
 import time
@@ -110,11 +109,10 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
-        self.network = "double"
+        self.network = "transformer"
 
         self.trans_loss_weight = 1
-        self.show_preds = True and self.network == "double"
-
+        self.show_preds = False and self.network == "double"
 
         self.testing = False
         self.debug_mode = False or self.testing
@@ -124,7 +122,6 @@ class MuZeroConfig:
 
         self.custom_map = "3x3_1h_1d"
         self.checkpoint_interval = 500
-        self.save_locally = True # todo prio, option to save locally
 
         # fmt: off
         self.seed = 43
@@ -144,7 +141,7 @@ class MuZeroConfig:
         self.num_workers = 1
         self.selfplay_on_gpu = cuda and not self.debug_mode
         self.max_moves = 50  # Reduced max moves for Frozen Lake
-        self.num_simulations = 25 # todo changed
+        self.num_simulations = 25
         self.discount = 0.997
         self.temperature_threshold = None
 
@@ -185,6 +182,8 @@ class MuZeroConfig:
         self.fc_value_layers = [16]
         self.fc_policy_layers = [16]
 
+        self.norm_layer = True
+
         # Naming
         self.append = "_" + "local_reward_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
@@ -206,6 +205,8 @@ class MuZeroConfig:
         self.lr_init = 0.02
         self.lr_decay_rate = 0.8
         self.lr_decay_steps = 1000
+
+        self.warmup_steps = 0 # todo test
 
         ### Replay Buffer
         self.replay_buffer_size = 10000
@@ -239,7 +240,8 @@ class MuZeroConfig:
             self.train_on_gpu = False
             self.selfplay_on_gpu = False
             self.reanalyse_on_gpu = False
-        # todo, maybe add param that checks if wanted / necessary
+        if self.network != "double":
+            self.show_preds = False
         self.reset_names()
 
 

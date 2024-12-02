@@ -42,6 +42,8 @@ class MuZeroNetwork:
                 config.max_seq_length,
                 config.positional_embedding_type,  # sinus or learned
 
+                config.norm_layer, # todo remove if works
+
                 debug_mode,
             )
         elif config.network == "resnet":
