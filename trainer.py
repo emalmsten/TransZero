@@ -143,6 +143,65 @@ class Trainer:
 
 
 
+    def loss_loop_fast(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, fast_preds = None):
+
+        (target_value, target_reward, target_policy) = targets
+
+        if self.config.network == "transformer" and False: # todo temp disabled
+            (values, rewards, policy_logits) = predictions
+        else: #if True:
+            values, rewards, policy_logits = zip(*predictions)  # Unpack predictions
+            values = torch.stack(values, dim=1).squeeze(-1)  # Shape: (time_steps, batch_size)
+            rewards = torch.stack(rewards, dim=1).squeeze(-1)  # Shape: (time_steps, batch_size)
+            policy_logits = torch.stack(policy_logits, dim=1)  # Shape: (time_steps, batch_size, policy_size)
+
+        # difference = t_values - values
+        # print("Differences between t_values and values:\n", difference)
+        # print("Max difference:", difference.abs().max())
+        # # check that t_values and value contain the same values
+        # assert torch.allclose(t_values, values, atol=1e-3), "t_values and values are not close"
+        # assert torch.allclose(t_rewards, rewards, atol=1e-3), "t_rewards and rewards are not equal"
+        # assert torch.allclose(t_policy_logits, policy_logits, atol=1e-3), "t_policy_logits and policy_logits are not equal"
+
+        # Compute losses
+        value_losses, reward_losses, policy_losses = self.loss_function(
+            values, rewards, policy_logits, target_value, target_reward, target_policy
+        )
+
+        reward_losses[:,0] = torch.zeros(reward_losses[:,0].shape, device=reward_losses.device)
+
+        # todo, maybe not in loop at some points?
+        for i in range(1, value_losses.shape[-1]):
+            value_losses[:, i].register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+            reward_losses[:, i].register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+            policy_losses[:, i].register_hook(lambda grad: grad / gradient_scale_batch[:, i])
+
+        # this
+        # scaled_value_losses = value_losses / gradient_scale_batch.unsqueeze(0)
+        # value_losses.register_hook(lambda grad: scaled_value_losses)
+
+        # Sum losses across all steps
+        value_loss = value_losses.sum(dim=-1)
+        reward_loss = reward_losses.sum(dim=-1)
+        policy_loss = policy_losses.sum(dim=-1)
+
+        if priorities is not None:
+            # merge the first two dimensions, later split them up
+            B, T, D = values.shape
+            merged_values = values.reshape(B * T, D)
+
+            pred_value_scalars = models.support_to_scalar(merged_values, self.config.support_size).detach().cpu().numpy()
+            pred_value_scalars = pred_value_scalars.reshape(B, T)
+            priorities = (
+                    numpy.abs(pred_value_scalars - target_value_scalar)
+                    ** self.config.PER_alpha
+            )
+
+        return value_loss, reward_loss, policy_loss, priorities
+
+
+
+
     def loss_loop(self, predictions, target_value, target_reward, target_policy,
                   target_value_scalar, priorities, gradient_scale_batch):
         ## Compute losses
@@ -178,16 +237,16 @@ class Trainer:
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
 
-            # Compute priorities for the prioritized replay (See paper appendix Training)
-            pred_value_scalar = (
-                models.support_to_scalar(value, self.config.support_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .squeeze()
-            )
-
             if priorities is not None:
+                # Compute priorities for the prioritized replay (See paper appendix Training)
+                pred_value_scalar = (
+                    models.support_to_scalar(value, self.config.support_size)
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .squeeze()
+                )
+
                 priorities[:, i] = (
                         numpy.abs(pred_value_scalar - target_value_scalar[:, i])
                         ** self.config.PER_alpha
@@ -202,6 +261,7 @@ class Trainer:
         """
         double_net = self.config.network == "double"
         trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
+        full_transformer = self.config.network == "transformer" and False # todo temp disabled
 
         (
             observation_batch,
@@ -238,6 +298,7 @@ class Trainer:
         target_reward = models.scalar_to_support(target_reward, self.config.support_size)
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
+        targets = (target_value, target_reward, target_policy)
 
         value, reward, policy_logits, hidden_state = self.model.initial_inference(
             observation_batch
@@ -253,12 +314,22 @@ class Trainer:
 
         predictions = [(value, reward, policy_logits)]
 
-        # todo consider non loop calculation for transformer
-        for i in range(1, action_batch.shape[1]):
-            # Instead of an action, we send the whole action sequence from start to the current action
-            action_sequence = action_batch[:, :i].squeeze(-1)
+        if full_transformer:
+            trans_value, trans_reward, trans_policy_logits= self.model.recurrent_inference_fast(
+                root_hidden_state, action_batch[:, 1:].squeeze(-1)
+            )
+            # todo, only really reward necessary
+            trans_value[:, 0] = value
+            trans_reward[:, 0] = reward
+            trans_policy_logits[:, 0] = policy_logits
+            predictions = (trans_value, trans_reward, trans_policy_logits)
 
+
+        loop_length = action_batch.shape[1] if not full_transformer else 0
+        for i in range(1, loop_length):
+            # Instead of an action, we send the whole action sequence from start to the current action
             if trans_net:
+                action_sequence = action_batch[:, 1:i].squeeze(-1) # todo test 1:i instead of :i
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
                 )
@@ -272,6 +343,7 @@ class Trainer:
                 hidden_state.register_hook(lambda grad: grad * 0.5)
 
             if double_net:
+                # todo trans_pred.app(values[second_half, etc etc,
                 value, trans_value = torch.chunk(value, 2, dim=0)
                 reward, trans_reward = torch.chunk(reward, 2, dim=0)
                 policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
@@ -279,16 +351,17 @@ class Trainer:
 
             predictions.append((value, reward, policy_logits))
 
+        # value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
+        #     predictions, target_value, target_reward, target_policy,
+        #     target_value_scalar, priorities, gradient_scale_batch)
 
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
-        value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
-            predictions, target_value, target_reward, target_policy,
-            target_value_scalar, priorities, gradient_scale_batch)
+        value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
+            predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
 
         if double_net:
-            trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop(
-                trans_predictions, target_value, target_reward, target_policy,
-                target_value_scalar, None, gradient_scale_batch)
+            trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop_fast(
+                trans_predictions, targets, target_value_scalar, None, gradient_scale_batch)
 
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
@@ -358,7 +431,7 @@ class Trainer:
         target_policy,
     ):
         # Cross-entropy seems to have a better convergence than MSE
-        value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
-        reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
+        value_loss = (-target_value * torch.nn.LogSoftmax(dim=-1)(value)).sum(-1)
+        reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
+        policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1)
         return value_loss, reward_loss, policy_loss

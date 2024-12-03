@@ -185,7 +185,7 @@ class MuZeroConfig:
         self.norm_layer = True
 
         # Naming
-        self.append = "_" + "local_reward_test"  # Turn this to True to run a test
+        self.append = "_local_" + "newLoss"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
@@ -206,7 +206,7 @@ class MuZeroConfig:
         self.lr_decay_rate = 0.8
         self.lr_decay_steps = 1000
 
-        self.warmup_steps = 250
+        self.warmup_steps = 0 if not self.network == "transformer" else 250
 
         ### Replay Buffer
         self.replay_buffer_size = 10000

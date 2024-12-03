@@ -42,7 +42,7 @@ class MuZeroNetwork:
                 config.max_seq_length,
                 config.positional_embedding_type,  # sinus or learned
 
-                config.norm_layer, # todo remove if works
+                config.norm_layer,
 
                 debug_mode,
             )

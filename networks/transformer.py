@@ -117,6 +117,26 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return policy_logits, value, reward
 
 
+    def create_causal_mask(self, seq_length):
+        mask = torch.triu(torch.ones(seq_length, seq_length), diagonal=1)  # Upper triangular matrix
+        return mask.masked_fill(mask == 1, float('-inf'))  # Replace 1s with -inf
+
+
+    def prediction_fast(self, root_hidden_state, action_sequence=None):
+        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
+        mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device)
+
+        # Pass through the transformer encoder
+        # todo test mask
+        transformer_output = self.transformer_encoder(input_sequence, mask=mask)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+
+        policy_logits = self.policy_head(transformer_output)  # Shape: (batch_size, sequence_length, action_space_size)
+        value = self.value_head(transformer_output)  # Shape: (batch_size, sequence_length, full_support_size)
+        reward = self.reward_head(transformer_output)  # Shape: (batch_size, sequence_length, full_support_size)
+
+        return policy_logits, value, reward
+
+
     def random_prediction(self, device):
         policy_logits = torch.rand((1, self.action_space_size), device=device, requires_grad=True)
         value = torch.rand((1, self.full_support_size), device=device, requires_grad=True)
@@ -204,6 +224,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Add positional encodings
         return state_action_sequence + pos_encoding
 
+
+    def recurrent_inference_fast(self, root_hidden_state, action_sequence):
+        policy_logits, value, reward = self.prediction_fast(root_hidden_state, action_sequence)
+        return value, reward, policy_logits
 
 
     def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):
