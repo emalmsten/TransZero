@@ -155,14 +155,6 @@ class Trainer:
             rewards = torch.stack(rewards, dim=1).squeeze(-1)  # Shape: (time_steps, batch_size)
             policy_logits = torch.stack(policy_logits, dim=1)  # Shape: (time_steps, batch_size, policy_size)
 
-        # difference = t_values - values
-        # print("Differences between t_values and values:\n", difference)
-        # print("Max difference:", difference.abs().max())
-        # # check that t_values and value contain the same values
-        # assert torch.allclose(t_values, values, atol=1e-3), "t_values and values are not close"
-        # assert torch.allclose(t_rewards, rewards, atol=1e-3), "t_rewards and rewards are not equal"
-        # assert torch.allclose(t_policy_logits, policy_logits, atol=1e-3), "t_policy_logits and policy_logits are not equal"
-
         # Compute losses
         value_losses, reward_losses, policy_losses = self.loss_function(
             values, rewards, policy_logits, target_value, target_reward, target_policy
@@ -196,61 +188,6 @@ class Trainer:
                     numpy.abs(pred_value_scalars - target_value_scalar)
                     ** self.config.PER_alpha
             )
-
-        return value_loss, reward_loss, policy_loss, priorities
-
-
-
-
-    def loss_loop(self, predictions, target_value, target_reward, target_policy,
-                  target_value_scalar, priorities, gradient_scale_batch):
-        ## Compute losses
-        value_loss, reward_loss, policy_loss = (0, 0, 0)
-
-        for i in range(len(predictions)):
-            value, reward, policy_logits = predictions[i]
-
-            # new_target_reward = target_reward[:, 1:i].sum(dim=1) # todo test correctness
-            (
-                current_value_loss,
-                current_reward_loss,
-                current_policy_loss,
-            ) = self.loss_function(
-                value.squeeze(-1),
-                reward.squeeze(-1),
-                policy_logits,
-                target_value[:, i],
-                target_reward[:, i],  # if False else new_target_reward, # todo
-                target_policy[:, i],
-            )
-
-            if i == 0:
-                current_reward_loss = 0
-
-            # Scale gradient by the number of unroll steps (See paper appendix Training)
-            if i > 0:
-                current_value_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-                current_reward_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-                current_policy_loss.register_hook(lambda grad: grad / gradient_scale_batch[:, i])
-
-            value_loss += current_value_loss
-            reward_loss += current_reward_loss
-            policy_loss += current_policy_loss
-
-            if priorities is not None:
-                # Compute priorities for the prioritized replay (See paper appendix Training)
-                pred_value_scalar = (
-                    models.support_to_scalar(value, self.config.support_size)
-                    .detach()
-                    .cpu()
-                    .numpy()
-                    .squeeze()
-                )
-
-                priorities[:, i] = (
-                        numpy.abs(pred_value_scalar - target_value_scalar[:, i])
-                        ** self.config.PER_alpha
-                )
 
         return value_loss, reward_loss, policy_loss, priorities
 
@@ -435,3 +372,26 @@ class Trainer:
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1)
         return value_loss, reward_loss, policy_loss
+
+
+# todo new idea for gradient scaling
+# # Compute losses
+# value_losses, reward_losses, policy_losses = self.loss_function(
+#     values, rewards, policy_logits, target_value, target_reward, target_policy
+# )
+#
+# # Zero out reward_losses at time step 0
+# reward_losses[:, 0] = 0
+#
+# # Define gradient hook
+# def grad_hook(grad):
+#     # Create a copy to avoid in-place operations
+#     scaled_grad = grad.clone()
+#     # Scale gradients from time step 1 onwards
+#     scaled_grad[:, 1:] = scaled_grad[:, 1:] / gradient_scale_batch[:, 1:]
+#     return scaled_grad
+#
+# # Register the hook on the entire loss tensors
+# value_losses.register_hook(grad_hook)
+# reward_losses.register_hook(grad_hook)
+# policy_losses.register_hook(grad_hook)
