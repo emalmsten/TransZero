@@ -4,6 +4,7 @@ import time
 import numpy
 import ray
 import torch
+from torch.nn.init import uniform_
 
 import models
 import networks.muzero_network as mz_net
@@ -76,7 +77,8 @@ class ReplayBuffer:
             value_batch,
             policy_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [])
+            mask_batch,
+        ) = ([], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
         for game_id, game_history, game_prob in self.sample_n_games(
@@ -84,7 +86,7 @@ class ReplayBuffer:
         ):
             game_pos, pos_prob = self.sample_position(game_history)
 
-            values, rewards, policies, actions = self.make_target(game_history, game_pos)
+            values, rewards, policies, actions, mask = self.make_target(game_history, game_pos)
 
             index_batch.append([game_id, game_pos])
             observation_batch.append(
@@ -98,6 +100,7 @@ class ReplayBuffer:
             value_batch.append(values)
             reward_batch.append(rewards)
             policy_batch.append(policies)
+            mask_batch.append(mask)
             gradient_scale_batch.append(
                 [
                     min(
@@ -132,6 +135,7 @@ class ReplayBuffer:
                 policy_batch,
                 weight_batch,
                 gradient_scale_batch,
+                mask_batch,
             ),
         )
 
@@ -243,9 +247,7 @@ class ReplayBuffer:
         else:
             value = 0
 
-        for i, reward in enumerate(
-            game_history.reward_history[index + 1 : bootstrap_index + 1]
-        ):
+        for i, reward in enumerate(game_history.reward_history[index + 1 : bootstrap_index + 1]):
             # The value is oriented from the perspective of the current player
             value += (
                 reward if game_history.to_play_history[index] == game_history.to_play_history[index + i]
@@ -258,43 +260,50 @@ class ReplayBuffer:
         """
         Generate targets for every unroll steps.
         """
-        target_values, target_rewards, target_policies, actions = [], [], [], []
-        for current_index in range(
-            state_index, state_index + self.config.num_unroll_steps + 1
-        ):
-            value = self.compute_target_value(game_history, current_index)
+        target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
+        uniform_policy = [1 / len(game_history.child_visits[0]) for _ in range(len(game_history.child_visits[0]))]
+        indices = range(state_index, state_index + self.config.num_unroll_steps + 1)
+        masks = [0 if 0 <= idx <= len(game_history.root_values) else float('-inf') for idx in indices]
 
+        for current_index in indices:
             if current_index < len(game_history.root_values):
-                target_values.append(value)
-                target_rewards.append(game_history.reward_history[current_index])
-                target_policies.append(game_history.child_visits[current_index])
-                actions.append(game_history.action_history[current_index])
+                value = self.compute_target_value(game_history, current_index)
+                reward = game_history.reward_history[current_index]
+                policy = game_history.child_visits[current_index]
+                action = game_history.action_history[current_index]
             elif current_index == len(game_history.root_values):
-                target_values.append(0)
-                target_rewards.append(game_history.reward_history[current_index])
+                value = 0
+                reward = game_history.reward_history[current_index]
                 # Uniform policy
-                target_policies.append(
-                    [
-                        1 / len(game_history.child_visits[0])
-                        for _ in range(len(game_history.child_visits[0]))
-                    ]
-                )
-                actions.append(game_history.action_history[current_index])
-            else: # todo consider adding mask for random actions
+                policy = uniform_policy
+                action = game_history.action_history[current_index]
+            else:
                 # States past the end of games are treated as absorbing states
-                target_values.append(0)
-                target_rewards.append(0)
+                value = 0
+                reward = 0
                 # Uniform policy
-                target_policies.append(
-                    [
-                        1 / len(game_history.child_visits[0])
-                        for _ in range(len(game_history.child_visits[0]))
-                    ]
-                )
-                actions.append(numpy.random.choice(self.config.action_space))
+                policy = uniform_policy
+                action = numpy.random.choice(self.config.action_space)
 
-        return target_values, target_rewards, target_policies, actions
+            target_values.append(value)
+            target_rewards.append(reward)
+            target_policies.append(policy)
+            actions.append(action)
 
+        return target_values, target_rewards, target_policies, actions, masks
+
+
+# todo, get rid of the loop above
+    # start = state_index
+    # end = state_index + self.config.num_unroll_steps + 1  # Include the current state
+    #
+    # rewards_new = torch.zeros(end - start, dtype=torch.float32)
+    # # Determine the maximum index up to which rewards are available
+    # max_index = min(end, len(game_history.reward_history))
+    # rewards_new[:(max_index - start)] = torch.tensor(game_history.reward_history[start:max_index])
+
+    # assert torch.allclose(rewards_new, torch.tensor(target_rewards))
+    # print("rewards_new and target_rewards are equal")
 
 @ray.remote
 class Reanalyse:

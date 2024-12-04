@@ -9,11 +9,23 @@ import torch
 from .abstract_game import AbstractGame
 
 ### 0d is no holes, 1d is for easy map, 2d is for medium, 3d is for hard
-
+# 0: LEFT
+# 1: DOWN
+# 2: RIGHT
+# 3: UP
+# "SFH",
+# "FFF",
+# "FGF",
+#112
 maps = {
     "2x2_0h_0d": [
         "SF",
         "FG",
+    ],
+    "3x3_test": [
+        "FGF",
+        "HSH",
+        "FGF",
     ],
     "3x3_0h_0d": [
         "SFF",
@@ -120,7 +132,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_1h_1d"
+        self.custom_map = "3x3_test"
         self.checkpoint_interval = 500
 
         # fmt: off

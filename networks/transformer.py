@@ -122,13 +122,12 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return mask.masked_fill(mask == 1, float('-inf'))  # Replace 1s with -inf
 
 
-    def prediction_fast(self, root_hidden_state, action_sequence=None):
+    def prediction_fast(self, root_hidden_state, action_sequence, mask):
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
-        mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device)
+        causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device)
 
         # Pass through the transformer encoder
-        # todo test mask
-        transformer_output = self.transformer_encoder(input_sequence, mask=mask)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+        transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
 
         policy_logits = self.policy_head(transformer_output)  # Shape: (batch_size, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (batch_size, sequence_length, full_support_size)
@@ -225,8 +224,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return state_action_sequence + pos_encoding
 
 
-    def recurrent_inference_fast(self, root_hidden_state, action_sequence):
-        policy_logits, value, reward = self.prediction_fast(root_hidden_state, action_sequence)
+    def recurrent_inference_fast(self, root_hidden_state, action_sequence, mask):
+        policy_logits, value, reward = self.prediction_fast(root_hidden_state, action_sequence, mask)
         return value, reward, policy_logits
 
 

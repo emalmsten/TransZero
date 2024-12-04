@@ -198,7 +198,7 @@ class Trainer:
         """
         double_net = self.config.network == "double"
         trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
-        full_transformer = self.config.network == "transformer" and False # todo temp disabled
+        full_transformer = self.config.network == "transformer" and True # todo temp enabled
 
         (
             observation_batch,
@@ -208,6 +208,7 @@ class Trainer:
             target_policy,
             weight_batch,
             gradient_scale_batch,
+            mask_batch,
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
@@ -224,6 +225,8 @@ class Trainer:
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
+        mask_batch = torch.tensor(mask_batch).float().to(device)
+
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
         # target_value: batch, num_unroll_steps+1
@@ -252,8 +255,9 @@ class Trainer:
         predictions = [(value, reward, policy_logits)]
 
         if full_transformer:
+            # start the action batch from 1 since the first action is not used
             trans_value, trans_reward, trans_policy_logits= self.model.recurrent_inference_fast(
-                root_hidden_state, action_batch[:, 1:].squeeze(-1)
+                root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
             )
             # todo, only really reward necessary
             trans_value[:, 0] = value
