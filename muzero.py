@@ -723,8 +723,8 @@ def setup(test=False):
         }
         # todo cleanup
         if test:
-            custom_map = "3x3_1_hole_1"
-            args.test_mode = "viz"
+            custom_map = "3x3_1h_1d"
+            args.test_mode = "no viz"
             args.seq_file = "manual_seqs/test_1.txt"
             args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
             args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
@@ -758,7 +758,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=False)
+    args = setup(test=True)
     main(args)
     wandb.finish()
     ray.shutdown()
