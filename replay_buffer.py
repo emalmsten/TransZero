@@ -231,14 +231,11 @@ class ReplayBuffer:
         bootstrap_index = index + self.config.td_steps
         if bootstrap_index < len(game_history.root_values):
             root_values = (
-                game_history.root_values
-                if game_history.reanalysed_predicted_root_values is None
+                game_history.root_values if game_history.reanalysed_predicted_root_values is None
                 else game_history.reanalysed_predicted_root_values
             )
             last_step_value = (
-                root_values[bootstrap_index]
-                if game_history.to_play_history[bootstrap_index]
-                == game_history.to_play_history[index]
+                root_values[bootstrap_index] if game_history.to_play_history[bootstrap_index] == game_history.to_play_history[index]
                 else -root_values[bootstrap_index]
             )
 
