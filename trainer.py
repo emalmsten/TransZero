@@ -173,6 +173,7 @@ class Trainer:
             B, T, D = values.shape
             merged_values = values.reshape(B * T, D)
 
+            # todo consider going away from CPU
             pred_value_scalars = models.support_to_scalar(
                 merged_values, self.config.support_size
             ).detach().cpu().numpy()
@@ -186,11 +187,11 @@ class Trainer:
 
 
 
-    def loss_loop_fast(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, fast_preds = None):
+    def loss_loop_fast(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch):
 
         (target_value, target_reward, target_policy) = targets
 
-        if self.config.network == "transformer" and True: # todo temp enabled
+        if self.config.network == "transformer":
             (values, rewards, policy_logits) = predictions
         else: #if True:
             values, rewards, policy_logits = zip(*predictions)  # Unpack predictions
@@ -240,7 +241,7 @@ class Trainer:
         """
         double_net = self.config.network == "double"
         trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
-        full_transformer = self.config.network == "transformer" and True # todo temp enabled
+        full_transformer = self.config.network == "transformer"
 
         (
             observation_batch,
@@ -312,7 +313,7 @@ class Trainer:
         for i in range(1, loop_length):
             # Instead of an action, we send the whole action sequence from start to the current action
             if trans_net:
-                action_sequence = action_batch[:, 1:i].squeeze(-1) # todo test 1:i instead of :i
+                action_sequence = action_batch[:, 1:i].squeeze(-1)
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
                 )
@@ -342,7 +343,6 @@ class Trainer:
             value_loss, reward_loss, policy_loss, priorities = self.loss_loop_trans(
                 predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch
             )
-
         else:
             value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
                 predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
@@ -423,26 +423,3 @@ class Trainer:
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1)
         return value_loss, reward_loss, policy_loss
-
-
-# todo new idea for gradient scaling
-# # Compute losses
-# value_losses, reward_losses, policy_losses = self.loss_function(
-#     values, rewards, policy_logits, target_value, target_reward, target_policy
-# )
-#
-# # Zero out reward_losses at time step 0
-# reward_losses[:, 0] = 0
-#
-# # Define gradient hook
-# def grad_hook(grad):
-#     # Create a copy to avoid in-place operations
-#     scaled_grad = grad.clone()
-#     # Scale gradients from time step 1 onwards
-#     scaled_grad[:, 1:] = scaled_grad[:, 1:] / gradient_scale_batch[:, 1:]
-#     return scaled_grad
-#
-# # Register the hook on the entire loss tensors
-# value_losses.register_hook(grad_hook)
-# reward_losses.register_hook(grad_hook)
-# policy_losses.register_hook(grad_hook)
