@@ -213,7 +213,7 @@ class MuZeroConfig:
         self.lr_decay_rate = 0.8
         self.lr_decay_steps = 1000
 
-        self.warmup_steps = 0 if not self.network == "transformer" else 250
+        self.warmup_steps = 250 if self.network == "transformer" else 0
 
         ### Replay Buffer
         self.replay_buffer_size = 10000
