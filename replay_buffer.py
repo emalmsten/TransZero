@@ -263,7 +263,7 @@ class ReplayBuffer:
         target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
         uniform_policy = [1 / len(game_history.child_visits[0]) for _ in range(len(game_history.child_visits[0]))]
         indices = range(state_index, state_index + self.config.num_unroll_steps + 1)
-        masks = [0 if 0 <= idx <= len(game_history.root_values) else float('-inf') for idx in indices]
+        masks = [idx > len(game_history.root_values) for idx in indices]
 
         for current_index in indices:
             if current_index < len(game_history.root_values):

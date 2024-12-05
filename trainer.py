@@ -141,13 +141,56 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
+    def loss_loop_trans(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, action_mask):
+        (values, rewards, policy_logits) = predictions
+        (target_value, target_reward, target_policy) = targets
+
+        # Compute losses
+        value_losses, reward_losses, policy_losses = self.loss_function(
+            values, rewards, policy_logits, target_value, target_reward, target_policy
+        )
+        reward_losses[:,0] = 0.0
+
+        non_padding_mask = ~action_mask
+        # Apply mask to losses
+        value_losses = value_losses * non_padding_mask
+        reward_losses = reward_losses * non_padding_mask
+        policy_losses = policy_losses * non_padding_mask
+
+        # Directly scale the losses, add an epsilon to avoid dividing by zero
+        scaling_factors = gradient_scale_batch + 1e-8  # Shape: (batch_size, sequence_length)
+
+        # Apply scaling from index 1 onwards
+        value_losses[:, 1:] = value_losses[:, 1:] / scaling_factors[:, 1:]
+        reward_losses[:, 1:] = reward_losses[:, 1:] / scaling_factors[:, 1:]
+        policy_losses[:, 1:] = policy_losses[:, 1:] / scaling_factors[:, 1:]
+
+        value_loss = value_losses.sum(dim=1)  # Shape: (batch_size,)
+        reward_loss = reward_losses.sum(dim=1)
+        policy_loss = policy_losses.sum(dim=1)
+
+        if priorities is not None:
+            B, T, D = values.shape
+            merged_values = values.reshape(B * T, D)
+
+            pred_value_scalars = models.support_to_scalar(
+                merged_values, self.config.support_size
+            ).detach().cpu().numpy()
+            pred_value_scalars = pred_value_scalars.reshape(B, T)
+            priorities = (
+                    numpy.abs(pred_value_scalars - target_value_scalar) ** self.config.PER_alpha
+            )
+
+        return value_loss, reward_loss, policy_loss, priorities
+
+
 
 
     def loss_loop_fast(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, fast_preds = None):
 
         (target_value, target_reward, target_policy) = targets
 
-        if self.config.network == "transformer" and False: # todo temp disabled
+        if self.config.network == "transformer" and True: # todo temp enabled
             (values, rewards, policy_logits) = predictions
         else: #if True:
             values, rewards, policy_logits = zip(*predictions)  # Unpack predictions
@@ -162,7 +205,6 @@ class Trainer:
 
         reward_losses[:,0] = torch.zeros(reward_losses[:,0].shape, device=reward_losses.device)
 
-        # todo, maybe not in loop at some points?
         for i in range(1, value_losses.shape[-1]):
             value_losses[:, i].register_hook(lambda grad: grad / gradient_scale_batch[:, i])
             reward_losses[:, i].register_hook(lambda grad: grad / gradient_scale_batch[:, i])
@@ -225,7 +267,7 @@ class Trainer:
         target_reward = torch.tensor(target_reward).float().to(device)
         target_policy = torch.tensor(target_policy).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
-        mask_batch = torch.tensor(mask_batch).float().to(device)
+        mask_batch = torch.tensor(mask_batch).to(device) # bool
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
@@ -295,10 +337,15 @@ class Trainer:
         # value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
         #     predictions, target_value, target_reward, target_policy,
         #     target_value_scalar, priorities, gradient_scale_batch)
-
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
-        value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
-            predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
+        if full_transformer:
+            value_loss, reward_loss, policy_loss, priorities = self.loss_loop_trans(
+                predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch
+            )
+
+        else:
+            value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
+                predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
 
         if double_net:
             trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop_fast(

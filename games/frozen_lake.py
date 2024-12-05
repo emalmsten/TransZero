@@ -22,11 +22,6 @@ maps = {
         "SF",
         "FG",
     ],
-    "3x3_test": [
-        "FGF",
-        "HSH",
-        "FGF",
-    ],
     "3x3_0h_0d": [
         "SFF",
         "FFF",
@@ -132,7 +127,7 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
-        self.custom_map = "3x3_test"
+        self.custom_map = "3x3_1h_1d"
         self.checkpoint_interval = 500
 
         # fmt: off
@@ -351,3 +346,10 @@ class Game(AbstractGame):
             3: "Move up",
         }
         return f"{action_number}. {actions[action_number]}"
+
+
+    # "3x3_test": [
+    #     "FGF",
+    #     "HSH",
+    #     "FGF",
+    # ],

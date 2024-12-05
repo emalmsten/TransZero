@@ -100,38 +100,37 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
 
         # Pass through the transformer encoder
-        transformer_output = self.transformer_encoder(input_sequence)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+        transformer_output = self.transformer_encoder(input_sequence)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Obtain the value prediction from the last token's output
-        transformer_output_last = transformer_output[:, -1, :]  # Shape: (batch_size, transformer_hidden_size)
+        transformer_output_last = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
 
-        policy_logits = self.policy_head(transformer_output_last)  # Shape: (batch_size, action_space_size)
-        value = self.value_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
+        policy_logits = self.policy_head(transformer_output_last)  # Shape: (B, action_space_size)
+        value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         # calculate cumulative reward over sequence # todo test
         if False:
             reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
         else:
-            reward = self.reward_head(transformer_output_last)  # Shape: (batch_size, full_support_size)
+            reward = self.reward_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         return policy_logits, value, reward
 
 
     def create_causal_mask(self, seq_length):
-        mask = torch.triu(torch.ones(seq_length, seq_length), diagonal=1)  # Upper triangular matrix
-        return mask.masked_fill(mask == 1, float('-inf'))  # Replace 1s with -inf
+        return torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
 
 
-    def prediction_fast(self, root_hidden_state, action_sequence, mask):
-        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
-        causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device)
+    def prediction_fast(self, root_hidden_state, action_sequence, action_mask):
+        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
+        causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
 
         # Pass through the transformer encoder
-        transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+        transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
 
-        policy_logits = self.policy_head(transformer_output)  # Shape: (batch_size, sequence_length, action_space_size)
-        value = self.value_head(transformer_output)  # Shape: (batch_size, sequence_length, full_support_size)
-        reward = self.reward_head(transformer_output)  # Shape: (batch_size, sequence_length, full_support_size)
+        policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
+        value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
+        reward = self.reward_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
 
         return policy_logits, value, reward
 
@@ -184,18 +183,18 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             # Learned positional encoding
             pos_indices = torch.arange(sequence_length, device=embedded_actions.device).unsqueeze(0)  # Shape: (1, sequence_length)
             pos_encoding = self.positional_encoding(pos_indices)  # Shape: (1, sequence_length, transformer_hidden_size)
-            pos_encoding = pos_encoding.expand(embedded_actions.size(0), -1, -1)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+            pos_encoding = pos_encoding.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
         else:
             # Sinusoidal positional encoding
             pos_encoding = self.positional_encoding[:sequence_length]  # Shape: (sequence_length, transformer_hidden_size)
-            pos_encoding = pos_encoding.unsqueeze(0).expand(embedded_actions.size(0), -1, -1)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
+            pos_encoding = pos_encoding.unsqueeze(0).expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         return pos_encoding
 
 
     def create_input_sequence(self, root_hidden_state, action_sequence):
-        # root hidden state: (batch_size, x)
-        # action sequence: (batch_size, y)
+        # root hidden state: (B, x)
+        # action sequence: (B, y)
 
         # Embed the action sequence
         if action_sequence is None:
@@ -204,21 +203,21 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=root_hidden_state.device)
         else:
             # Embed the action sequence
-            embedded_actions = self.action_embedding(action_sequence)  # Shape: (batch_size, y, transformer_hidden_size)
+            embedded_actions = self.action_embedding(action_sequence)  # Shape: (B, y, transformer_hidden_size)
 
         # Project the root hidden state to the transformer hidden size
-        state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (batch_size, transformer_hidden_size)
-        state_embedding = state_embedding.unsqueeze(1)  # Shape: (batch_size, 1, transformer_hidden_size)
+        state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (B, transformer_hidden_size)
+        state_embedding = state_embedding.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
 
         # Total sequence length (including the root hidden state)
         sequence_length = embedded_actions.size(1) + 1  # +1 for the root hidden state
 
         # Get positional encoding
         pos_encoding = self.get_positional_encoding(sequence_length,
-                                                    embedded_actions)  # Shape: (batch_size, y+1 transformer_hidden_size)
+                                                    embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
 
         # Construct the input sequence by concatenating the state embedding and action embeddings
-        state_action_sequence = torch.cat([state_embedding, embedded_actions], dim=1)  # Shape: (batch_size, y+1, transformer_hidden_size)
+        state_action_sequence = torch.cat([state_embedding, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
 
         # Add positional encodings
         return state_action_sequence + pos_encoding
