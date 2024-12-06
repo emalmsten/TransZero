@@ -2,6 +2,7 @@ import copy
 import importlib
 import json
 import math
+import os
 import pathlib
 import pickle
 import sys
@@ -715,7 +716,10 @@ def setup(test=False):
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
     args = parser.parse_args()
 
-    if args.run_from_cluster is None:
+    if args.run_from_cluster == "db":
+        wandb_key = os.getenv("WANDB_API_KEY")
+        wandb.login(key=wandb_key, relogin=True)
+    elif args.run_from_cluster is None:
         # manual override
         args.game_name = "frozen_lake"
         args.config = {
