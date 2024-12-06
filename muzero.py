@@ -22,6 +22,7 @@ import shared_storage
 import trainer
 import wandb
 import argparse
+from utils import refresh
 
 
 import networks.muzero_network as mz_net
@@ -74,7 +75,7 @@ class MuZero:
             else:
                 self.config = config
 
-        self.config.refresh()
+        refresh(self.config)
         print(f"Config: {self.config.print_config()}")
 
         # Fix random generator seed

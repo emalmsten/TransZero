@@ -9,13 +9,34 @@ from .abstract_game import AbstractGame
 
 
 class MuZeroConfig:
-    def __init__(self):
+    def __init__(self, root=None):
+        self.root = root or pathlib.Path(__file__).resolve().parents[1]
+        cuda = torch.cuda.is_available()
+
+        self.network = "transformer"
+
+        self.trans_loss_weight = 1
+        self.show_preds = False and self.network == "double"
+
+        self.testing = False
+        self.debug_mode = False or self.testing
+
+        self.game_name = "lunarlander"
+        self.logger = "wandb" if not self.debug_mode else None
+
+        # Naming
+        self.append = "_local_" + "newLoss"  # Turn this to True to run a test
+        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
+        self.results_path = path / self.name
+
+
         # fmt: off
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
         self.seed = 0  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
-
 
 
         ### Game
@@ -27,8 +48,6 @@ class MuZeroConfig:
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
-
-
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
@@ -47,9 +66,8 @@ class MuZeroConfig:
         self.pb_c_init = 1.25
 
 
-
         ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
+        self.network = "fully_connected"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
         
         # Residual Network
@@ -70,14 +88,24 @@ class MuZeroConfig:
         self.fc_reward_layers = [64]  # Define the hidden layers in the reward network
         self.fc_value_layers = [64]  # Define the hidden layers in the value network
         self.fc_policy_layers = [64]  # Define the hidden layers in the policy network
-        
+
+        # Transformer
+        self.transformer_layers = 2
+        self.transformer_heads = 4
+        self.transformer_hidden_size = 64
+        self.max_seq_length = 50
+        self.positional_embedding_type = "sinus"
+        self.value_network = "transformer"
+        self.policy_network = "transformer"
+        self.reward_network = "transformer"
+        self.norm_layer = True
 
 
         ### Training
         self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")  # Path to store the model weights and TensorBoard logs
         self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
         self.training_steps = 200000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 64  # Number of parts of games to train on at each training step
+        self.batch_size = 64  # Number of parts of games to train on at each training step # todo
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
@@ -90,12 +118,13 @@ class MuZeroConfig:
         self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
+        self.warmup_steps = 0.025 * self.training_steps
 
 
 
         ### Replay Buffer
         self.replay_buffer_size = 2000  # Number of self-play games to keep in the replay buffer
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
+        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element # todo consider longer
         self.td_steps = 30  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1

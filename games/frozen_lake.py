@@ -7,6 +7,7 @@ import numpy
 import torch
 
 from .abstract_game import AbstractGame
+from utils import reset_names, refresh
 
 ### 0d is no holes, 1d is for easy map, 2d is for medium, 3d is for hard
 # 0: LEFT
@@ -229,27 +230,6 @@ class MuZeroConfig:
         self.training_delay = 0
         self.ratio = 1.5
         # fmt: on
-
-    def reset_names(self):
-        path = self.root / "results" / self.game_name / self.custom_map / self.network
-        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
-        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
-        self.results_path = path / self.name
-
-    def refresh(self):
-        if self.testing:
-            self.debug_mode = True
-            print("Testing mode enabled. Enabling debug_mode")
-        if self.debug_mode:
-            self.logger = None
-            self.save_model = False
-            print("Debug mode enabled. Disabling GPU operations, logger, and model saving")
-            self.train_on_gpu = False
-            self.selfplay_on_gpu = False
-            self.reanalyse_on_gpu = False
-        if self.network != "double":
-            self.show_preds = False
-        self.reset_names()
 
 
     def print_config(self):
