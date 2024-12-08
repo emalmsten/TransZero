@@ -1,4 +1,8 @@
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    print("Please install matplotlib to get the plotting functions.")
+
 import numpy
 import torch
 
