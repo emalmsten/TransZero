@@ -756,7 +756,9 @@ def setup(test=False):
         print("Getting config from file")
         with open(args.config) as f:
             args.config = json.load(f)
-        args.config["observation_shape"] = tuple(args.config["observation_shape"]) # todo clean up
+        # if it has observation shape
+        if "observation_shape" in args.config:
+            args.config["observation_shape"] = tuple(args.config["observation_shape"]) # todo clean up
 
     print(args)
     return args
@@ -769,4 +771,5 @@ if __name__ == "__main__":
     ray.shutdown()
 
 
-
+# todo wandb
+# todo conda install conda-forge::bayesian-optimization=1.2.0
