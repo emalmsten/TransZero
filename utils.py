@@ -21,4 +21,4 @@ def refresh(cfg):
         cfg.reanalyse_on_gpu = False
     if cfg.network != "double":
         cfg.show_preds = False
-    cfg.reset_names()
+    reset_names(cfg)
