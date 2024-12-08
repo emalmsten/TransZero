@@ -1,4 +1,4 @@
-name: tz2
+name: tz
 channels:
   - pytorch
   - nvidia
