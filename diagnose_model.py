@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy
-import seaborn
 import torch
 
 import models
@@ -259,6 +258,8 @@ class Trajectoryinfo:
         self.mcts_depth.append(mcts_info["max_tree_depth"])
 
     def plot_trajectory(self):
+        import seaborn
+
         name = "Prior policies"
         print(name, self.prior_policies, "\n")
         plt.figure(self.title + name)

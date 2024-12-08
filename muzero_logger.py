@@ -3,7 +3,6 @@ import time
 import pickle
 import wandb
 import ray
-from torch.utils.tensorboard import SummaryWriter
 
 
 keys = [
@@ -182,6 +181,8 @@ def save_buffer(muzero):
 
 
 def init_tensorboard(muzero):
+    from torch.utils.tensorboard import SummaryWriter
+
     writer = SummaryWriter(muzero.config.results_path)
     hp_table = [
         f"| {key} | {value} |" for key, value in muzero.config.__dict__.items()
