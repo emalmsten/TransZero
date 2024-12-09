@@ -167,9 +167,9 @@ class MuZero:
             self.wandb_run = wandb.init(
                 entity="elhmalmsten-tu-delft",
                 project="TransZero",
-                name=self.config.log_name,
+                name=str(self.config.log_name), # to string:
                 config=self.config.__dict__,
-                dir=self.config.results_path,
+                dir=str(self.config.results_path),
             )
         else:
             self.wandb_run = None
@@ -772,4 +772,7 @@ if __name__ == "__main__":
 
 
 # todo wandb
-# todo conda install conda-forge::bayesian-optimization=1.2.0
+# todo conda install conda-forge::
+
+# todo conda install numpy==1.26.4 pytorch torchvision torchaudio pytorch-cuda=12.1 nevergrad=1.0.1 bayesian-optimization=1.2.0 -c pytorch -c nvidia -c conda-forge -y
+# conda install -c conda-forge "ray-default"
