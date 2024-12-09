@@ -117,21 +117,31 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
-        self.network = "transformer"
-
-        self.trans_loss_weight = 1
-        self.show_preds = False and self.network == "double"
-
+        # Local
         self.testing = False
         self.debug_mode = False or self.testing
 
+        # Essentials
+        self.network = "transformer"
         self.game_name = "frozen_lake"
+        self.custom_map = "5x5_3h_2d"
         self.logger = "wandb" if not self.debug_mode else None
 
+        # Naming
+        self.append = "_local_" + "newLoss"  # Turn this to True to run a test
+        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
+        self.results_path = path / self.name
 
-        self.custom_map = "5x5_3h_2d"
-        self.checkpoint_interval = 10
+        # Saving
+        self.save_model = True
         self.save_interval = 500
+
+        # GPU
+        self.selfplay_on_gpu = cuda and not self.debug_mode
+        self.train_on_gpu = cuda and not self.debug_mode
+        self.reanalyse_on_gpu = cuda and not self.debug_mode
 
         # fmt: off
         self.seed = 43
@@ -144,37 +154,29 @@ class MuZeroConfig:
         self.players = list(range(1))
         self.stacked_observations = 0
 
+        # Evaluate
         self.muzero_player = 0
         self.opponent = None
 
         ### Self-Play
         self.num_workers = 1
-        self.selfplay_on_gpu = cuda and not self.debug_mode
         self.max_moves = 50  # Reduced max moves for Frozen Lake
         self.num_simulations = 25
         self.discount = 0.997
         self.temperature_threshold = None
 
+        # Root prior exploration noise
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
 
+        # UCB formula
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
-
-        # Transformer
-        self.transformer_layers=2
-        self.transformer_heads=2
-        self.transformer_hidden_size=16
-        self.max_seq_length=50
-        self.positional_embedding_type='sinus'  # sinus or learned
-
-        self.value_network = "transformer"
-        self.policy_network = "transformer"
-        self.reward_network = "transformer"
 
         ### Network
         self.support_size = 10
 
+        # Residual Network
         self.downsample = False
         self.blocks = 1
         self.channels = 2
@@ -185,6 +187,7 @@ class MuZeroConfig:
         self.resnet_fc_value_layers = []
         self.resnet_fc_policy_layers = []
 
+        # Fully Connected
         self.encoding_size = 8
         self.fc_representation_layers = []
         self.fc_dynamics_layers = [16]
@@ -192,22 +195,21 @@ class MuZeroConfig:
         self.fc_value_layers = [16]
         self.fc_policy_layers = [16]
 
+        # Transformer
+        self.transformer_layers=2
+        self.transformer_heads=2
+        self.transformer_hidden_size=16
+        self.max_seq_length=50
+        self.positional_embedding_type='sinus'  # sinus or learned
         self.norm_layer = True
 
-        # Naming
-        self.append = "_local_" + "newLoss"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.custom_map / self.network
-        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
-        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
-        self.results_path = path / self.name
-
         ### Training
-        self.save_model = True
+        self.checkpoint_interval = 10
         self.training_steps = 10000
         self.batch_size = 128
         self.value_loss_weight = 1
-        self.train_on_gpu = cuda and not self.debug_mode
 
+        # Learning Rate
         self.optimizer = "Adam"
         self.weight_decay = 1e-4
         self.momentum = 0.9
@@ -215,7 +217,6 @@ class MuZeroConfig:
         self.lr_init = 0.02
         self.lr_decay_rate = 0.8
         self.lr_decay_steps = 0.1 * self.training_steps
-
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
@@ -225,9 +226,16 @@ class MuZeroConfig:
         self.PER = True
         self.PER_alpha = 0.5
 
-        self.use_last_model_value = True
-        self.reanalyse_on_gpu = cuda and not self.debug_mode
+        # Reanalyze (See paper appendix Reanalyse)
+        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
+        # Special Networks
+        self.show_preds = False and self.network == "double"
+        self.value_network = "transformer"
+        self.policy_network = "transformer"
+        self.reward_network = "transformer"
+
+        ### Other
         self.self_play_delay = 0
         self.training_delay = 0
         self.ratio = 1.5

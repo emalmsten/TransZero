@@ -1,11 +1,12 @@
 
 import datetime
+from pathlib import Path
 
 def reset_names(cfg):
     game_name = cfg.game_name
     game_str = cfg.game_name
     if cfg.game_name == "frozen_lake":
-        game_name = game_name / cfg.custom_map
+        game_name = Path(game_name) / cfg.custom_map
         game_str += f"_{cfg.custom_map}"
 
     path = cfg.root / "results" / game_name / cfg.network
