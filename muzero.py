@@ -22,7 +22,7 @@ import shared_storage
 import trainer
 import wandb
 import argparse
-from utils import refresh
+from utils import refresh, print_config
 
 
 import networks.muzero_network as mz_net
@@ -41,9 +41,9 @@ class MuZero:
         split_resources_in (int, optional): Split the GPU usage when using concurent muzero instances.
 
     Example:
-        >>> muzero = MuZero("cartpole")
-        >>> muzero.train()
-        >>> muzero.test(render=True)
+        # >>> muzero = MuZero("cartpole")
+        # >>> muzero.train()
+        # >>> muzero.test(render=True)
     """
 
     def __init__(self, game_name, config=None, split_resources_in=1):
@@ -76,7 +76,7 @@ class MuZero:
                 self.config = config
 
         refresh(self.config)
-        print(f"Config: {self.config.print_config()}")
+        print(f"Config: {print_config(self.config)}")
 
         # Fix random generator seed
         numpy.random.seed(self.config.seed)
@@ -722,7 +722,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "frozen_lake"
+        args.game_name = "lunarlander"
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None)
         }

@@ -129,7 +129,7 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
 
 
-        self.custom_map = "3x3_1h_1d"
+        self.custom_map = "5x5_3h_2d"
         self.checkpoint_interval = 10
         self.save_interval = 500
 
@@ -214,9 +214,9 @@ class MuZeroConfig:
 
         self.lr_init = 0.02
         self.lr_decay_rate = 0.8
-        self.lr_decay_steps = 1000
+        self.lr_decay_steps = 0.1 * self.training_steps
 
-        self.warmup_steps = 250 if self.network == "transformer" else 0
+        self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
         self.replay_buffer_size = 10000
@@ -232,11 +232,6 @@ class MuZeroConfig:
         self.training_delay = 0
         self.ratio = 1.5
         # fmt: on
-
-
-    def print_config(self):
-        for attr, value in vars(self).items():
-            print(f"{attr}: {value}")
 
 
     def visit_softmax_temperature_fn(self, trained_steps):

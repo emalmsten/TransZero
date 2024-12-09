@@ -2,9 +2,15 @@
 import datetime
 
 def reset_names(cfg):
-    path = cfg.root / "results" / cfg.game_name / cfg.custom_map / cfg.network
+    game_name = cfg.game_name
+    game_str = cfg.game_name
+    if cfg.game_name == "frozen_lake":
+        game_name = game_name / cfg.custom_map
+        game_str += f"_{cfg.custom_map}"
+
+    path = cfg.root / "results" / game_name / cfg.network
     cfg.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{cfg.append}'
-    cfg.log_name = f"{cfg.game_name}_{cfg.custom_map}_{cfg.network}_{cfg.name}"
+    cfg.log_name = f"{game_str}_{cfg.network}_{cfg.name}"
     cfg.results_path = path / cfg.name
 
 
@@ -22,3 +28,7 @@ def refresh(cfg):
     if cfg.network != "double":
         cfg.show_preds = False
     reset_names(cfg)
+
+def print_config(cfg):
+    for attr, value in vars(cfg).items():
+        print(f"{attr}: {value}")

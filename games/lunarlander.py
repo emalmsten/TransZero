@@ -15,6 +15,8 @@ class MuZeroConfig:
 
         self.network = "transformer"
 
+        self.save_interval = 250
+
         self.trans_loss_weight = 1
         self.show_preds = False and self.network == "double"
 
@@ -26,9 +28,9 @@ class MuZeroConfig:
 
         # Naming
         self.append = "_local_" + "lun_test"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        path = self.root / "results" / self.game_name / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
-        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
+        self.log_name = f"{self.game_name}_{self.network}_{self.name}"
         self.results_path = path / self.name
 
 
@@ -117,10 +119,8 @@ class MuZeroConfig:
         # Exponential learning rate schedule
         self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 1000
-        self.warmup_steps = 0.025 * self.training_steps
-
-
+        self.lr_decay_steps = 0.02 * self.training_steps
+        self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
         self.replay_buffer_size = 2000  # Number of self-play games to keep in the replay buffer
@@ -131,9 +131,7 @@ class MuZeroConfig:
 
         # Reanalyze (See paper appendix Reanalyse)
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-        self.reanalyse_on_gpu = False
-
-
+        self.reanalyse_on_gpu = cuda and not self.debug_mode
 
         # Best known ratio for deterministic version: 0.8 --> 0.4 in 250 self played game (self_play_delay = 25 on GTX 1050Ti Max-Q).
         ### Adjust the self play / training ratio to avoid over/underfitting
