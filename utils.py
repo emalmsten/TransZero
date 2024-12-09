@@ -9,7 +9,7 @@ def reset_names(cfg):
         game_name = game_name / cfg.custom_map
         game_str += f"_{cfg.custom_map}"
 
-    path = cfg.root / "results" / game_name / cfg.network
+    path = Path(cfg.root) / "results" / game_name / cfg.network
     cfg.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{cfg.append}'
     cfg.log_name = f"{game_str}_{cfg.network}_{cfg.name}"
     cfg.results_path = path / cfg.name
