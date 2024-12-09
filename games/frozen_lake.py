@@ -128,8 +128,10 @@ class MuZeroConfig:
         self.game_name = "frozen_lake"
         self.logger = "wandb" if not self.debug_mode else None
 
+
         self.custom_map = "3x3_1h_1d"
-        self.checkpoint_interval = 500
+        self.checkpoint_interval = 10
+        self.save_interval = 500
 
         # fmt: off
         self.seed = 43

@@ -95,11 +95,13 @@ class Trainer:
                         ),
                     }
                 )
-                if self.config.save_model:
-                    shared_storage.save_checkpoint.remote(self.training_step)
-                    shared_storage.save_buffer.remote(replay_buffer, self.training_step,
-                        shared_storage.get_info.remote("num_played_games"),
-                        shared_storage.get_info.remote("num_reanalysed_games"))
+
+            if self.config.save_model and self.training_step % self.config.save_interval == 0:
+                shared_storage.save_checkpoint.remote(self.training_step)
+                shared_storage.save_buffer.remote(replay_buffer, self.training_step,
+                    shared_storage.get_info.remote("num_played_games"),
+                    shared_storage.get_info.remote("num_reanalysed_games"))
+
 
             if self.config.network == "double":
                 value_loss, trans_value_loss = value_loss
