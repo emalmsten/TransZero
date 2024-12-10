@@ -124,7 +124,7 @@ class MuZeroConfig:
         # Essentials
         self.network = "transformer"
         self.game_name = "frozen_lake"
-        self.custom_map = "5x5_3h_2d"
+        self.custom_map = "3x3_1h_1d"
         self.logger = "wandb" if not self.debug_mode else None
 
         # Naming
