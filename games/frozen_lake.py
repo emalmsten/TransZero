@@ -128,7 +128,7 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
 
         # Naming
-        self.append = "_local_" + "newLoss"  # Turn this to True to run a test
+        self.append = "_local_" + "speedTest"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
@@ -201,7 +201,7 @@ class MuZeroConfig:
         self.transformer_hidden_size=16
         self.max_seq_length=50
         self.positional_embedding_type='sinus'  # sinus or learned
-        self.norm_layer = True
+        self.norm_layer = False
         self.use_proj = False
 
         ### Training
