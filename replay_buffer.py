@@ -234,32 +234,27 @@ class ReplayBuffer:
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
         bootstrap_index = index + self.config.td_steps
-        value = 0
         if bootstrap_index < len(game_history.root_values):
             root_values = (
                 game_history.root_values if game_history.reanalysed_predicted_root_values is None
                 else game_history.reanalysed_predicted_root_values
             )
             last_step_value = (
-                root_values[bootstrap_index] if game_history.to_play_history[bootstrap_index] == game_history.to_play_history[index]
+                root_values[bootstrap_index] if game_history.to_play_history[bootstrap_index] ==
+                                                game_history.to_play_history[index]
                 else -root_values[bootstrap_index]
             )
 
-            value += last_step_value * self.config.discount**self.config.td_steps
+            value = last_step_value * self.config.discount ** self.config.td_steps
+        else:
+            value = 0
 
-        # Convert lists to tensors
-        reward_history = torch.tensor(game_history.reward_history[index + 1: bootstrap_index + 1])
-        to_play_history = torch.tensor(game_history.to_play_history[index + 1: bootstrap_index + 1])
-        current_player = game_history.to_play_history[index]
-
-        # Calculate alignment mask (1 if aligned, -1 if not)
-        alignment_mask = torch.where(to_play_history == current_player, 1.0, -1.0)
-
-        # Create discount factors
-        discount_factors = self.config.discount ** torch.arange(len(reward_history), dtype=torch.float32)
-
-        # Compute the value
-        value += torch.sum(reward_history * alignment_mask * discount_factors)
+        for i, reward in enumerate(game_history.reward_history[index + 1: bootstrap_index + 1]):
+            # The value is oriented from the perspective of the current player
+            value += (
+                         reward if game_history.to_play_history[index] == game_history.to_play_history[index + i]
+                         else -reward
+                     ) * self.config.discount ** i
 
         return value
 
