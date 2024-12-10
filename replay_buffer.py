@@ -262,44 +262,37 @@ class ReplayBuffer:
         """
         Generate targets for every unroll steps.
         """
-        indices = torch.arange(state_index, state_index + self.config.num_unroll_steps + 1)
-        masks = indices > len(game_history.root_values)
+        target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
+        uniform_policy = [1 / len(game_history.child_visits[0]) for _ in range(len(game_history.child_visits[0]))]
+        indices = range(state_index, state_index + self.config.num_unroll_steps + 1)
+        masks = [idx > len(game_history.root_values) for idx in indices]
 
-        start = state_index
-        end = state_index + self.config.num_unroll_steps + 1  # Include the current state
+        for current_index in indices:
+            if current_index < len(game_history.root_values):
+                value = self.compute_target_value(game_history, current_index)
+                reward = game_history.reward_history[current_index]
+                policy = game_history.child_visits[current_index]
+                action = game_history.action_history[current_index]
+            elif current_index == len(game_history.root_values):
+                value = 0
+                reward = game_history.reward_history[current_index]
+                # Uniform policy
+                policy = uniform_policy
+                action = game_history.action_history[current_index]
+            else:
+                # States past the end of games are treated as absorbing states
+                value = 0
+                reward = 0
+                # Uniform policy
+                policy = uniform_policy
+                action = numpy.random.choice(self.config.action_space)
 
-        rewards = torch.zeros(end - start, dtype=torch.float32)
-        values = torch.zeros(end - start, dtype=torch.float32)
+            target_values.append(value)
+            target_rewards.append(reward)
+            target_policies.append(policy)
+            actions.append(action)
 
-        uniform_policy_val = 1 / len(game_history.child_visits[0])
-        policy = torch.full(
-            (end - start, len(game_history.child_visits[0])),
-            uniform_policy_val,
-            dtype=torch.float32
-        )
-
-        actions = torch.randint(
-            low=0, high=len(self.config.action_space),
-            size=(end - start,),
-            dtype=torch.int64
-        )
-
-        # Determine the maximum index up to which actions and rewards are available
-        max_index_ar = min(end, len(game_history.reward_history))
-        rewards[:(max_index_ar - start)] = torch.tensor(game_history.reward_history[start:max_index_ar])
-
-        # Determine the maximum index up to which values and policies are available
-        max_index_pv = min(end, len(game_history.child_visits))
-        policy[:(max_index_pv - start)] = torch.tensor(game_history.child_visits[start:max_index_pv], dtype=torch.float32)
-
-        actions[:(max_index_ar - start)] = torch.tensor(game_history.action_history[start:max_index_ar], dtype=torch.int64)
-
-        values[:(max_index_pv - start)] = torch.tensor(
-            [self.compute_target_value(game_history, idx) for idx in range(start, max_index_pv)],
-            dtype=torch.float32
-        )
-
-        return values, rewards, policy, actions, masks
+        return target_values, target_rewards, target_policies, actions, masks
 
 
 @ray.remote
