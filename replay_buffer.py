@@ -81,12 +81,28 @@ class ReplayBuffer:
         ) = ([], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
+        batch_size = self.config.batch_size
+        size_dim1 = self.config.num_unroll_steps + 1
+
+        action_batch = torch.empty((batch_size, size_dim1), dtype=torch.int64)
+        value_batch = torch.empty((batch_size, size_dim1), dtype=torch.float32)
+        reward_batch = torch.empty((batch_size, size_dim1), dtype=torch.float32)
+        policy_batch = torch.empty((batch_size, size_dim1, 4), dtype=torch.float32) # todo: 4 is hardcoded
+        mask_batch = torch.empty((batch_size, size_dim1), dtype=torch.bool)
+
+        i = -1
         for game_id, game_history, game_prob in self.sample_n_games(
             self.config.batch_size
         ):
+            i += 1
             game_pos, pos_prob = self.sample_position(game_history)
 
             values, rewards, policies, actions, mask = self.make_target(game_history, game_pos)
+            action_batch[i] = actions
+            value_batch[i] = values
+            reward_batch[i] = rewards
+            policy_batch[i] = policies
+            mask_batch[i] = mask
 
             index_batch.append([game_id, game_pos])
             observation_batch.append(
@@ -96,11 +112,7 @@ class ReplayBuffer:
                     len(self.config.action_space),
                 )
             )
-            action_batch.append(actions)
-            value_batch.append(values)
-            reward_batch.append(rewards)
-            policy_batch.append(policies)
-            mask_batch.append(mask)
+
             gradient_scale_batch.append(
                 [
                     min(
@@ -267,6 +279,8 @@ class ReplayBuffer:
         """
         Generate targets for every unroll steps.
         """
+        #device = "cuda" if self.config.reanalyse_on_gpu else "cpu"
+
         indices = torch.arange(state_index, state_index + self.config.num_unroll_steps + 1)
         masks = indices > len(game_history.root_values)
 
@@ -280,13 +294,13 @@ class ReplayBuffer:
         policy = torch.full(
             (end - start, len(game_history.child_visits[0])),
             uniform_policy_val,
-            dtype=torch.float32
+            dtype=torch.float32,
         )
 
         actions = torch.randint(
             low=0, high=len(self.config.action_space),
             size=(end - start,),
-            dtype=torch.int64
+            dtype=torch.int64,
         )
 
         # Determine the maximum index up to which actions and rewards are available
@@ -301,7 +315,7 @@ class ReplayBuffer:
 
         values[:(max_index_pv - start)] = torch.tensor(
             [self.compute_target_value(game_history, idx) for idx in range(start, max_index_pv)],
-            dtype=torch.float32
+            dtype=torch.float32,
         )
 
         return values, rewards, policy, actions, masks

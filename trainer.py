@@ -265,12 +265,12 @@ class Trainer:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         observation_batch = torch.tensor(numpy.array(observation_batch)).float().to(device)
 
-        action_batch = torch.stack(action_batch).to(device).unsqueeze(-1)
-        target_value = torch.stack(target_value).to(device)
-        target_reward = torch.stack(target_reward).to(device)
-        target_policy = torch.stack(target_policy).to(device)
+        action_batch = action_batch.to(device).unsqueeze(-1)
+        target_value = target_value.to(device)
+        target_reward = target_reward.to(device)
+        target_policy = target_policy.to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
-        mask_batch = torch.stack(mask_batch).to(device) # bool
+        mask_batch = mask_batch.to(device) # bool
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
