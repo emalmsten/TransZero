@@ -201,7 +201,7 @@ class MuZeroConfig:
         self.transformer_hidden_size=16
         self.max_seq_length=50
         self.positional_embedding_type='sinus'  # sinus or learned
-        self.norm_layer = False
+        self.norm_layer = True
         self.use_proj = False
 
         ### Training

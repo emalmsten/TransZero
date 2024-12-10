@@ -82,7 +82,7 @@ class ReplayBuffer:
         action_batch = torch.empty((batch_size, size_dim1), dtype=torch.int64)
         value_batch = torch.empty((batch_size, size_dim1), dtype=torch.float32)
         reward_batch = torch.empty((batch_size, size_dim1), dtype=torch.float32)
-        policy_batch = torch.empty((batch_size, size_dim1, 4), dtype=torch.float32) # todo: 4 is hardcoded
+        policy_batch = torch.empty((batch_size, size_dim1, len(self.config.action_space)), dtype=torch.float32)
         mask_batch = torch.empty((batch_size, size_dim1), dtype=torch.bool)
 
         i = -1

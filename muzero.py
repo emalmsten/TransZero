@@ -98,8 +98,8 @@ class MuZero:
         ):
             total_gpus = (
                 self.config.max_num_gpus
-                if self.config.max_num_gpus is not None
-                else torch.cuda.device_count()
+                    if self.config.max_num_gpus is not None
+                    else torch.cuda.device_count()
             )
         else:
             total_gpus = 0
