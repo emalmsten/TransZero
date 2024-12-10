@@ -72,13 +72,8 @@ class ReplayBuffer:
         (
             index_batch,
             observation_batch,
-            action_batch,
-            reward_batch,
-            value_batch,
-            policy_batch,
             gradient_scale_batch,
-            mask_batch,
-        ) = ([], [], [], [], [], [], [], [])
+        ) = ([], [], [])
         weight_batch = [] if self.config.PER else None
 
         batch_size = self.config.batch_size
