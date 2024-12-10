@@ -231,7 +231,8 @@ class MuZeroConfig:
         # fmt: on
 
     def reset_names(self):
-        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        from pathlib import Path
+        path = Path(self.root) / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
         self.results_path = path / self.name
