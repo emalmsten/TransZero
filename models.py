@@ -19,12 +19,16 @@ def mlp(
     output_size,
     output_activation=torch.nn.Identity,
     activation=torch.nn.ELU,
+    norm_layer=False,
 ):
     sizes = [input_size] + layer_sizes + [output_size]
     layers = []
     for i in range(len(sizes) - 1):
         act = activation if i < len(sizes) - 2 else output_activation
         layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
+    if norm_layer:
+        layers.append(torch.nn.LayerNorm(output_size))  # Add normalization here
+
     return torch.nn.Sequential(*layers)
 
 

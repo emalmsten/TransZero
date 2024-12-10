@@ -97,6 +97,7 @@ class MuZeroConfig:
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
+        self.use_proj = False
 
 
         ### Training

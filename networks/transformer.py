@@ -4,7 +4,6 @@ from models import mlp
 import torch.nn as nn
 import math
 
-# currently just a fully connected network
 class MuZeroTransformerNetwork(AbstractNetwork):
     def __init__(
         self,
@@ -22,19 +21,22 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         max_seq_length,
         positional_embedding_type,  # sinus or learned
 
-        norm_layer,
-
-        seq_mode
-
+        seq_mode,
+        norm_layer = True,
+        use_proj = False,
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
         self.full_support_size = 2 * support_size + 1
         self.seq_mode = seq_mode
+        self.use_proj = use_proj
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
+
+        # Transformer components for value prediction
+        self.transformer_hidden_size = transformer_hidden_size
 
         self.representation_network = cond_wrap(
             mlp(
@@ -44,14 +46,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 * (stacked_observations + 1)
                 + stacked_observations * observation_shape[1] * observation_shape[2],
                 fc_representation_layers,
-                encoding_size,
+                encoding_size if self.use_proj else transformer_hidden_size,
+                norm_layer=norm_layer,
             )
         )
 
-        # Transformer components for value prediction
-        self.transformer_hidden_size = transformer_hidden_size
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
-        self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size)
+        self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
+
         if positional_embedding_type == 'learned':
             self.positional_encoding = nn.Embedding(max_seq_length + 1, transformer_hidden_size)
         elif positional_embedding_type == 'sinus':
@@ -65,11 +67,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             nhead=transformer_heads,
             batch_first=True,
         )
-        norm_layer = nn.LayerNorm(transformer_hidden_size) if norm_layer else None
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
             num_layers=transformer_layers,
-            norm = norm_layer
+            norm = nn.LayerNorm(transformer_hidden_size)
         )
 
         self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
@@ -206,8 +207,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             embedded_actions = self.action_embedding(action_sequence)  # Shape: (B, y, transformer_hidden_size)
 
         # Project the root hidden state to the transformer hidden size
-        state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (B, transformer_hidden_size)
-        state_embedding = state_embedding.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
+        if self.use_proj:
+            root_hidden_state = self.hidden_state_proj(root_hidden_state)
+        state_embedding = root_hidden_state.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
 
         # Total sequence length (including the root hidden state)
         sequence_length = embedded_actions.size(1) + 1  # +1 for the root hidden state

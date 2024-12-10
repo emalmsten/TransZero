@@ -3,7 +3,6 @@ from networks.resnet import MuZeroResidualNetwork
 from networks.transformer import MuZeroTransformerNetwork
 from networks.mixed_network import MuZeroMixedNetwork
 from networks.double_network import MuZeroDoubleNetwork
-from networks.double_network import MuZeroDoubleNetwork
 
 
 class MuZeroNetwork:
@@ -42,9 +41,10 @@ class MuZeroNetwork:
                 config.max_seq_length,
                 config.positional_embedding_type,  # sinus or learned
 
-                config.norm_layer,
-
                 debug_mode,
+
+                norm_layer = config.norm_layer,
+                use_proj=config.use_proj,
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
