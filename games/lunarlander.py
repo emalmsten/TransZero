@@ -99,7 +99,6 @@ class MuZeroConfig:
         self.norm_layer = True
         self.use_proj = False
 
-
         ### Training
         self.checkpoint_interval = 10
         self.training_steps = 200000  # Total number of training steps (ie weights update according to a batch)
@@ -172,7 +171,7 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, done, _, _ = self.env.step(action)
         return numpy.array([[observation]]), reward / 3, done
 
     def legal_actions(self):
@@ -195,7 +194,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return numpy.array([[self.env.reset()]])
+        observation, info = self.env.reset()
+        return numpy.array([[observation]])
 
     def close(self):
         """

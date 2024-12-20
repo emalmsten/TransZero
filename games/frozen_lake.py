@@ -122,13 +122,15 @@ class MuZeroConfig:
         self.debug_mode = False or self.testing
 
         # Essentials
-        self.network = "transformer"
+        self.network = "resnet"
         self.game_name = "frozen_lake"
-        self.custom_map = "3x3_1h_1d"
+        self.custom_map = "3x3_2h_2d"
+        self.negative_reward = 0.0
         self.logger = "wandb" if not self.debug_mode else None
 
+
         # Naming
-        self.append = "_local_" + "speedTest"  # Turn this to True to run a test
+        self.append = "_local_" + "negRewTest"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
@@ -166,12 +168,12 @@ class MuZeroConfig:
         self.temperature_threshold = None
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
-        self.root_exploration_fraction = 0.25
+        self.root_dirichlet_alpha = 0.25 # 0.5 # explore
+        self.root_exploration_fraction = 0.25 # 0.25 # explore
 
         # UCB formula
-        self.pb_c_base = 19652
-        self.pb_c_init = 1.25
+        self.pb_c_base = 19652 # 5000 # explore
+        self.pb_c_init = 1.25 # 2.0 # explore
 
         ### Network
         self.support_size = 10
@@ -215,8 +217,8 @@ class MuZeroConfig:
         self.weight_decay = 1e-4
         self.momentum = 0.9
 
-        self.lr_init = 0.02
-        self.lr_decay_rate = 0.8
+        self.lr_init = 0.05 # 0.02
+        self.lr_decay_rate = 0.9# 0.8
         self.lr_decay_steps = 0.1 * self.training_steps
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
@@ -242,10 +244,10 @@ class MuZeroConfig:
         self.ratio = 1.5
         # fmt: on
 
-
+    #
     def visit_softmax_temperature_fn(self, trained_steps):
         if trained_steps < 0.5 * self.training_steps:
-            return 1.0
+            return 0.8
         elif trained_steps < 0.75 * self.training_steps:
             return 0.5
         else:
@@ -260,6 +262,7 @@ class Game(AbstractGame):
     def __init__(self, seed=None, config=None):
         # Changed environment to Frozen Lake
         if config is not None:
+            self.config = config
             print(f"Using custom map: {config.custom_map}")
             custom_map = maps[config.custom_map]
             [print(row) for row in custom_map]
@@ -282,6 +285,8 @@ class Game(AbstractGame):
         """
         # Updated for Frozen Lake: observation is a single integer
         observation, reward, done, truncated, info = self.env.step(action)
+        if done and reward < 0.99:
+            reward = self.config.negative_reward
         return numpy.array([[[observation]]]), reward, done or truncated  # Observation wrapped to match shape (1, 1, 1)
 
     def legal_actions(self):

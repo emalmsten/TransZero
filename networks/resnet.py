@@ -206,6 +206,11 @@ def conv3x3(in_channels, out_channels, stride=1):
         in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
     )
 
+def conv1x1(in_channels, out_channels):
+    return torch.nn.Conv2d(
+        in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False
+    )
+
 
 # Residual block
 class ResidualBlock(torch.nn.Module):
@@ -325,10 +330,19 @@ class RepresentationNetwork(torch.nn.Module):
                 )
             else:
                 raise NotImplementedError('downsample should be "resnet" or "CNN".')
-        self.conv = conv3x3(
-            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
-            num_channels,
-        )
+
+        self.small_conv = observation_shape[1] == 1 or observation_shape[2] == 1
+        if self.small_conv:
+            self.conv = conv1x1(
+                observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+                num_channels
+            )
+        else:
+            self.conv = conv3x3(
+                observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+                num_channels
+            )
+
         self.bn = torch.nn.BatchNorm2d(num_channels)
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
@@ -357,8 +371,12 @@ class DynamicsNetwork(torch.nn.Module):
         full_support_size,
         block_output_size_reward,
     ):
+        if num_channels == 1:
+            self.small_conv = True
         super().__init__()
+
         self.conv = conv3x3(num_channels, num_channels - 1)
+
         self.bn = torch.nn.BatchNorm2d(num_channels - 1)
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels - 1) for _ in range(num_blocks)]

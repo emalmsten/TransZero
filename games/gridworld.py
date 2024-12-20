@@ -14,14 +14,39 @@ except ModuleNotFoundError:
 
 
 class MuZeroConfig:
-    def __init__(self):
-        # fmt: off
+    def __init__(self, root=None):
+        self.root = root or pathlib.Path(__file__).resolve().parents[1]
+        cuda = torch.cuda.is_available()
+
+        # Local
+        self.testing = False
+        self.debug_mode = False or self.testing
+
+        # Essentials
+        self.network = "resnet"
+        self.game_name = "gridworld"
+        self.logger = "wandb" if not self.debug_mode else None
+
+        # Naming
+        self.append = "_local_" + "grid_test"  # Turn this to True to run a test
+        path = self.root / "results" / self.game_name / self.network
+        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        self.log_name = f"{self.game_name}_{self.network}_{self.name}"
+        self.results_path = path / self.name
+
+        # Saving
+        self.save_model = True
+        self.save_interval = 500
+
+        # GPU
+        self.selfplay_on_gpu = cuda and not self.debug_mode
+        self.train_on_gpu = cuda and not self.debug_mode
+        self.reanalyse_on_gpu = cuda and not self.debug_mode
+
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
-        self.seed = 0  # Seed for numpy, torch and the game
+        self.seed = 42  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
-
-
 
         ### Game
         self.observation_shape = (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
@@ -33,11 +58,8 @@ class MuZeroConfig:
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
-
-
         ### Self-Play
         self.num_workers = 4  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.selfplay_on_gpu = False
         self.max_moves = 15  # Maximum number of moves if game is not finished before
         self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
@@ -51,10 +73,7 @@ class MuZeroConfig:
         self.pb_c_base = 19652
         self.pb_c_init = 1.25
 
-
-
         ### Network
-        self.network = "fullyconnected"  # "resnet" / "fullyconnected"
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
         
         # Residual Network
@@ -76,16 +95,20 @@ class MuZeroConfig:
         self.fc_value_layers = [16]  # Define the hidden layers in the value network
         self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
 
-
+        # Transformer
+        self.transformer_layers = 2
+        self.transformer_heads = 4
+        self.transformer_hidden_size = 32
+        self.max_seq_length = 50
+        self.positional_embedding_type = "sinus"
+        self.norm_layer = True
+        self.use_proj = False
 
         ### Training
-        self.results_path = pathlib.Path(__file__).resolve().parents[1] / "results" / pathlib.Path(__file__).stem / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")  # Path to store the model weights and TensorBoard logs
-        self.save_model = True  # Save the checkpoint in results_path as model.checkpoint
         self.training_steps = 30000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
-        self.train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -95,7 +118,7 @@ class MuZeroConfig:
         self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
-
+        self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
 
         ### Replay Buffer
@@ -107,9 +130,6 @@ class MuZeroConfig:
 
         # Reanalyze (See paper appendix Reanalyse)
         self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
-        self.reanalyse_on_gpu = False
-
-
 
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
@@ -154,7 +174,7 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _ = self.env.step(action)
+        observation, reward, done, _, _ = self.env.step(action)
         return numpy.array(observation), reward, done
 
     def legal_actions(self):
@@ -177,7 +197,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        return numpy.array(self.env.reset())
+        observation, info = self.env.reset()
+        return numpy.array(observation)
 
     def close(self):
         """
