@@ -105,7 +105,7 @@ class MuZeroConfig:
         self.use_proj = False
 
         ### Training
-        self.training_steps = 30000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
@@ -159,7 +159,7 @@ class Game(AbstractGame):
     """
 
     def __init__(self, seed=None):
-        self.env = gym.make("MiniGrid-Empty-Random-6x6-v0")
+        self.env = gym.make("MiniGrid-Empty-Random-5x5-v0")
         self.env = gym_minigrid.wrappers.ImgObsWrapper(self.env)
         if seed is not None:
             self.env.seed(seed)
@@ -175,7 +175,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         observation, reward, done, _, _ = self.env.step(action)
-        return numpy.array(observation), reward, done
+        return numpy.array(observation), reward * 10, done
 
     def legal_actions(self):
         """
