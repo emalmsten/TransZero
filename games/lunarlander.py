@@ -100,7 +100,7 @@ class MuZeroConfig:
 
         ### Training
         self.checkpoint_interval = 10
-        self.training_steps = 200000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 400000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128 # 64  # Number of parts of games to train on at each training step # todo
         self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
@@ -146,12 +146,12 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.2 * self.training_steps:
-            return 1.0
+        if trained_steps < 0.25 * self.training_steps:
+            return 0.4
         elif trained_steps < 0.5 * self.training_steps:
-            return 0.5
+            return 0.35
         elif trained_steps < 0.75 * self.training_steps:
-            return 0.25
+            return 0.15
         else:
             return 0.05
 
