@@ -722,7 +722,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "gridworld" #"frozen_lake" #"lunarlander"
+        args.game_name = "lunarlander" #"frozen_lake" #"lunarlander"
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None)
         }

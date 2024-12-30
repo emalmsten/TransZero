@@ -1,7 +1,6 @@
 import datetime
 import pathlib
 
-import gym
 import numpy
 import torch
 
@@ -194,8 +193,8 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        observation, info = self.env.reset()
-        return numpy.array([[observation]])
+        # observation, info = self.env.reset()
+        return numpy.array([[self.env.reset()]])
 
     def close(self):
         """
