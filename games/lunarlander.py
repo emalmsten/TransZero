@@ -146,7 +146,14 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        return 0.35
+        if trained_steps < 0.2 * self.training_steps:
+            return 1.0
+        elif trained_steps < 0.5 * self.training_steps:
+            return 0.5
+        elif trained_steps < 0.75 * self.training_steps:
+            return 0.25
+        else:
+            return 0.05
 
 
 class Game(AbstractGame):
