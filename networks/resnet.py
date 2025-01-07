@@ -201,15 +201,18 @@ class MuZeroResidualNetwork(AbstractNetwork):
 
 
 
-def conv3x3(in_channels, out_channels, stride=1):
-    return torch.nn.Conv2d(
-        in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
-    )
-
-def conv1x1(in_channels, out_channels):
-    return torch.nn.Conv2d(
-        in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False
-    )
+def conv3x3(in_channels, out_channels, stride=1, conv_type="3x3"):
+    if conv_type == "3x3":
+        return torch.nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
+        )
+    elif conv_type == "1x1":
+        return torch.nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False
+        )
+    else:
+        # linear layer
+        return torch.nn.Identity()
 
 
 # Residual block
@@ -331,17 +334,16 @@ class RepresentationNetwork(torch.nn.Module):
             else:
                 raise NotImplementedError('downsample should be "resnet" or "CNN".')
 
-        self.small_conv = observation_shape[1] == 1 or observation_shape[2] == 1
-        if self.small_conv:
-            self.conv = conv1x1(
-                observation_shape[0] * (stacked_observations + 1) + stacked_observations,
-                num_channels
-            )
+        if observation_shape[1] == 1 or observation_shape[2] == 1:
+            self.conv_type = "1x1"
         else:
-            self.conv = conv3x3(
-                observation_shape[0] * (stacked_observations + 1) + stacked_observations,
-                num_channels
-            )
+            self.conv_type = "3x3"
+        self.conv_type = "1x1" # todo overwrite
+
+        self.conv = conv3x3(
+            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+            num_channels, conv_type = self.conv_type
+        )
 
         self.bn = torch.nn.BatchNorm2d(num_channels)
         self.resblocks = torch.nn.ModuleList(

@@ -168,13 +168,12 @@ class SelfPlay:
                         stacked_observations,
                         self.game.legal_actions(),
                         self.game.to_play(),
-                        True
+                        temperature != 0
                     )
                     action = self.select_action(
                         root,
                         temperature
-                        if not temperature_threshold
-                        or len(game_history.action_history) < temperature_threshold
+                        if not temperature_threshold or len(game_history.action_history) < temperature_threshold
                         else 0,
                     )
 

@@ -1,14 +1,14 @@
 import datetime
 import pathlib
 
-import gym
+import gymnasium as gym
 import numpy
 import torch
 
 from .abstract_game import AbstractGame
 
 try:
-    import gym_minigrid
+    import minigrid
 except ModuleNotFoundError:
     raise ModuleNotFoundError('Please run "pip install gym_minigrid"')
 
@@ -60,18 +60,18 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 15  # Maximum number of moves if game is not finished before
-        self.num_simulations = 20  # Number of future moves self-simulated
+        self.max_moves = 12  # Maximum number of moves if game is not finished before
+        self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
+        self.root_dirichlet_alpha = 0.25 # 0.25
         self.root_exploration_fraction = 0.25
 
         # UCB formula
         self.pb_c_base = 19652
-        self.pb_c_init = 1.25
+        self.pb_c_init = 1.25 # 1.25
 
         ### Network
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
@@ -83,17 +83,17 @@ class MuZeroConfig:
         self.reduced_channels_reward = 2  # Number of channels in reward head
         self.reduced_channels_value = 2  # Number of channels in value head
         self.reduced_channels_policy = 2  # Number of channels in policy head
-        self.resnet_fc_reward_layers = []  # Define the hidden layers in the reward head of the dynamic network
-        self.resnet_fc_value_layers = []  # Define the hidden layers in the value head of the prediction network
-        self.resnet_fc_policy_layers = []  # Define the hidden layers in the policy head of the prediction network
+        self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
+        self.resnet_fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
+        self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+        self.fc_representation_layers = [8]  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [8]  # Define the hidden layers in the dynamics network
+        self.fc_reward_layers = [8]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [8]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
 
         # Transformer
         self.transformer_layers = 2
@@ -105,10 +105,10 @@ class MuZeroConfig:
         self.use_proj = False
 
         ### Training
-        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
+        self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 256  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
-        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -129,13 +129,15 @@ class MuZeroConfig:
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
         # Reanalyze (See paper appendix Reanalyse)
-        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
+        self.softmax_limits = [0.25, 0.5, 1.0]
+        self.softmax_temps =  [1, 0.5, 0.25]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -145,12 +147,19 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.5 * self.training_steps:
-            return 1.0
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
-        else:
-            return 0.25
+        for i, limit in enumerate(self.softmax_limits):
+            if trained_steps < limit * self.training_steps:
+                return self.softmax_temps[i]
+        # if trained_steps < 0.1 * self.training_steps:
+        #     return 2
+        # if trained_steps < 0.25 * self.training_steps:
+        #     return 0.8
+        # if trained_steps < 0.5 * self.training_steps:
+        #     return 0.4
+        # elif trained_steps < 0.75 * self.training_steps:
+        #     return 0.2
+        # else:
+        #     return 0.01
 
 
 class Game(AbstractGame):
@@ -160,7 +169,7 @@ class Game(AbstractGame):
 
     def __init__(self, seed=None):
         self.env = gym.make("MiniGrid-Empty-5x5-v0")
-        self.env = gym_minigrid.wrappers.ImgObsWrapper(self.env)
+        self.env = minigrid.wrappers.ImgObsWrapper(self.env)
         if seed is not None:
             self.env.seed(seed)
 
