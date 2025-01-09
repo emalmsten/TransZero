@@ -7,10 +7,30 @@ import torch
 
 from .abstract_game import AbstractGame
 
+maps = {
+    "2x2_0h_0d": [
+        "SF",
+        "FG",
+    ],
+    "3x3_2h_2d": [
+        "SFH",
+        "FHF",
+        "FFG",
+    ]
+}
+
 try:
     import minigrid
+    from minigrid.core.constants import COLOR_NAMES
+    from minigrid.core.grid import Grid
+    from minigrid.core.mission import MissionSpace
+    from minigrid.core.world_object import Door, Goal, Key, Wall, Lava
+    from minigrid.manual_control import ManualControl
+    from minigrid.minigrid_env import MiniGridEnv
+
+
 except ModuleNotFoundError:
-    raise ModuleNotFoundError('Please run "pip install gym_minigrid"')
+    raise ModuleNotFoundError('Please run "pip install minigrid"')
 
 
 class MuZeroConfig:
@@ -24,7 +44,7 @@ class MuZeroConfig:
 
         # Essentials
         self.network = "resnet"
-        self.game_name = "gridworld"
+        self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
 
         # Naming
@@ -53,6 +73,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
+        self.negative_reward = -1
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -66,16 +87,16 @@ class MuZeroConfig:
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25 # 0.25
+        self.root_dirichlet_alpha = 0.25  # 0.25
         self.root_exploration_fraction = 0.25
 
         # UCB formula
         self.pb_c_base = 19652
-        self.pb_c_init = 1.25 # 1.25
+        self.pb_c_init = 1.25
 
         ### Network
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
-        
+
         # Residual Network
         self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 3  # Number of blocks in the ResNet
@@ -89,11 +110,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+        self.fc_representation_layers = [8]  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [8]  # Define the hidden layers in the dynamics network
+        self.fc_reward_layers = [8]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [8]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
 
         # Transformer
         self.transformer_layers = 2
@@ -120,7 +141,6 @@ class MuZeroConfig:
         self.lr_decay_steps = 1000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
-
         ### Replay Buffer
         self.replay_buffer_size = 5000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
@@ -137,7 +157,7 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
         self.softmax_limits = [0.25, 0.5, 1.0]
-        self.softmax_temps =  [1, 0.5, 0.25]
+        self.softmax_temps = [1, 0.5, 0.25]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -167,11 +187,31 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
-        self.env = gym.make("MiniGrid-Empty-Random-5x5-v0")
+    def __init__(self, seed=None, config=None):
+        size = 5
+        max_steps = 4 * size**2
+
+        if config is not None:
+            max_steps = config.max_moves
+            render_mode = "human" if config.testing else None
+            negative_reward = config.negative_reward
+
+        render_mode = 'human'
+
+        gym.envs.registration.register(
+            id="CustomSimpleEnv-v0",
+            entry_point=__name__ + ":SimpleEnv",
+        )
+
+        self.env = gym.make("CustomSimpleEnv-v0", size=size, max_steps=max_steps,
+                            render_mode=render_mode, negative_reward=negative_reward)
+
+        # if seed is not None:
+        #     self.env.seed(seed)
+
         self.env = minigrid.wrappers.ImgObsWrapper(self.env)
-        if seed is not None:
-            self.env.seed(seed)
+
+
 
     def step(self, action):
         """
@@ -241,3 +281,83 @@ class Game(AbstractGame):
             5: "Toggle (open doors, interact with objects)",
         }
         return f"{action_number}. {actions[action_number]}"
+
+
+def make_custom_simple_env(size=5, max_steps=None):
+    def _init():
+        return SimpleEnv(size=size, max_steps=max_steps)
+    return _init
+
+class SimpleEnv(MiniGridEnv):
+    def __init__(
+        self,
+        size=5,
+        agent_start_pos=(1, 1),
+        agent_start_dir=0,
+        max_steps: int | None = None,
+        **kwargs,
+    ):
+        self.agent_start_pos = agent_start_pos
+        self.agent_start_dir = agent_start_dir
+
+        self.render_mode = kwargs.pop("render_mode", None)
+        self.custom_map = kwargs.pop("custom_map", maps["3x3_2h_2d"])
+        self.negative_reward = kwargs.pop("negative_reward", -1)
+
+        self.size = size
+        self.min_actions = 5
+
+
+        mission_space = MissionSpace(mission_func=self._gen_mission)
+
+        super().__init__(
+            mission_space=mission_space,
+            grid_size=size,
+            max_steps=max_steps,
+            render_mode = self.render_mode,
+            **kwargs,
+        )
+
+    def _gen_grid_from_string(self, layout):
+        width = len(layout[0]) + 2
+        height = len(layout) + 2
+        self.grid = Grid(width, height)
+
+        # Generate the surrounding walls
+        self.grid.wall_rect(0, 0, width, height)
+
+        for y, row in enumerate(layout):
+            y += 1
+            for x, char in enumerate(row):
+                x += 1
+                if char == 'S':
+                    self.agent_pos = (x, y)  # Set agent's starting position
+                    self.agent_dir = self.agent_start_dir
+                elif char == 'H':
+                    self.grid.set(x, y, Lava())
+                elif char == 'G':
+                    self.put_obj(Goal(), x, y)
+
+
+    @staticmethod
+    def _gen_mission():
+        return "grand mission"
+
+
+    def _gen_grid(self, width, height):
+        # Create an empty grid
+        self._gen_grid_from_string(self.custom_map)
+        self.mission = "grand mission"
+
+
+    def step(self, action):
+        obs, reward, done, truncated, info = super().step(action)
+        # Add custom reward logic
+        if reward > 0.0:
+            reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
+
+        if self.step_count < self.max_steps and done and reward < 0.00001:
+            #reward = self.negative_reward
+            pass
+
+        return obs, reward, done, truncated, info
