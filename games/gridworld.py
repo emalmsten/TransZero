@@ -78,11 +78,11 @@ class MuZeroConfig:
         
         # Residual Network
         self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
-        self.blocks = 1  # Number of blocks in the ResNet
-        self.channels = 2  # Number of channels in the ResNet
-        self.reduced_channels_reward = 2  # Number of channels in reward head
-        self.reduced_channels_value = 2  # Number of channels in value head
-        self.reduced_channels_policy = 2  # Number of channels in policy head
+        self.blocks = 3  # Number of blocks in the ResNet
+        self.channels = 8  # Number of channels in the ResNet
+        self.reduced_channels_reward = 4  # Number of channels in reward head
+        self.reduced_channels_value = 4  # Number of channels in value head
+        self.reduced_channels_policy = 4  # Number of channels in policy head
         self.resnet_fc_reward_layers = [16]  # Define the hidden layers in the reward head of the dynamic network
         self.resnet_fc_value_layers = [16]  # Define the hidden layers in the value head of the prediction network
         self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
@@ -115,7 +115,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.005  # Initial learning rate
+        self.lr_init = 0.015  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -125,7 +125,7 @@ class MuZeroConfig:
         self.replay_buffer_size = 5000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
-        self.PER = False  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
+        self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
         # Reanalyze (See paper appendix Reanalyse)
@@ -168,7 +168,7 @@ class Game(AbstractGame):
     """
 
     def __init__(self, seed=None):
-        self.env = gym.make("MiniGrid-Empty-5x5-v0")
+        self.env = gym.make("MiniGrid-Empty-Random-5x5-v0")
         self.env = minigrid.wrappers.ImgObsWrapper(self.env)
         if seed is not None:
             self.env.seed(seed)
