@@ -18,6 +18,7 @@ from utils import reset_names, refresh
 # "FFF",
 # "FGF",
 #112
+
 maps = {
     "2x2_0h_0d": [
         "SF",
@@ -125,7 +126,7 @@ class MuZeroConfig:
         self.network = "resnet"
         self.game_name = "frozen_lake"
         self.custom_map = "3x3_2h_2d"
-        self.negative_reward = 0.0
+        self.negative_reward = 0
         self.logger = "wandb" if not self.debug_mode else None
 
 
@@ -168,12 +169,12 @@ class MuZeroConfig:
         self.temperature_threshold = None
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25 # 0.5 # explore
-        self.root_exploration_fraction = 0.25 # 0.25 # explore
+        self.root_dirichlet_alpha = 0.7 # 0.5 # explore
+        self.root_exploration_fraction = 0.4 # 0.25 # explore
 
         # UCB formula
         self.pb_c_base = 19652 # 5000 # explore
-        self.pb_c_init = 1.25 # 2.0 # explore
+        self.pb_c_init = 2.5 # 2.0 # explore
 
         ### Network
         self.support_size = 10
@@ -185,9 +186,9 @@ class MuZeroConfig:
         self.reduced_channels_reward = 2
         self.reduced_channels_value = 2
         self.reduced_channels_policy = 2
-        self.resnet_fc_reward_layers = []
-        self.resnet_fc_value_layers = []
-        self.resnet_fc_policy_layers = []
+        self.resnet_fc_reward_layers = [16]
+        self.resnet_fc_value_layers = [16]
+        self.resnet_fc_policy_layers = [16]
 
         # Fully Connected
         self.encoding_size = 8
@@ -209,7 +210,7 @@ class MuZeroConfig:
         ### Training
         self.checkpoint_interval = 10
         self.training_steps = 10000
-        self.batch_size = 128
+        self.batch_size = 256
         self.value_loss_weight = 1
 
         # Learning Rate
@@ -217,8 +218,8 @@ class MuZeroConfig:
         self.weight_decay = 1e-4
         self.momentum = 0.9
 
-        self.lr_init = 0.05 # 0.02
-        self.lr_decay_rate = 0.9# 0.8
+        self.lr_init = 0.001 # 0.02
+        self.lr_decay_rate = 0.95 # 0.8
         self.lr_decay_steps = 0.1 * self.training_steps
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
@@ -246,12 +247,14 @@ class MuZeroConfig:
 
     #
     def visit_softmax_temperature_fn(self, trained_steps):
-        if trained_steps < 0.5 * self.training_steps:
-            return 0.8
-        elif trained_steps < 0.75 * self.training_steps:
+        if trained_steps < 0.1 * self.training_steps:
+            return 1
+        elif trained_steps < 0.25 * self.training_steps:
             return 0.5
-        else:
+        elif trained_steps < 0.5 * self.training_steps:
             return 0.25
+        else:
+            return 0.1
 
 
 class Game(AbstractGame):
