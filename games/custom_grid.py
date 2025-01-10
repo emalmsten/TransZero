@@ -46,6 +46,7 @@ class MuZeroConfig:
         self.network = "resnet"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
+        self.custom_map = "3x3_2h_2d"
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
@@ -73,7 +74,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = -1
+        self.negative_reward = 0
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -196,7 +197,7 @@ class Game(AbstractGame):
             render_mode = "human" if config.testing else None
             negative_reward = config.negative_reward
 
-        render_mode = 'human'
+        # render_mode = 'human'
 
         gym.envs.registration.register(
             id="CustomSimpleEnv-v0",
@@ -302,11 +303,10 @@ class SimpleEnv(MiniGridEnv):
 
         self.render_mode = kwargs.pop("render_mode", None)
         self.custom_map = kwargs.pop("custom_map", maps["3x3_2h_2d"])
-        self.negative_reward = kwargs.pop("negative_reward", -1)
+        self.negative_reward = kwargs.pop("negative_reward", 0)
 
         self.size = size
         self.min_actions = 5
-
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
@@ -341,13 +341,13 @@ class SimpleEnv(MiniGridEnv):
 
     @staticmethod
     def _gen_mission():
-        return "grand mission"
+        return "custom mission"
 
 
     def _gen_grid(self, width, height):
         # Create an empty grid
         self._gen_grid_from_string(self.custom_map)
-        self.mission = "grand mission"
+        self.mission = "custom mission"
 
 
     def step(self, action):
@@ -356,8 +356,8 @@ class SimpleEnv(MiniGridEnv):
         if reward > 0.0:
             reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
 
-        if self.step_count < self.max_steps and done and reward < 0.00001:
-            #reward = self.negative_reward
-            pass
+        # if self.step_count < self.max_steps and done and reward < 0.00001:
+        #     #reward = self.negative_reward
+        #     pass
 
         return obs, reward, done, truncated, info
