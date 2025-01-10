@@ -50,9 +50,9 @@ class MuZeroConfig:
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.network
+        path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
-        self.log_name = f"{self.game_name}_{self.network}_{self.name}"
+        self.log_name = f"{self.game_name}_{self.custom_map}_{self.network}_{self.name}"
         self.results_path = path / self.name
 
         # Saving
