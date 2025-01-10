@@ -43,7 +43,7 @@ class MuZeroConfig:
         self.debug_mode = False or self.testing
 
         # Essentials
-        self.network = "resnet"
+        self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
         self.custom_map = "3x3_2h_2d"
@@ -111,11 +111,11 @@ class MuZeroConfig:
 
         # Fully Connected Network
         self.encoding_size = 8
-        self.fc_representation_layers = [8]  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [8]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [8]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [8]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [8]  # Define the hidden layers in the policy network
+        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
+        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [16]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
 
         # Transformer
         self.transformer_layers = 2
@@ -137,7 +137,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.015  # Initial learning rate
+        self.lr_init = 0.005  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -157,7 +157,7 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.softmax_limits = [0.25, 0.5, 1.0]
+        self.softmax_limits = [0.5, 0.75, 1.0]
         self.softmax_temps = [1, 0.5, 0.25]
 
     def visit_softmax_temperature_fn(self, trained_steps):
