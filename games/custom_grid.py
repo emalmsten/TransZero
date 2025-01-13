@@ -54,10 +54,10 @@ class MuZeroConfig:
         self.debug_mode = False or self.testing
 
         # Essentials
-        self.network = "transformer"
+        self.network = "resnet"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "4x4_3h_1d"
+        self.custom_map = "3x3_2h_2d"
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
@@ -85,7 +85,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = 0
+        self.negative_reward = -0.1
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -129,7 +129,7 @@ class MuZeroConfig:
         self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
 
         # Transformer
-        self.transformer_layers = 2
+        self.transformer_layers = 3
         self.transformer_heads = 4
         self.transformer_hidden_size = 32
         self.max_seq_length = 50
@@ -148,8 +148,8 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.0025  # Initial learning rate
-        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.005  # Initial learning rate
+        self.lr_decay_rate = 0.95  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
@@ -168,8 +168,8 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.softmax_limits = [0.5, 0.75, 1.0]
-        self.softmax_temps = [1, 0.5, 0.25]
+        self.softmax_limits = [0.25, 0.5, 1.0]
+        self.softmax_temps =  [1, 0.5, 0.25]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -306,14 +306,17 @@ class SimpleEnv(MiniGridEnv):
         self.testing = kwargs.pop("testing", False)
         render_mode = "human" #if self.testing else None
 
-        self.max_steps = kwargs.pop("max_steps", 0)
         self.negative_reward = kwargs.pop("negative_reward", None)
 
-        self.custom_map_name = kwargs.pop("custom_map", "4x4_3h_1d")
+        self.custom_map_name = kwargs.pop("custom_map", "3x3_2h_2d")
         self.custom_map = maps[self.custom_map_name]
 
         self.size = int(self.custom_map_name[0]) + 2
         self.min_actions = min_moves[self.custom_map_name]
+
+        self.max_steps = kwargs.pop("max_steps", 0)
+        self.max_steps = self.min_actions * 2
+
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
