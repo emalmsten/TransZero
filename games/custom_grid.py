@@ -16,7 +16,13 @@ maps = {
         "SFH",
         "FHF",
         "FFG",
-    ]
+    ],
+    "4x4_3h_1d": [
+        "SFHF",
+        "FFFF",
+        "HFFF",
+        "FHFG",
+    ],
 }
 
 try:
@@ -46,7 +52,7 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "3x3_2h_2d"
+        self.custom_map = "4x4_3h_1d"
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
@@ -137,7 +143,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.005  # Initial learning rate
+        self.lr_init = 0.0025  # Initial learning rate
         self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 1000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -302,11 +308,11 @@ class SimpleEnv(MiniGridEnv):
         self.agent_start_dir = agent_start_dir
 
         self.render_mode = kwargs.pop("render_mode", None)
-        self.custom_map = kwargs.pop("custom_map", maps["3x3_2h_2d"])
+        self.custom_map = kwargs.pop("custom_map", None)
         self.negative_reward = kwargs.pop("negative_reward", 0)
 
         self.size = size
-        self.min_actions = 5
+        self.min_actions = 6
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
