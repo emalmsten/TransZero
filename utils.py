@@ -5,7 +5,7 @@ from pathlib import Path
 def reset_names(cfg):
     game_name = Path(cfg.game_name)
     game_str = cfg.game_name
-    if cfg.game_name == "frozen_lake":
+    if cfg.game_name == "frozen_lake" or cfg.game_name == "custom_grid":
         game_name = game_name / cfg.custom_map
         game_str += f"_{cfg.custom_map}"
 
