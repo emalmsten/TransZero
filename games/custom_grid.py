@@ -24,6 +24,11 @@ maps = {
         "FHFG",
     ],
 }
+min_moves = {
+    "2x2_0h_0d": 3,
+    "3x3_2h_2d": 6,
+    "4x4_3h_1d": 8,
+}
 
 try:
     import minigrid
@@ -195,23 +200,14 @@ class Game(AbstractGame):
     """
 
     def __init__(self, seed=None, config=None):
-        size = 5
-        max_steps = 4 * size**2
-
-        if config is not None:
-            max_steps = config.max_moves
-            render_mode = "human" if config.testing else None
-            negative_reward = config.negative_reward
-
-        # render_mode = 'human'
 
         gym.envs.registration.register(
             id="CustomSimpleEnv-v0",
             entry_point=__name__ + ":SimpleEnv",
         )
 
-        self.env = gym.make("CustomSimpleEnv-v0", size=size, max_steps=max_steps,
-                            render_mode=render_mode, negative_reward=negative_reward)
+        self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
+                            custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves)
 
         # if seed is not None:
         #     self.env.seed(seed)
@@ -290,10 +286,10 @@ class Game(AbstractGame):
         return f"{action_number}. {actions[action_number]}"
 
 
-def make_custom_simple_env(size=5, max_steps=None):
-    def _init():
-        return SimpleEnv(size=size, max_steps=max_steps)
-    return _init
+# def make_custom_simple_env(size=5, max_steps=None):
+#     def _init():
+#         return SimpleEnv(size=size, max_steps=max_steps)
+#     return _init
 
 class SimpleEnv(MiniGridEnv):
     def __init__(
@@ -307,20 +303,25 @@ class SimpleEnv(MiniGridEnv):
         self.agent_start_pos = agent_start_pos
         self.agent_start_dir = agent_start_dir
 
-        self.render_mode = kwargs.pop("render_mode", None)
-        self.custom_map = kwargs.pop("custom_map", None)
-        self.negative_reward = kwargs.pop("negative_reward", 0)
+        self.testing = kwargs.pop("testing", False)
+        render_mode = "human" #if self.testing else None
 
-        self.size = size
-        self.min_actions = 6
+        self.max_steps = kwargs.pop("max_steps", 0)
+        self.negative_reward = kwargs.pop("negative_reward", None)
+
+        self.custom_map_name = kwargs.pop("custom_map", "4x4_3h_1d")
+        self.custom_map = maps[self.custom_map_name]
+
+        self.size = int(self.custom_map_name[0]) + 2
+        self.min_actions = min_moves[self.custom_map_name]
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
         super().__init__(
             mission_space=mission_space,
-            grid_size=size,
-            max_steps=max_steps,
-            render_mode = self.render_mode,
+            grid_size=self.size,
+            max_steps=self.max_steps,
+            render_mode = render_mode,
             **kwargs,
         )
 
