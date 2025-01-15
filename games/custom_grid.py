@@ -54,7 +54,7 @@ class MuZeroConfig:
         self.debug_mode = False or self.testing
 
         # Essentials
-        self.network = "resnet"
+        self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
         self.custom_map = "3x3_2h_2d"
@@ -123,10 +123,10 @@ class MuZeroConfig:
         # Fully Connected Network
         self.encoding_size = 8
         self.fc_representation_layers = []  # Define the hidden layers in the representation network
-        self.fc_dynamics_layers = [16]  # Define the hidden layers in the dynamics network
-        self.fc_reward_layers = [16]  # Define the hidden layers in the reward network
-        self.fc_value_layers = [16]  # Define the hidden layers in the value network
-        self.fc_policy_layers = [16]  # Define the hidden layers in the policy network
+        self.fc_dynamics_layers = [32]  # Define the hidden layers in the dynamics network
+        self.fc_reward_layers = [32]  # Define the hidden layers in the reward network
+        self.fc_value_layers = [32]  # Define the hidden layers in the value network
+        self.fc_policy_layers = [32]  # Define the hidden layers in the policy network
 
         # Transformer
         self.transformer_layers = 3
@@ -149,8 +149,8 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.005  # Initial learning rate
-        self.lr_decay_rate = 0.95  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 1000
+        self.lr_decay_rate = 0.99  # Set it to 1 to use a constant learning rate
+        self.lr_decay_steps = 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
@@ -168,7 +168,7 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.softmax_limits = [0.25, 0.5, 1.0]
+        self.softmax_limits = [0.25, 0.5, 1]
         self.softmax_temps =  [1, 0.5, 0.25]
 
     def visit_softmax_temperature_fn(self, trained_steps):
