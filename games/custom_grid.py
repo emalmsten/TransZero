@@ -5,6 +5,7 @@ import gymnasium as gym
 import numpy
 import torch
 
+from optimal_path_finder import calculate_steps_and_turns_to_goal
 from .abstract_game import AbstractGame
 
 maps = {
@@ -21,7 +22,7 @@ maps = {
         "SFHF",
         "FFFF",
         "HFFF",
-        "FHFG",
+        "HHFG",
     ],
 }
 min_moves = {
@@ -57,7 +58,8 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "3x3_2h_2d"
+        self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
+        self.start_pos = (1 ,1) # None
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
@@ -85,7 +87,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = 0
+        self.negative_reward = -0.01
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -93,14 +95,14 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 12  # Maximum number of moves if game is not finished before
+        self.max_moves = 20  # Maximum number of moves if game is not finished before
         self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25  # 0.25
-        self.root_exploration_fraction = 0.25
+        self.root_dirichlet_alpha = 0.3  # 0.25
+        self.root_exploration_fraction = 0.3
 
         # UCB formula
         self.pb_c_base = 19652
@@ -130,12 +132,13 @@ class MuZeroConfig:
 
         # Transformer
         self.transformer_layers = 3
-        self.transformer_heads = 4
-        self.transformer_hidden_size = 32
+        self.transformer_heads = 4 # 4
+        self.transformer_hidden_size = 32 # 32
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
+        self.representation_network_type = "mlp"  # "resnet", "cnn" or "mlp"
 
         ### Training
         self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)
@@ -148,8 +151,8 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.005  # Initial learning rate
-        self.lr_decay_rate = 0.99  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.001  # Initial learning rate
+        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
@@ -168,8 +171,8 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.softmax_limits = [0.25, 0.5, 1]
-        self.softmax_temps =  [1, 0.5, 0.25]
+        self.softmax_limits = [0.25, 0.5, 0.75, 1]
+        self.softmax_temps =  [0.75, 0.5, 0.25, 0.1]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -207,7 +210,8 @@ class Game(AbstractGame):
         )
 
         self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
-                            custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves)
+                            custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves,
+                            start_pos = config.start_pos)
 
         # if seed is not None:
         #     self.env.seed(seed)
@@ -295,13 +299,13 @@ class SimpleEnv(MiniGridEnv):
     def __init__(
         self,
         size=5,
-        agent_start_pos=(1, 1),
+        #agent_start_pos=(1, 1),
         agent_start_dir=0,
         max_steps: int | None = None,
         **kwargs,
     ):
-        self.agent_start_pos = agent_start_pos
-        self.agent_start_dir = agent_start_dir
+        #self.agent_start_pos = agent_start_pos
+        #self.agent_start_dir = agent_start_dir
 
         self.testing = kwargs.pop("testing", False)
         render_mode = "human" #if self.testing else None
@@ -309,6 +313,8 @@ class SimpleEnv(MiniGridEnv):
         self.negative_reward = kwargs.pop("negative_reward", None)
 
         self.custom_map_name = kwargs.pop("custom_map", "3x3_2h_2d")
+        self.start_pos = kwargs.pop("start_pos", None)
+
         self.custom_map = maps[self.custom_map_name]
 
         self.size = int(self.custom_map_name[0]) + 2
@@ -316,7 +322,6 @@ class SimpleEnv(MiniGridEnv):
 
         self.max_steps = kwargs.pop("max_steps", 0)
         self.max_steps = self.min_actions * 2
-
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
@@ -336,17 +341,30 @@ class SimpleEnv(MiniGridEnv):
         # Generate the surrounding walls
         self.grid.wall_rect(0, 0, width, height)
 
+        place_agent = False
         for y, row in enumerate(layout):
             y += 1
             for x, char in enumerate(row):
                 x += 1
                 if char == 'S':
-                    self.agent_pos = (x, y)  # Set agent's starting position
-                    self.agent_dir = self.agent_start_dir
+                    if self.start_pos is not None:
+                        self.agent_pos = self.start_pos
+                        self.agent_dir = 0
+                    else:
+                        place_agent = True
+                    import random
+                    #self.place_agent()
+                    #x = random.randint(1, width - 2)
+                    #y = random.randint(1, height - 2)
+                    #self.agent_pos = (x, y)  # Set agent's starting position
+                    #self.agent_dir = self.agent_start_dir
                 elif char == 'H':
                     self.grid.set(x, y, Lava())
                 elif char == 'G':
                     self.put_obj(Goal(), x, y)
+
+        if place_agent:
+            self.place_agent()
 
 
     @staticmethod
@@ -361,13 +379,18 @@ class SimpleEnv(MiniGridEnv):
 
 
     def step(self, action):
+        if self.step_count == 0:
+            step_grid = calculate_steps_and_turns_to_goal(self.custom_map)
+            self.min_actions = step_grid[self.agent_pos[0] - 1, self.agent_pos[1] - 1]
+            self.min_actions += 2 # inital turning
+
         obs, reward, done, truncated, info = super().step(action)
         # Add custom reward logic
         if reward > 0.0:
             reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
+            reward = min(1.0, reward)
 
-        # if self.step_count < self.max_steps and done and reward < 0.00001:
-        #     #reward = self.negative_reward
-        #     pass
+        if self.step_count < self.max_steps and done and reward < 0.00001:
+            reward = self.negative_reward
 
         return obs, reward, done, truncated, info
