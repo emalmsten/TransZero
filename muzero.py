@@ -166,7 +166,7 @@ class MuZero:
         if self.config.logger == "wandb":
             self.wandb_run = wandb.init(
                 entity="elhmalmsten-tu-delft",
-                project="TransZero",
+                project=self.config.project,
                 name=str(self.config.log_name), # to string:
                 config=self.config.__dict__,
                 dir=str(self.config.results_path),
@@ -722,19 +722,20 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "lunarlander" #"frozen_lake" #"lunarlander"
+        args.game_name = "custom_grid" #"gridworld" # #"lunarlander"
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None)
         }
         # todo cleanup
         if test:
             custom_map = "3x3_1h_1d"
-            args.test_mode = "no viz"
+            args.test_mode = "other"
             args.seq_file = "manual_seqs/test_1.txt"
             args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
             args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
             args.checkpoint_path = f"models/fulcon_model.checkpoint"
-            args.config={"testing": True, "custom_map": custom_map}
+            args.checkpoint_path = f"models/cust_grid.checkpoint"
+            args.config={"testing": True} #, "custom_map": custom_map}
 
         logger = "wandb"
 

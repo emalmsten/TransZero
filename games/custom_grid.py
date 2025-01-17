@@ -62,6 +62,7 @@ class MuZeroConfig:
         self.start_pos = (1 ,1) # None
 
         # Naming
+        self.project = "TransZeroV2"
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
