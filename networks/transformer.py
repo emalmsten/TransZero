@@ -3,6 +3,7 @@ from networks.abstract_network import AbstractNetwork
 from models import mlp
 import torch.nn as nn
 import math
+from networks.resnet import DownSample, DownsampleCNN, conv3x3, ResidualBlock
 
 class MuZeroTransformerNetwork(AbstractNetwork):
     def __init__(
@@ -24,6 +25,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         seq_mode,
         norm_layer = True,
         use_proj = False,
+
+        representation_network_type = "res"
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
@@ -31,6 +34,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.full_support_size = 2 * support_size + 1
         self.seq_mode = seq_mode
         self.use_proj = use_proj
+        self.representation_network_type = representation_network_type
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
@@ -38,18 +42,32 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Transformer components for value prediction
         self.transformer_hidden_size = transformer_hidden_size
 
-        self.representation_network = cond_wrap(
-            mlp(
-                observation_shape[0]
-                * observation_shape[1]
-                * observation_shape[2]
-                * (stacked_observations + 1)
-                + stacked_observations * observation_shape[1] * observation_shape[2],
-                fc_representation_layers,
-                encoding_size if self.use_proj else transformer_hidden_size,
-                norm_layer=norm_layer,
+        if representation_network_type == "res":
+            self.representation_network = cond_wrap(
+                RepresentationNetwork(
+                    observation_shape,
+                    stacked_observations,
+                    3,
+                    3,
+                    None,
+                )
             )
-        )
+        elif representation_network_type == "mlp":
+            self.representation_network = cond_wrap(
+                mlp(
+                    observation_shape[0]
+                    * observation_shape[1]
+                    * observation_shape[2]
+                    * (stacked_observations + 1)
+                    + stacked_observations * observation_shape[1] * observation_shape[2],
+                    fc_representation_layers,
+                    encoding_size if self.use_proj else transformer_hidden_size,
+                    norm_layer=norm_layer,
+                )
+            )
+        elif representation_network_type == "cnn":
+            # not implemented
+            raise NotImplementedError("representation_network_type 'cnn' not implemented")
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
@@ -142,8 +160,48 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         reward = torch.rand((1, self.full_support_size), device=device, requires_grad=True)
         return policy_logits, value, reward
 
-
     def representation(self, observation):
+        if self.representation_network_type == "res":
+            return self.representation_res(observation)
+        elif self.representation_network_type == "mlp":
+            return self.representation_mlp(observation)
+
+    def representation_res(self, observation):
+        # to device
+        encoded_state = self.representation_network(observation)
+        # Scale encoded state between [0, 1] (See appendix paper Training)
+        min_encoded_state = (
+            encoded_state.view(
+                -1,
+                encoded_state.shape[1],
+                encoded_state.shape[2] * encoded_state.shape[3],
+            )
+            .min(2, keepdim=True)[0]
+            .unsqueeze(-1)
+        )
+        max_encoded_state = (
+            encoded_state.view(
+                -1,
+                encoded_state.shape[1],
+                encoded_state.shape[2] * encoded_state.shape[3],
+            )
+            .max(2, keepdim=True)[0]
+            .unsqueeze(-1)
+        )
+        scale_encoded_state = max_encoded_state - min_encoded_state
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
+        encoded_state_normalized = (
+            encoded_state - min_encoded_state
+        ) / scale_encoded_state
+
+        encoded_state = encoded_state.view(encoded_state.size(0), -1) # (seq_len, batch_size, feature_dim)
+        # linear projection
+        encoded_state = nn.Linear(encoded_state.size(1), self.transformer_hidden_size,
+                                      device=encoded_state.device)(encoded_state)
+
+        return encoded_state
+
+    def representation_mlp(self, observation):
         encoded_state = self.representation_network(
             observation.view(observation.shape[0], -1)
         )
@@ -160,6 +218,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
     def initial_inference(self, observation):
         encoded_state = self.representation(observation)
+        #encoded_state_old = self.representation_old(observation)
+        # print("encoded_state", encoded_state.shape())
+        # print("encoded_state_old", encoded_state_old.shape())
         policy_logits, value, reward = self.prediction(encoded_state)
 
         # reward equal to 0 for consistency
@@ -196,10 +257,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
     def create_input_sequence(self, root_hidden_state, action_sequence):
         # root hidden state: (B, x)
         # action sequence: (B, y)
+        batch_size = root_hidden_state.size(0)
 
         # Embed the action sequence
         if action_sequence is None:
-            batch_size = root_hidden_state.size(0)
             # Create an empty embedded_actions tensor
             embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=root_hidden_state.device)
         else:
@@ -237,3 +298,64 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         policy_logits, value, reward = self.prediction(root_hidden_state, action_sequence)
 
         return value, reward, policy_logits, None # next encoded state
+
+
+
+class RepresentationNetwork(torch.nn.Module):
+    def __init__(
+        self,
+        observation_shape,
+        stacked_observations,
+        num_blocks,
+        num_channels,
+        downsample,
+    ):
+        super().__init__()
+        self.downsample = downsample
+        if self.downsample:
+            if self.downsample == "resnet":
+                self.downsample_net = DownSample(
+                    observation_shape[0] * (stacked_observations + 1)
+                    + stacked_observations,
+                    num_channels,
+                )
+            elif self.downsample == "CNN":
+                self.downsample_net = DownsampleCNN(
+                    observation_shape[0] * (stacked_observations + 1)
+                    + stacked_observations,
+                    num_channels,
+                    (
+                        math.ceil(observation_shape[1] / 16),
+                        math.ceil(observation_shape[2] / 16),
+                    ),
+                )
+            else:
+                raise NotImplementedError('downsample should be "resnet" or "CNN".')
+
+        if observation_shape[1] == 1 or observation_shape[2] == 1:
+            self.conv_type = "1x1"
+        else:
+            self.conv_type = "3x3"
+        #self.conv_type = "1x1" # todo overwrite
+
+        self.conv = conv3x3(
+            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+            num_channels, conv_type = self.conv_type
+        )
+
+        self.bn = torch.nn.BatchNorm2d(num_channels)
+        self.resblocks = torch.nn.ModuleList(
+            [ResidualBlock(num_channels) for _ in range(num_blocks)]
+        )
+
+    def forward(self, x):
+        if self.downsample:
+            x = self.downsample_net(x)
+        else:
+            x = self.conv(x)
+            x = self.bn(x)
+            x = torch.nn.functional.relu(x)
+
+        for block in self.resblocks:
+            x = block(x)
+        return x
