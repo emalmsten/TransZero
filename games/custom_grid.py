@@ -409,8 +409,8 @@ class SimpleEnv(MiniGridEnv):
     def step(self, action):
         if self.step_count == 0:
             step_grid = calculate_steps_and_turns_to_goal(self.custom_map)
-            self.min_actions = step_grid[self.agent_pos[0] - 1, self.agent_pos[1] - 1]
-            self.min_actions += 2 # inital turning
+            min_actions = step_grid[self.agent_pos[1] - 1, self.agent_pos[0] - 1]
+            self.min_actions = min_actions + 2 # inital turning
 
         obs, reward, done, truncated, info = super().step(action)
         # Add custom reward logic
