@@ -24,6 +24,12 @@ maps = {
         "HFFF",
         "HHFG",
     ],
+    "4x4_3h_3d": [
+        "SHGH",
+        "FHFF",
+        "FHHF",
+        "FFFF",
+    ],
 }
 min_moves = {
     "2x2_0h_0d": 3,
@@ -89,7 +95,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = -0.1
+        self.negative_reward = 0 #-0.1
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -103,8 +109,8 @@ class MuZeroConfig:
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.3  # 0.25
-        self.root_exploration_fraction = 0.3
+        self.root_dirichlet_alpha = 0.35  # 0.25
+        self.root_exploration_fraction = 0.35
 
         # UCB formula
         self.pb_c_base = 19652
