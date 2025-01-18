@@ -47,7 +47,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 RepresentationNetwork(
                     observation_shape,
                     stacked_observations,
-                    3,
+                    2,
                     3,
                     None,
                 )
@@ -66,8 +66,15 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 )
             )
         elif representation_network_type == "cnn":
-            # not implemented
-            raise NotImplementedError("representation_network_type 'cnn' not implemented")
+            self.representation_network = cond_wrap(
+                ConvRepresentationNet(
+                    observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+                    observation_shape[1],
+                    observation_shape[2],
+                    encoding_size if self.use_proj else transformer_hidden_size,
+                    norm_layer=norm_layer
+                )
+            )
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
@@ -165,6 +172,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
             return self.representation_mlp(observation)
+        elif self.representation_network_type == "cnn":
+            return self.representation_cnn(observation)
 
     def representation_res(self, observation):
         # to device
@@ -190,7 +199,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         )
         scale_encoded_state = max_encoded_state - min_encoded_state
         scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
-        encoded_state_normalized = (
+        encoded_state = (
             encoded_state - min_encoded_state
         ) / scale_encoded_state
 
@@ -201,10 +210,25 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         return encoded_state
 
+
     def representation_mlp(self, observation):
         encoded_state = self.representation_network(
             observation.view(observation.shape[0], -1)
         )
+        # Scale encoded state between [0, 1] (See appendix paper Training)
+        min_encoded_state = encoded_state.min(1, keepdim=True)[0]
+        max_encoded_state = encoded_state.max(1, keepdim=True)[0]
+        scale_encoded_state = max_encoded_state - min_encoded_state
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
+        encoded_state_normalized = (
+            encoded_state - min_encoded_state
+        ) / scale_encoded_state
+        return encoded_state_normalized
+
+
+    def representation_cnn(self, observation):
+        encoded_state = self.representation_network(observation)
+
         # Scale encoded state between [0, 1] (See appendix paper Training)
         min_encoded_state = encoded_state.min(1, keepdim=True)[0]
         max_encoded_state = encoded_state.max(1, keepdim=True)[0]
@@ -359,3 +383,90 @@ class RepresentationNetwork(torch.nn.Module):
         for block in self.resblocks:
             x = block(x)
         return x
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ConvRepresentationNet(nn.Module):
+    def __init__(
+        self,
+        input_channels,
+        height,
+        width,
+        encoding_size,
+        conv_layers=None,
+        fc_layers=None,
+        activation=nn.ELU,
+        norm_layer=False
+    ):
+        """
+        Args:
+            input_channels (int): Number of input channels
+                                  (including stacking of observations if applicable).
+            height (int): Height of the input image.
+            width (int): Width of the input image.
+            encoding_size (int): Desired dimensionality for the final output (e.g., 64, 128).
+            conv_layers (list of tuples): Each tuple is (out_channels, kernel_size, stride).
+            fc_layers (list of int): Sizes of hidden fully-connected layers after convolution.
+            activation (nn.Module): Activation to use between layers (default nn.ELU).
+            norm_layer (bool): Whether to apply LayerNorm to the final representation.
+        """
+
+        super().__init__()
+
+        if conv_layers is None:
+            # Default conv architecture, you can customize these
+            conv_layers = [
+                # (out_channels, kernel_size, stride)
+                (16, 2, 1),  # Output: (batch_size, 16, 3, 3)
+                (32, 2, 1),  # Output: (batch_size, 32, 1, 1)
+            ]
+
+        if fc_layers is None:
+            fc_layers = [128]
+
+        # Build the convolutional "feature extractor"
+        conv_modules = []
+        current_channels = input_channels
+        for (out_channels, kernel_size, stride) in conv_layers:
+            conv_modules.append(nn.Conv2d(current_channels, out_channels, kernel_size, stride))
+            conv_modules.append(activation())
+            current_channels = out_channels
+
+        self.conv_net = nn.Sequential(*conv_modules)
+
+        # We need to figure out the size of the flattened conv output to build FC layers
+        # One way is to do a dummy forward pass
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, input_channels, height, width)
+            conv_out = self.conv_net(dummy_input)
+            self.flattened_size = conv_out.numel()
+
+        # Build the fully-connected layers that project into `encoding_size`
+        fc_modules = []
+        in_size = self.flattened_size
+        for hidden_size in fc_layers:
+            fc_modules.append(nn.Linear(in_size, hidden_size))
+            fc_modules.append(activation())
+            in_size = hidden_size
+
+        # Final layer to produce `encoding_size`
+        fc_modules.append(nn.Linear(in_size, encoding_size))
+
+        if norm_layer:
+            fc_modules.append(nn.LayerNorm(encoding_size))
+
+        self.fc_net = nn.Sequential(*fc_modules)
+
+    def forward(self, x):
+        """
+        x shape: (batch_size, input_channels, height, width)
+        returns shape: (batch_size, encoding_size)
+        """
+        conv_features = self.conv_net(x)             # -> (batch_size, channels, H', W')
+        flat_features = conv_features.view(x.size(0), -1)  # flatten
+        out = self.fc_net(flat_features)             # -> (batch_size, encoding_size)
+        return out
+
