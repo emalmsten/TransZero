@@ -59,7 +59,8 @@ class MuZeroConfig:
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
-        self.start_pos = (1 ,1) # None
+        self.start_pos = None
+        self.random_map = False
 
         # Naming
         self.project = "TransZeroV2"
@@ -88,7 +89,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = -0.01
+        self.negative_reward = -0.1
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -96,7 +97,7 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 20  # Maximum number of moves if game is not finished before
+        self.max_moves = 12  # Maximum number of moves if game is not finished before
         self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
@@ -212,7 +213,7 @@ class Game(AbstractGame):
 
         self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
                             custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves,
-                            start_pos = config.start_pos)
+                            start_pos = config.start_pos, random_map = config.random_map)
 
         # if seed is not None:
         #     self.env.seed(seed)
@@ -314,6 +315,7 @@ class SimpleEnv(MiniGridEnv):
         self.negative_reward = kwargs.pop("negative_reward", None)
 
         self.custom_map_name = kwargs.pop("custom_map", "3x3_2h_2d")
+        self.random_map = kwargs.pop("random_map", True)
         self.start_pos = kwargs.pop("start_pos", None)
 
         self.custom_map = maps[self.custom_map_name]
@@ -342,30 +344,22 @@ class SimpleEnv(MiniGridEnv):
         # Generate the surrounding walls
         self.grid.wall_rect(0, 0, width, height)
 
-        place_agent = False
         for y, row in enumerate(layout):
             y += 1
             for x, char in enumerate(row):
                 x += 1
-                if char == 'S':
-                    if self.start_pos is not None:
-                        self.agent_pos = self.start_pos
-                        self.agent_dir = 0
-                    else:
-                        place_agent = True
-                    import random
-                    #self.place_agent()
-                    #x = random.randint(1, width - 2)
-                    #y = random.randint(1, height - 2)
-                    #self.agent_pos = (x, y)  # Set agent's starting position
-                    #self.agent_dir = self.agent_start_dir
-                elif char == 'H':
+                if char == 'H':
                     self.grid.set(x, y, Lava())
+                elif char == 'S' and self.random_map:
+                    self.start_pos = (x, y)
                 elif char == 'G':
                     self.put_obj(Goal(), x, y)
 
-        if place_agent:
+        if self.start_pos is None and not self.random_map:
             self.place_agent()
+        else:
+            self.agent_pos = self.start_pos
+            self.agent_dir = 0
 
 
     @staticmethod
@@ -373,8 +367,41 @@ class SimpleEnv(MiniGridEnv):
         return "custom mission"
 
 
+    def get_random_map(self):
+        size = int(self.custom_map_name[0])
+        init_map = ["F" * size] * size
+        # count H in custom map
+
+        holes = int(self.custom_map_name[4])
+        letters = ["S"] + ["G"] + ["H"] * holes
+
+        # add H to random positions
+        for letter in letters:
+            while True:
+                x = numpy.random.randint(0, size)
+                y = numpy.random.randint(0, size)
+                if letter == "S":
+                    agent_pos = (x, y)
+                if init_map[y][x] != "H" and init_map[y][x] != "G" and init_map[y][x] != "S":
+                    break
+
+            init_map[y] = init_map[y][:x] + letter + init_map[y][x + 1:]
+
+        step_grid = calculate_steps_and_turns_to_goal(init_map)
+        self.min_actions = step_grid[agent_pos[1], agent_pos[0]]
+
+        # try again
+        if self.min_actions <= 0:
+            return self.get_random_map()
+
+        return init_map
+
+
     def _gen_grid(self, width, height):
         # Create an empty grid
+        if self.random_map:
+            self.custom_map = self.get_random_map()
+
         self._gen_grid_from_string(self.custom_map)
         self.mission = "custom mission"
 
