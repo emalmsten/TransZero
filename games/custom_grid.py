@@ -147,7 +147,16 @@ class MuZeroConfig:
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "mlp"  # "resnet", "cnn" or "mlp"
+        self.representation_network_type = "cnn"  # "resnet", "cnn" or "mlp"
+        # if cnn
+        self.conv_layers_trans = [
+                # (out_channels, kernel_size, stride)
+                (32, 3, 1),  # Output: (batch_size, 16, 3, 3)
+                (64, 3, 1),
+                (128, 3, 1)# Output: (batch_size, 32, 1, 1)
+            ]
+        self.fc_layers_trans = [256]
+
 
         ### Training
         self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)

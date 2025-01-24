@@ -26,6 +26,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         norm_layer = True,
         use_proj = False,
 
+        conv_layers = None,
+        fc_layers = None,
+
         representation_network_type = "res"
     ):
         super().__init__()
@@ -47,8 +50,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 RepresentationNetwork(
                     observation_shape,
                     stacked_observations,
-                    2,
                     3,
+                    8,
                     None,
                 )
             )
@@ -72,7 +75,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     observation_shape[1],
                     observation_shape[2],
                     encoding_size if self.use_proj else transformer_hidden_size,
-                    norm_layer=norm_layer
+                    norm_layer=norm_layer,
+                    conv_layers=conv_layers,
+                    fc_layers=fc_layers,
+
                 )
             )
 
