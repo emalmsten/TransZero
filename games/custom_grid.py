@@ -153,9 +153,9 @@ class MuZeroConfig:
                 # (out_channels, kernel_size, stride)
                 (32, 3, 1),  # Output: (batch_size, 16, 3, 3)
                 (64, 3, 1),
-                (128, 3, 1)# Output: (batch_size, 32, 1, 1)
+                # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [256]
+        self.fc_layers_trans = [128]
 
 
         ### Training
