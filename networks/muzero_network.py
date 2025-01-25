@@ -46,6 +46,9 @@ class MuZeroNetwork:
                 norm_layer = config.norm_layer,
                 use_proj=config.use_proj,
                 representation_network_type=config.representation_network_type,
+
+                conv_layers=config.conv_layers_trans,
+                fc_layers=config.fc_layers_trans
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(

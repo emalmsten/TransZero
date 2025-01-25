@@ -92,7 +92,7 @@ class MuZeroConfig:
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
         ### Game
-        self.observation_shape = (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (1, 4, 7) # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -132,8 +132,9 @@ class MuZeroConfig:
         self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
-        self.encoding_size = 8
-        self.fc_representation_layers = []  # Define the hidden layers in the representation network
+        self.encoding_size = 16
+        self.fc_representation_layers = [32]  # Define the hidden layers in the representation network
+
         self.fc_dynamics_layers = [32]  # Define the hidden layers in the dynamics network
         self.fc_reward_layers = [32]  # Define the hidden layers in the reward network
         self.fc_value_layers = [32]  # Define the hidden layers in the value network
@@ -151,8 +152,8 @@ class MuZeroConfig:
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
-                (32, 3, 1),  # Output: (batch_size, 16, 3, 3)
-                (64, 3, 1),
+                (32, 2, 1),  # Output: (batch_size, 16, 3, 3)
+                (64, 2, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [128]
@@ -271,8 +272,10 @@ class Game(AbstractGame):
         Returns:
             Initial observation of the game.
         """
-        observation, info = self.env.reset()
-        return numpy.array(observation)
+        obs, info = self.env.reset()
+        obs = obs[:, 3:, [0]].swapaxes(0, 2)
+
+        return numpy.array(obs)
 
     def close(self):
         """
@@ -429,6 +432,8 @@ class SimpleEnv(MiniGridEnv):
             self.min_actions = min_actions + 2 # inital turning
 
         obs, reward, done, truncated, info = super().step(action)
+        obs['image'] = obs['image'][:, 3:, [0]].swapaxes(0, 2)
+
         # Add custom reward logic
         if reward > 0.0:
             reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
