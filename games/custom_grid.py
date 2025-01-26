@@ -160,11 +160,11 @@ class MuZeroConfig:
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
-                (32, 3, 1),  # Output: (batch_size, 16, 3, 3)
-                (64, 3, 1),
+                (32, 1, 1),  # Output: (batch_size, 16, 3, 3)
+                (64, 1, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [128]
+        self.fc_layers_trans = [64]
 
 
         ### Training
@@ -179,7 +179,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.001  # Initial learning rate
-        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
+        self.lr_decay_rate = 0.8  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
