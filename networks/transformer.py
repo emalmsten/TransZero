@@ -426,12 +426,12 @@ class ConvRepresentationNet(nn.Module):
             # Default conv architecture, you can customize these
             conv_layers = [
                 # (out_channels, kernel_size, stride)
-                (16, 2, 1),  # Output: (batch_size, 16, 3, 3)
-                (32, 2, 1),  # Output: (batch_size, 32, 1, 1)
+                (16, 1, 1),  # Output: (batch_size, 16, 3, 3)
+                (32, 1, 1),  # Output: (batch_size, 32, 1, 1)
             ]
 
         if fc_layers is None:
-            fc_layers = [128]
+            fc_layers = [64]
 
         # Build the convolutional "feature extractor"
         conv_modules = []

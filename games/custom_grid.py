@@ -30,12 +30,20 @@ maps = {
         "FHHF",
         "FFFF",
     ],
+    "5x5_3h_3d": [
+        "SFHFG",
+        "FFHFF",
+        "FFHFF",
+        "FFFFF",
+        "FFFFF"
+    ],
 }
 min_moves = {
     "2x2_0h_0d": 3,
     "3x3_2h_2d": 6,
     "4x4_3h_1d": 8,
     "4x4_3h_3d": 13,
+    "5x5_3h_3d": 12
 }
 
 try:
@@ -65,7 +73,7 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
+        self.custom_map = "4x4_3h_1d" #4x4_3h_1d"
         self.start_pos = None
         self.random_map = False
 
@@ -92,7 +100,7 @@ class MuZeroConfig:
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
         ### Game
-        self.observation_shape = (1, 4, 7) # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = (1, min(7, int((self.custom_map[0]))+1), 7) # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -132,7 +140,7 @@ class MuZeroConfig:
         self.resnet_fc_policy_layers = [16]  # Define the hidden layers in the policy head of the prediction network
 
         # Fully Connected Network
-        self.encoding_size = 16
+        self.encoding_size = 8
         self.fc_representation_layers = [32]  # Define the hidden layers in the representation network
 
         self.fc_dynamics_layers = [32]  # Define the hidden layers in the dynamics network
@@ -152,8 +160,8 @@ class MuZeroConfig:
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
-                (32, 2, 1),  # Output: (batch_size, 16, 3, 3)
-                (64, 2, 1),
+                (32, 3, 1),  # Output: (batch_size, 16, 3, 3)
+                (64, 3, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [128]
@@ -228,9 +236,12 @@ class Game(AbstractGame):
             entry_point=__name__ + ":SimpleEnv",
         )
 
+        self.size = int(config.custom_map[0]) + 2
+
         self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
                             custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves,
                             start_pos = config.start_pos, random_map = config.random_map)
+
 
         # if seed is not None:
         #     self.env.seed(seed)
@@ -273,7 +284,7 @@ class Game(AbstractGame):
             Initial observation of the game.
         """
         obs, info = self.env.reset()
-        obs = obs[:, 3:, [0]].swapaxes(0, 2)
+        obs = obs[:, (7-(self.size-1)):, [0]].swapaxes(0, 2)
 
         return numpy.array(obs)
 
@@ -432,7 +443,7 @@ class SimpleEnv(MiniGridEnv):
             self.min_actions = min_actions + 2 # inital turning
 
         obs, reward, done, truncated, info = super().step(action)
-        obs['image'] = obs['image'][:, 3:, [0]].swapaxes(0, 2)
+        obs['image'] = obs['image'][:, min(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
 
         # Add custom reward logic
         if reward > 0.0:
