@@ -284,7 +284,7 @@ class Game(AbstractGame):
             Initial observation of the game.
         """
         obs, info = self.env.reset()
-        obs = obs[:, (7-(self.size-1)):, [0]].swapaxes(0, 2)
+        obs = obs[:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
 
         return numpy.array(obs)
 
@@ -443,7 +443,7 @@ class SimpleEnv(MiniGridEnv):
             self.min_actions = min_actions + 2 # inital turning
 
         obs, reward, done, truncated, info = super().step(action)
-        obs['image'] = obs['image'][:, min(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
+        obs['image'] = obs['image'][:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
 
         # Add custom reward logic
         if reward > 0.0:
