@@ -73,7 +73,7 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "4x4_3h_1d" #4x4_3h_1d"
+        self.custom_map = "4x4_3h_3d" #4x4_3h_1d"
         self.start_pos = None
         self.random_map = False
 
@@ -112,14 +112,14 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 12  # Maximum number of moves if game is not finished before
+        self.max_moves = 25 # Maximum number of moves if game is not finished before
         self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.35  # 0.25
-        self.root_exploration_fraction = 0.35
+        self.root_dirichlet_alpha = 0.3 # 0.25
+        self.root_exploration_fraction = 0.3
 
         # UCB formula
         self.pb_c_base = 19652
@@ -247,7 +247,6 @@ class Game(AbstractGame):
         #     self.env.seed(seed)
 
         self.env = minigrid.wrappers.ImgObsWrapper(self.env)
-
 
 
     def step(self, action):

@@ -180,41 +180,22 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             return self.representation_mlp(observation)
         elif self.representation_network_type == "cnn":
             return self.representation_cnn(observation)
+        else:
+            raise NotImplementedError(f"representation_network_type {self.representation_network_type} not implemented")
+
 
     def representation_res(self, observation):
-        # to device
         encoded_state = self.representation_network(observation)
+
         # Scale encoded state between [0, 1] (See appendix paper Training)
-        min_encoded_state = (
-            encoded_state.view(
-                -1,
-                encoded_state.shape[1],
-                encoded_state.shape[2] * encoded_state.shape[3],
-            )
-            .min(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
-        max_encoded_state = (
-            encoded_state.view(
-                -1,
-                encoded_state.shape[1],
-                encoded_state.shape[2] * encoded_state.shape[3],
-            )
-            .max(2, keepdim=True)[0]
-            .unsqueeze(-1)
-        )
+        min_encoded_state = encoded_state.min(1, keepdim=True)[0]
+        max_encoded_state = encoded_state.max(1, keepdim=True)[0]
         scale_encoded_state = max_encoded_state - min_encoded_state
         scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
-        encoded_state = (
-            encoded_state - min_encoded_state
-        ) / scale_encoded_state
-
-        encoded_state = encoded_state.view(encoded_state.size(0), -1) # (seq_len, batch_size, feature_dim)
-        # linear projection
-        encoded_state = nn.Linear(encoded_state.size(1), self.transformer_hidden_size,
-                                      device=encoded_state.device)(encoded_state)
-
-        return encoded_state
+        encoded_state_normalized = (
+                                           encoded_state - min_encoded_state
+                                   ) / scale_encoded_state
+        return encoded_state_normalized
 
 
     def representation_mlp(self, observation):
@@ -339,6 +320,11 @@ class RepresentationNetwork(torch.nn.Module):
         num_blocks,
         num_channels,
         downsample,
+        fc_layers = None,
+        encoding_size = 32,
+        activation=nn.ELU,
+        norm_layer=True
+
     ):
         super().__init__()
         self.downsample = downsample
@@ -378,6 +364,32 @@ class RepresentationNetwork(torch.nn.Module):
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
 
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, observation_shape[0], observation_shape[1], observation_shape[2])
+            conv_out = self.conv(dummy_input)
+            self.flattened_size = conv_out.numel()
+
+        if fc_layers is None:
+            fc_layers = [128, 64]
+
+        # Build the fully-connected layers that project into `encoding_size`
+        fc_modules = []
+        in_size = self.flattened_size
+        for hidden_size in fc_layers:
+            fc_modules.append(nn.Linear(in_size, hidden_size))
+            fc_modules.append(activation())
+            in_size = hidden_size
+
+        # Final layer to produce `encoding_size`
+        fc_modules.append(nn.Linear(in_size, encoding_size))
+
+        if norm_layer:
+            fc_modules.append(nn.LayerNorm(encoding_size))
+
+        self.fc_net = nn.Sequential(*fc_modules)
+
+
+
     def forward(self, x):
         if self.downsample:
             x = self.downsample_net(x)
@@ -388,6 +400,11 @@ class RepresentationNetwork(torch.nn.Module):
 
         for block in self.resblocks:
             x = block(x)
+
+        x = x.view(x.size(0), -1)  # flatten
+
+        x = self.fc_net(x)
+
         return x
 
 
