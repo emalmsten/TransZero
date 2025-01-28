@@ -90,7 +90,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 )
             )
 
+        self.obs_flat_size = observation_shape[1]*observation_shape[2]
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
+        self.obs_embedding = nn.Linear(self.obs_flat_size, transformer_hidden_size)
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
 
         if positional_embedding_type == 'learned':
@@ -101,10 +103,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 self.sinusoidal_positional_embedding(max_seq_length + 1, transformer_hidden_size)
             )
 
+        self.positional_encoding_obs = nn.Embedding(self.obs_flat_size, transformer_hidden_size)
+
         self.transformer_layer = nn.TransformerEncoderLayer(
             d_model=transformer_hidden_size,
             nhead=transformer_heads,
             batch_first=True,
+
         )
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
@@ -162,15 +167,28 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def prediction_fast(self, root_hidden_state, action_sequence, action_mask):
+        # Step 1: Define the batch size and sequence length
+        batch_size = action_mask.shape[0]
+
+        # Step 2: Calculate the size of the new portion to add
+        new_mask_size = self.obs_flat_size - 1  # Number of True entries to add before the original mask
+
+        # Step 3: Create the new portion of the mask filled with True
+        new_mask = torch.ones((batch_size, new_mask_size, *action_mask.shape[2:]),
+                              device=action_mask.device, dtype=torch.bool)
+
+        # Step 4: Concatenate the new portion with the original mask along dimension 1
+        action_mask = torch.cat((new_mask, action_mask), dim=1)
+
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
         causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
 
         # Pass through the transformer encoder
         transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
 
-        policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
-        value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
-        reward = self.reward_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
+        policy_logits = self.policy_head(transformer_output)[:,self.obs_flat_size-1:,:]  # Shape: (B, sequence_length, action_space_size)
+        value = self.value_head(transformer_output)[:,self.obs_flat_size-1:,:]  # Shape: (B, sequence_length, full_support_size)
+        reward = self.reward_head(transformer_output)[:,self.obs_flat_size-1:,:]  # Shape: (B, sequence_length, full_support_size)
 
         return policy_logits, value, reward
 
@@ -182,6 +200,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return policy_logits, value, reward
 
     def representation(self, observation):
+        if True: # todo TEMP
+            return observation
+
         if self.representation_network_type == "res":
             return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
@@ -236,11 +257,12 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def initial_inference(self, observation):
+
         encoded_state = self.representation(observation)
         #encoded_state_old = self.representation_old(observation)
         # print("encoded_state", encoded_state.shape())
         # print("encoded_state_old", encoded_state_old.shape())
-        policy_logits, value, reward = self.prediction(encoded_state)
+        policy_logits, value, reward = self.prediction(encoded_state) # todo TEMP
 
         # reward equal to 0 for consistency
         reward = torch.log(
@@ -289,17 +311,28 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Project the root hidden state to the transformer hidden size
         if self.use_proj:
             root_hidden_state = self.hidden_state_proj(root_hidden_state)
-        state_embedding = root_hidden_state.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
+        state_embedding = root_hidden_state.unsqueeze(1)
+        # Shape: (B, 1, transformer_hidden_size)
+
+        state_embeddings_obs = self.obs_embedding(torch.arange(self.obs_flat_size, device=root_hidden_state.device, dtype=torch.float)).unsqueeze(0).expand(batch_size, -1, -1)
+
 
         # Total sequence length (including the root hidden state)
-        sequence_length = embedded_actions.size(1) + 1  # +1 for the root hidden state
+        sequence_length = embedded_actions.size(1)#   # +1 for the root hidden state
 
         # Get positional encoding
         pos_encoding = self.get_positional_encoding(sequence_length,
                                                     embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
 
+        pos_encoding_obs = self.positional_encoding_obs(torch.arange(self.obs_flat_size, device=root_hidden_state.device)).unsqueeze(0).expand(batch_size, -1, -1)
+
+        obs = state_embeddings_obs + pos_encoding_obs
+        actions = embedded_actions + pos_encoding
+
+        return torch.cat([obs, actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
+
         # Construct the input sequence by concatenating the state embedding and action embeddings
-        state_action_sequence = torch.cat([state_embedding, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
+        state_action_sequence = torch.cat([state_embeddings_obs, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
 
         # Add positional encodings
         return state_action_sequence + pos_encoding
