@@ -37,13 +37,40 @@ maps = {
         "FFFFF",
         "FFFFF"
     ],
+    "6x6_3h_3d": [
+        "SFHFGF",
+        "FFHFFF",
+        "FFFHFF",
+        "HFFHFF",
+        "HFFFFF",
+        "FFFFFF"
+    ],
+    "6x6_5h_1d": [
+        "SFHFFF",
+        "FFFFFF",
+        "FFFFFF",
+        "HFFFFF",
+        "HFFFFF",
+        "FFFFFG"
+    ],
+    "5x5_4h_1d": [
+        "SFHFF",
+        "FFFFF",
+        "FFFFF",
+        "HFFFF",
+        "FFFFG"
+    ],
 }
 min_moves = {
     "2x2_0h_0d": 3,
     "3x3_2h_2d": 6,
     "4x4_3h_1d": 8,
     "4x4_3h_3d": 13,
-    "5x5_3h_3d": 12
+    "5x5_3h_3d": 12,
+    "6x6_3h_3d": 15,
+
+    "5x5_4h_1d": 15,
+    "6x6_5h_1d": 15
 }
 
 try:
@@ -73,7 +100,7 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "4x4_3h_3d" #4x4_3h_1d"
+        self.custom_map = "5x5_4h_1d" #4x4_3h_1d"
         self.start_pos = None
         self.random_map = False
 
@@ -87,7 +114,7 @@ class MuZeroConfig:
 
         # Saving
         self.save_model = True
-        self.save_interval = 500
+        self.save_interval = 5000
 
         # GPU
         self.selfplay_on_gpu = cuda and not self.debug_mode
@@ -113,7 +140,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = 25 # Maximum number of moves if game is not finished before
-        self.num_simulations = 25  # Number of future moves self-simulated
+        self.num_simulations = 10  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -168,10 +195,10 @@ class MuZeroConfig:
 
 
         ### Training
-        self.training_steps = 15000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 256  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
-        self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -179,12 +206,12 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.001  # Initial learning rate
-        self.lr_decay_rate = 0.8  # Set it to 1 to use a constant learning rate
+        self.lr_decay_rate = 0.95  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
-        self.replay_buffer_size = 15000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 25000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
@@ -199,7 +226,7 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
         self.softmax_limits = [0.25, 0.5, 0.75, 1]
-        self.softmax_temps =  [0.75, 0.5, 0.25, 0.1]
+        self.softmax_temps =  [1, 0.5, 0.25, 0.1]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -399,10 +426,12 @@ class SimpleEnv(MiniGridEnv):
     def get_random_map(self):
         size = int(self.custom_map_name[0])
         init_map = ["F" * size] * size
+        # set goal
+        init_map[size - 1] = init_map[size - 1][:size - 1] + "G"
         # count H in custom map
 
         holes = int(self.custom_map_name[4])
-        letters = ["S"] + ["G"] + ["H"] * holes
+        letters = ["S"] + ["H"] * holes
 
         # add H to random positions
         for letter in letters:
