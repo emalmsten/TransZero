@@ -53,6 +53,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     3,
                     8,
                     None,
+                    fc_layers=fc_layers,
                     encoding_size=self.transformer_hidden_size,
                     norm_layer=norm_layer
 

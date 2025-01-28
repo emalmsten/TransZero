@@ -191,7 +191,7 @@ class MuZeroConfig:
                 (64, 1, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [64]
+        self.fc_layers_trans = [128, 64]
 
 
         ### Training
