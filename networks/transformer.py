@@ -53,6 +53,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     3,
                     8,
                     None,
+                    hidden_size=self.transformer_hidden_size,
+                    norm_layer=norm_layer
+
                 )
             )
         elif representation_network_type == "mlp":
@@ -382,6 +385,7 @@ class RepresentationNetwork(torch.nn.Module):
 
         # Final layer to produce `encoding_size`
         fc_modules.append(nn.Linear(in_size, hidden_size))
+        #fc_modules.append(activation())
 
         if norm_layer:
             fc_modules.append(nn.LayerNorm(hidden_size))
