@@ -53,7 +53,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     3,
                     8,
                     None,
-                    hidden_size=self.transformer_hidden_size,
+                    encoding_size=self.transformer_hidden_size,
                     norm_layer=norm_layer
 
                 )
@@ -324,7 +324,7 @@ class RepresentationNetwork(torch.nn.Module):
         num_channels,
         downsample,
         fc_layers = None,
-        hidden_size = 32,
+        encoding_size = 32,
         activation=nn.ELU,
         norm_layer=True
 
@@ -384,11 +384,11 @@ class RepresentationNetwork(torch.nn.Module):
             in_size = hidden_size
 
         # Final layer to produce `encoding_size`
-        fc_modules.append(nn.Linear(in_size, hidden_size))
+        fc_modules.append(nn.Linear(in_size, encoding_size))
         #fc_modules.append(activation())
 
         if norm_layer:
-            fc_modules.append(nn.LayerNorm(hidden_size))
+            fc_modules.append(nn.LayerNorm(encoding_size))
 
         self.fc_net = nn.Sequential(*fc_modules)
 
