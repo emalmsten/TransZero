@@ -43,6 +43,10 @@ class MuZeroNetwork:
 
                 debug_mode,
 
+                res_blocks=config.blocks,
+                res_channels=config.channels,
+                downsample=config.downsample,
+
                 norm_layer = config.norm_layer,
                 use_proj=config.use_proj,
                 representation_network_type=config.representation_network_type,
