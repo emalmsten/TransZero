@@ -33,7 +33,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         res_channels = 8,
         downsample = None,
 
-        representation_network_type = "res"
+        representation_network_type = "res",
+        mlp_head_layers = None
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
@@ -112,9 +113,27 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             norm = nn.LayerNorm(transformer_hidden_size)
         )
 
-        self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
-        self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
-        self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+        if mlp_head_layers is not None:
+            self.value_head = mlp(
+                self.transformer_hidden_size,
+                mlp_head_layers,
+                self.full_support_size
+            )
+            self.policy_head = mlp(
+                self.transformer_hidden_size,
+                mlp_head_layers,
+                action_space_size,
+            )
+            self.reward_head = mlp(
+                self.transformer_hidden_size,
+                mlp_head_layers,
+                self.full_support_size,
+            )
+        else:
+
+            self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
+            self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+            self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
 
 
     def sinusoidal_positional_embedding(self, length, d_model, n=10000.0):
@@ -137,6 +156,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def prediction(self, root_hidden_state, action_sequence=None):
+
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
 
         # Pass through the transformer encoder
@@ -182,14 +202,23 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return policy_logits, value, reward
 
     def representation(self, observation):
+
+
         if self.representation_network_type == "res":
             return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
             return self.representation_mlp(observation)
         elif self.representation_network_type == "cnn":
             return self.representation_cnn(observation)
+        elif self.representation_network_type == "none":
+            # flatten observation
+            observation = observation.view(observation.size(0), -1)
+            # pad observation with -1 until size (B, 64)
+            observation = F.pad(observation, (0, 64 - observation.size(1)), "constant", -1)
+            return observation
         else:
             raise NotImplementedError(f"representation_network_type {self.representation_network_type} not implemented")
+
 
 
     def representation_res(self, observation):
@@ -374,8 +403,10 @@ class RepresentationNetwork(torch.nn.Module):
 
         with torch.no_grad():
             dummy_input = torch.zeros(1, observation_shape[0], observation_shape[1], observation_shape[2])
+            dummy_input = self.downsample_net(dummy_input) if self.downsample else dummy_input
             conv_out = self.conv(dummy_input)
             self.flattened_size = conv_out.numel()
+            print("flattened_size", self.flattened_size)
 
         if fc_layers is None:
             fc_layers = [128, 64]

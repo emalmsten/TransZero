@@ -193,6 +193,7 @@ class MuZeroConfig:
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [256, 128]
+        self.mlp_head_layers = None
 
 
         ### Training

@@ -52,7 +52,8 @@ class MuZeroNetwork:
                 representation_network_type=config.representation_network_type,
 
                 conv_layers=config.conv_layers_trans,
-                fc_layers=config.fc_layers_trans
+                fc_layers=config.fc_layers_trans,
+                mlp_head_layers=config.mlp_head_layers
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
