@@ -102,7 +102,7 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
         self.custom_map = "5x5_4h_1d" #4x4_3h_1d"
         self.start_pos = None
-        self.random_map = False
+        self.random_map = True
 
         # Naming
         self.project = "TransZeroV2"
@@ -131,7 +131,8 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = 0 #-0.1
+        self.negative_reward = -0 #-0.1
+        self.obstacle = "lava"
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -145,8 +146,8 @@ class MuZeroConfig:
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.3 # 0.25
-        self.root_exploration_fraction = 0.3
+        self.root_dirichlet_alpha = 0.25 # 0.25
+        self.root_exploration_fraction = 0.25
 
         # UCB formula
         self.pb_c_base = 19652
@@ -156,9 +157,9 @@ class MuZeroConfig:
         self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
 
         # Residual Network
-        self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
-        self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 8  # Number of channels in the ResNet
+        self.downsample = None  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
+        self.blocks = 4  # Number of blocks in the ResNet
+        self.channels = 12  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
@@ -176,14 +177,14 @@ class MuZeroConfig:
         self.fc_policy_layers = [32]  # Define the hidden layers in the policy network
 
         # Transformer
-        self.transformer_layers = 3
-        self.transformer_heads = 4 # 4
-        self.transformer_hidden_size = 32 # 32
+        self.transformer_layers = 5
+        self.transformer_heads = 8 # 4
+        self.transformer_hidden_size = 64 # 32
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "cnn"  # "resnet", "cnn" or "mlp"
+        self.representation_network_type = "res"  # "resnet", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -191,7 +192,7 @@ class MuZeroConfig:
                 (64, 1, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [128, 64]
+        self.fc_layers_trans = [256, 128]
 
 
         ### Training
@@ -205,9 +206,9 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001  # Initial learning rate
-        self.lr_decay_rate = 0.95  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 5000
+        self.lr_init = 0.003  # Initial learning rate
+        self.lr_decay_rate = 0.8  # Set it to 1 to use a constant learning rate
+        self.lr_decay_steps = 10000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
@@ -226,7 +227,7 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
         self.softmax_limits = [0.25, 0.5, 0.75, 1]
-        self.softmax_temps =  [1, 0.5, 0.25, 0.1]
+        self.softmax_temps =  [0.75, 0.5, 0.25, 0.1]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -374,6 +375,8 @@ class SimpleEnv(MiniGridEnv):
         self.random_map = kwargs.pop("random_map", True)
         self.start_pos = kwargs.pop("start_pos", None)
 
+        self.obstacle = kwargs.pop("obstacle", "lava")
+
         self.custom_map = maps[self.custom_map_name]
 
         self.size = int(self.custom_map_name[0]) + 2
@@ -389,6 +392,7 @@ class SimpleEnv(MiniGridEnv):
             grid_size=self.size,
             max_steps=self.max_steps,
             render_mode = render_mode,
+            see_through_walls=True,
             **kwargs,
         )
 
@@ -405,7 +409,8 @@ class SimpleEnv(MiniGridEnv):
             for x, char in enumerate(row):
                 x += 1
                 if char == 'H':
-                    self.grid.set(x, y, Lava())
+                    obstacle = Lava() if self.obstacle == "lava" else Wall()
+                    self.grid.set(x, y, obstacle)
                 elif char == 'S' and self.random_map:
                     self.start_pos = (x, y)
                 elif char == 'G':
@@ -472,6 +477,8 @@ class SimpleEnv(MiniGridEnv):
 
         obs, reward, done, truncated, info = super().step(action)
         obs['image'] = obs['image'][:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
+        # if an observation is an 8, turn it into a 4
+        obs['image'] = numpy.where(obs['image'] == 8, 4, obs['image'])
 
         # Add custom reward logic
         if reward > 0.0:
