@@ -15,8 +15,6 @@ def reset_names(cfg):
     cfg.results_path = path / cfg.name
 
 
-
-
 def refresh(cfg):
 
     if cfg.testing:
@@ -33,7 +31,7 @@ def refresh(cfg):
         cfg.show_preds = False
     reset_names(cfg)
     if cfg.game_name == "custom_grid":
-        cfg.observation_shape = (1, min(7, int((cfg.custom_map[0])) + 1), 7)
+        cfg.observation_shape = cfg.get_observation_shape(cfg.pov)  #(1, min(7, int((cfg.custom_map[0])) + 1), 7)
 
 def print_config(cfg):
     for attr, value in vars(cfg).items():

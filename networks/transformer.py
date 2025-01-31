@@ -90,6 +90,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
                 )
             )
+        elif representation_network_type == "none":
+            flat_size = observation_shape[0] * observation_shape[1] * observation_shape[2]
+            self.representation_network = nn.Linear(flat_size, transformer_hidden_size)
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
@@ -213,8 +216,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         elif self.representation_network_type == "none":
             # flatten observation
             observation = observation.view(observation.size(0), -1)
+            observation = self.representation_network(observation)
             # pad observation with -1 until size (B, 64)
-            observation = F.pad(observation, (0, 64 - observation.size(1)), "constant", -1)
+            #observation = F.pad(observation, (0, 64 - observation.size(1)), "constant", -1)
             return observation
         else:
             raise NotImplementedError(f"representation_network_type {self.representation_network_type} not implemented")

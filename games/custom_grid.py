@@ -61,6 +61,7 @@ maps = {
         "FFFFG"
     ],
 }
+# todo fix min and max moves
 min_moves = {
     "2x2_0h_0d": 3,
     "3x3_2h_2d": 6,
@@ -100,9 +101,10 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "5x5_4h_1d" #4x4_3h_1d"
+        self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
         self.start_pos = None
-        self.random_map = True
+        self.random_map = False
+        self.pov = 'agent' # agent or god
 
         # Naming
         self.project = "TransZeroV2"
@@ -127,7 +129,7 @@ class MuZeroConfig:
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
         ### Game
-        self.observation_shape = (1, min(7, int((self.custom_map[0]))+1), 7) # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
+        self.observation_shape = self.get_observation_shape(self.pov) #  # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -140,14 +142,14 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 25 # Maximum number of moves if game is not finished before
+        self.max_moves = 16 # Maximum number of moves if game is not finished before
         self.num_simulations = 10  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25 # 0.25
-        self.root_exploration_fraction = 0.25
+        self.root_dirichlet_alpha = 0.3 # 0.25
+        self.root_exploration_fraction = 0.3
 
         # UCB formula
         self.pb_c_base = 19652
@@ -159,7 +161,7 @@ class MuZeroConfig:
         # Residual Network
         self.downsample = None  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 4  # Number of blocks in the ResNet
-        self.channels = 12  # Number of channels in the ResNet
+        self.channels = 8  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
@@ -177,14 +179,14 @@ class MuZeroConfig:
         self.fc_policy_layers = [32]  # Define the hidden layers in the policy network
 
         # Transformer
-        self.transformer_layers = 5
-        self.transformer_heads = 8 # 4
-        self.transformer_hidden_size = 64 # 32
+        self.transformer_layers = 8
+        self.transformer_heads = 4 # 4
+        self.transformer_hidden_size = 32 # 32
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "res"  # "resnet", "cnn" or "mlp"
+        self.representation_network_type = "none"  # "resnet", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -193,12 +195,12 @@ class MuZeroConfig:
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [256, 128]
-        self.mlp_head_layers = None
+        self.mlp_head_layers = [16]
 
 
         ### Training
         self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 256  # Number of parts of games to train on at each training step
+        self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
@@ -207,15 +209,15 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.003  # Initial learning rate
-        self.lr_decay_rate = 0.8  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.001  # Initial learning rate
+        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 10000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
         self.replay_buffer_size = 25000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
-        self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
+        self.td_steps = 5  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
@@ -252,6 +254,14 @@ class MuZeroConfig:
         # else:
         #     return 0.01
 
+    def get_observation_shape(self, pov):
+        if pov == 'agent':
+            return (1, min(7, int((self.custom_map[0]))+1), 7)
+        elif pov == 'god':
+            return (1, int(self.custom_map[0]), int(self.custom_map[2]))
+        else:
+            raise ValueError('POV must be either "agent" or "god"')
+
 
 class Game(AbstractGame):
     """
@@ -264,7 +274,7 @@ class Game(AbstractGame):
             id="CustomSimpleEnv-v0",
             entry_point=__name__ + ":SimpleEnv",
         )
-
+        self.config = config
         self.size = int(config.custom_map[0]) + 2
 
         self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
@@ -272,10 +282,38 @@ class Game(AbstractGame):
                             start_pos = config.start_pos, random_map = config.random_map)
 
 
+
         # if seed is not None:
         #     self.env.seed(seed)
 
-        self.env = minigrid.wrappers.ImgObsWrapper(self.env)
+        #self.env = minigrid.wrappers.ImgObsWrapper(self.env)
+        if config.pov == 'god':
+            self.env = minigrid.wrappers.FullyObsWrapper(self.env)
+
+
+    def shape_observation(self, obs):
+        """
+        Convert the observation to the required shape.
+
+        Args:
+            observation : observation from the environment.
+
+        Returns:
+            Observation in the required shape.
+        """
+        if self.config.pov == 'agent':
+            obs = obs['image'][:, max(0, (7 - (self.size - 1))):, [0]].swapaxes(0, 2)
+        elif self.config.pov == 'god':
+            direction = obs['direction']
+            obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
+
+            # take every 10 and do minus (11 + obs[direction])
+            obs = numpy.where(obs == 10, -direction - 1, obs)
+        else:
+            raise ValueError('POV must be either "agent" or "god"')
+
+
+        return obs
 
 
     def step(self, action):
@@ -288,8 +326,25 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
-        observation, reward, done, _, _ = self.env.step(action)
-        return numpy.array(observation), reward * 10, done
+        obs, reward, done, _, _ = self.env.step(action)
+        obs = self.shape_observation(obs)
+
+        env = self.env.unwrapped
+
+        # Add custom reward logic
+        if reward > 0.0:
+            reward = 0.5 + 0.5 * (1 - (env.step_count - env.min_actions) / (env.max_steps - env.min_actions))
+            reward = min(1.0, reward)
+
+        if reward < 0.0:
+            print("negative reward")
+
+        if env.step_count < env.max_steps and done and reward < 0.00001:
+            reward = env.negative_reward
+
+        #return obs, reward, done #, truncated, info
+
+        return numpy.array(obs), reward * 10, done
 
     def legal_actions(self):
         """
@@ -312,7 +367,9 @@ class Game(AbstractGame):
             Initial observation of the game.
         """
         obs, info = self.env.reset()
-        obs = obs[:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
+
+        #obs = obs[:, max(0, (7-(self.size-1))):, [0]]
+        obs = self.shape_observation(obs)
 
         return numpy.array(obs)
 
@@ -326,7 +383,7 @@ class Game(AbstractGame):
         """
         Display the game observation.
         """
-        self.env.render()
+        #self.env.render()
         input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
@@ -469,24 +526,25 @@ class SimpleEnv(MiniGridEnv):
         self._gen_grid_from_string(self.custom_map)
         self.mission = "custom mission"
 
-
-    def step(self, action):
-        if self.step_count == 0:
-            step_grid = calculate_steps_and_turns_to_goal(self.custom_map)
-            min_actions = step_grid[self.agent_pos[1] - 1, self.agent_pos[0] - 1]
-            self.min_actions = min_actions + 2 # inital turning
-
-        obs, reward, done, truncated, info = super().step(action)
-        obs['image'] = obs['image'][:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
-        # if an observation is an 8, turn it into a 4
-        obs['image'] = numpy.where(obs['image'] == 8, 4, obs['image'])
-
-        # Add custom reward logic
-        if reward > 0.0:
-            reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
-            reward = min(1.0, reward)
-
-        if self.step_count < self.max_steps and done and reward < 0.00001:
-            reward = self.negative_reward
-
-        return obs, reward, done, truncated, info
+    #
+    # def step(self, action):
+    #     if self.step_count == 0:
+    #         step_grid = calculate_steps_and_turns_to_goal(self.custom_map)
+    #         min_actions = step_grid[self.agent_pos[1] - 1, self.agent_pos[0] - 1]
+    #         self.min_actions = min_actions + 2 # inital turning
+    #
+    #     obs, reward, done, truncated, info = super().step(action)
+    #     #obs['image'] = obs['image'][:, max(0, (7-(self.size-1))):, [0]].swapaxes(0, 2)
+    #     # if an observation is an 8, turn it into a 4
+    #     #obs['image'] = numpy.where(obs['image'] == 8, 4, obs['image'])
+    #     obs['image'] = Game.shape_observation(obs['image'])
+    #
+    #     # Add custom reward logic
+    #     if reward > 0.0:
+    #         reward = 0.5 + 0.5 * (1 - (self.step_count - self.min_actions) / (self.max_steps - self.min_actions))
+    #         reward = min(1.0, reward)
+    #
+    #     if self.step_count < self.max_steps and done and reward < 0.00001:
+    #         reward = self.negative_reward
+    #
+    #     return obs, reward, done, truncated, info
