@@ -160,7 +160,7 @@ class MuZeroConfig:
 
         # Residual Network
         self.downsample = None  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
-        self.blocks = 4  # Number of blocks in the ResNet
+        self.blocks = 3  # Number of blocks in the ResNet
         self.channels = 8  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
@@ -179,14 +179,14 @@ class MuZeroConfig:
         self.fc_policy_layers = [32]  # Define the hidden layers in the policy network
 
         # Transformer
-        self.transformer_layers = 8
-        self.transformer_heads = 4 # 4
-        self.transformer_hidden_size = 32 # 32
+        self.transformer_layers = 3
+        self.transformer_heads = 4
+        self.transformer_hidden_size = 32
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "none"  # "resnet", "cnn" or "mlp"
+        self.representation_network_type = "res"  # "res", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -194,13 +194,12 @@ class MuZeroConfig:
                 (64, 1, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [256, 128]
-        self.mlp_head_layers = [16]
-
+        self.fc_layers_trans = [64]
+        self.mlp_head_layers = None
 
         ### Training
         self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # Number of parts of games to train on at each training step
+        self.batch_size = 256  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
@@ -209,15 +208,15 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001  # Initial learning rate
-        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 10000
+        self.lr_init = 0.001 # res: 0.015
+        self.lr_decay_rate = 0.95
+        self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
-        self.replay_buffer_size = 25000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 15000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
-        self.td_steps = 5  # Number of steps in the future to take into account for calculating the target value
+        self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
@@ -229,8 +228,8 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.softmax_limits = [0.25, 0.5, 0.75, 1]
-        self.softmax_temps =  [0.75, 0.5, 0.25, 0.1]
+        self.softmax_limits = [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
+        self.softmax_temps =  [1, 0.5, 0.25, 0.1] # res 1, 0.5, 0.25
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -243,16 +242,7 @@ class MuZeroConfig:
         for i, limit in enumerate(self.softmax_limits):
             if trained_steps < limit * self.training_steps:
                 return self.softmax_temps[i]
-        # if trained_steps < 0.1 * self.training_steps:
-        #     return 2
-        # if trained_steps < 0.25 * self.training_steps:
-        #     return 0.8
-        # if trained_steps < 0.5 * self.training_steps:
-        #     return 0.4
-        # elif trained_steps < 0.75 * self.training_steps:
-        #     return 0.2
-        # else:
-        #     return 0.01
+
 
     def get_observation_shape(self, pov):
         if pov == 'agent':
