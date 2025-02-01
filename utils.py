@@ -5,9 +5,12 @@ from pathlib import Path
 def reset_names(cfg):
     game_name = Path(cfg.game_name)
     game_str = cfg.game_name
-    if cfg.game_name == "frozen_lake" or cfg.game_name == "custom_grid":
+    if cfg.game_name == "frozen_lake":
         game_name = game_name / cfg.custom_map
         game_str += f"_{cfg.custom_map}"
+    if cfg.game_name == "custom_grid":
+        game_name = game_name / cfg.custom_map
+        game_str += f"_{cfg.custom_map}_{'random' if cfg.random_map else 'fixed'}_{cfg.pov}"
 
     path = Path(cfg.root) / "results" / game_name / cfg.network
     cfg.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{cfg.append}'
