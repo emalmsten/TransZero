@@ -1,4 +1,6 @@
 import torch
+
+import models
 from networks.abstract_network import AbstractNetwork
 from models import mlp
 import torch.nn as nn
@@ -39,7 +41,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         super().__init__()
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
+        self.support_size = support_size
         self.full_support_size = 2 * support_size + 1
+
         self.seq_mode = seq_mode
         self.use_proj = use_proj
         self.representation_network_type = representation_network_type
@@ -169,13 +173,46 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         transformer_output_last = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
 
         policy_logits = self.policy_head(transformer_output_last)  # Shape: (B, action_space_size)
-        value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         # calculate cumulative reward over sequence # todo test
-        if False:
-            reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
+        if False: # TODO
+            if action_sequence is not None:
+                # todo consider if leaving first reward is necessary
+                reward = self.reward_head(transformer_output)
+                reward[:,0] = 0.0# Shape: (B, sequence_length, full_support_size)
+                B, T, D = reward.shape
+                merged_rewards = reward.reshape(B * T, D)
+                # count up summations over sequence, [0,0,1,0,1] -> [0,0,1,1,2]
+                reward_scalars = models.support_to_scalar(merged_rewards, self.support_size)
+                reward_scalars = reward_scalars.reshape(B, T, 1)
+
+                # reward_scalars = models.support_to_scalar(reward, self.support_size)
+                reward_sum = torch.sum(reward_scalars, dim=1)
+                reward = models.scalar_to_support(reward_sum, self.support_size)
+                reward = reward.reshape(B, D)
+            else:
+                # just 0s
+                reward = torch.log(
+                    (
+                        torch.zeros(1, self.full_support_size)
+                        .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
+                        .repeat(len(root_hidden_state), 1)
+                        .to(root_hidden_state.device)
+                    )
+                )
+
+            value = self.value_head(transformer_output)
+            B, T, D = value.shape
+            merged_values = value.reshape(B * T, D)
+            value_scalars = models.support_to_scalar(merged_values, self.support_size)
+            value_scalars = value_scalars.reshape(B, T, 1)
+
+            value_min = torch.min(value_scalars, dim=1)[0]
+            value = models.scalar_to_support(value_min, self.support_size)
+            value = value.reshape(B, D)
         else:
             reward = self.reward_head(transformer_output_last)  # Shape: (B, full_support_size)
+            value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         return policy_logits, value, reward
 
@@ -194,6 +231,31 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
         reward = self.reward_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
+
+        if True:
+            pass
+            # reward[:,0] = 0.0
+            # B, T, D = reward.shape
+            # merged_rewards = reward.reshape(B * T, D)
+            # # count up summations over sequence, [0,0,1,0,1] -> [0,0,1,1,2]
+            # reward_scalars = models.support_to_scalar(merged_rewards, self.support_size)
+            # reward_scalars = reward_scalars.reshape(B, T, 1)
+            #
+            # #reward_scalars = models.support_to_scalar(reward, self.support_size)
+            # reward_cumsum = torch.cumsum(reward_scalars, dim=1)
+            # reward_cumsum_reshaped = reward_cumsum.reshape(B * T, 1)
+            # reward = models.scalar_to_support(reward_cumsum_reshaped, self.support_size)
+            # reward = reward.reshape(B, T, D)
+
+            # B, T, D = value.shape
+            # merged_values = value.reshape(B * T, D)
+            # value_scalars = models.support_to_scalar(merged_values, self.support_size)
+            # value_scalars = value_scalars.reshape(B, T, 1)
+            # value_cummin = torch.cummin(value_scalars, dim=1)[0]
+            # value_cummin_reshaped = value_cummin.reshape(B * T, 1)
+            # value = models.scalar_to_support(value_cummin_reshaped, self.support_size)
+            # value = value.reshape(B, T, D)
+
 
         return policy_logits, value, reward
 

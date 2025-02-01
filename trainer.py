@@ -147,9 +147,10 @@ class Trainer:
         (values, rewards, policy_logits) = predictions
         (target_value, target_reward, target_policy) = targets
 
+
         # Compute losses
         value_losses, reward_losses, policy_losses = self.loss_function(
-            values, rewards, policy_logits, target_value, target_reward, target_policy
+            values, rewards, policy_logits, target_value, target_reward, target_policy, self.config.support_size
         )
         reward_losses[:,0] = 0.0
 
@@ -419,7 +420,37 @@ class Trainer:
         target_value,
         target_reward,
         target_policy,
+            support_size
     ):
+        if True:
+            pass
+            # t_reward, t_value = (target_reward, target_value)
+            # t_reward[:,0] = 0.0
+            # # cumalative sum of the target rewards in dim 1
+            # # todo also first to scalar
+            # B, T, D = t_reward.shape
+            # merged_t_rewards = t_reward.reshape(B * T, D)
+            # # count up summations over sequence, [0,0,1,0,1] -> [0,0,1,1,2]
+            # t_reward_scalars = models.support_to_scalar(merged_t_rewards, support_size)
+            # t_reward_scalars = t_reward_scalars.reshape(B, T, 1)
+            #
+            # # t_reward_scalars = models.support_to_scalar(t_reward, self.support_size)
+            # t_reward_cumsum = torch.cumsum(t_reward_scalars, dim=1)
+            # t_reward_cumsum_reshaped = t_reward_cumsum.reshape(B * T, 1)
+            # t_reward = models.scalar_to_support(t_reward_cumsum_reshaped, support_size)
+            # target_reward = t_reward.reshape(B, T, D)
+            # replace the old one in dim 1 at index 0 with the new
+
+            # B, T, D = t_value.shape
+            # merged_t_values = t_value.reshape(B * T, D)
+            # t_value_scalars = models.support_to_scalar(merged_t_values, support_size)
+            # t_value_scalars = t_value_scalars.reshape(B, T, 1)
+            # t_value_cummin = torch.cummin(t_value_scalars, dim=1)[0]
+            # t_value_cummin_reshaped = t_value_cummin.reshape(B * T, 1)
+            # t_value = models.scalar_to_support(t_value_cummin_reshaped, support_size)
+            # target_value = t_value.reshape(B, T, D)
+
+
         # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=-1)(value)).sum(-1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
