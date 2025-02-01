@@ -31,6 +31,7 @@ def refresh(cfg):
         cfg.show_preds = False
     reset_names(cfg)
     if cfg.game_name == "custom_grid":
+        cfg.max_moves = cfg.get_max_moves(cfg.custom_map)
         cfg.observation_shape = cfg.get_observation_shape(cfg.pov)  #(1, min(7, int((cfg.custom_map[0])) + 1), 7)
 
 def print_config(cfg):
