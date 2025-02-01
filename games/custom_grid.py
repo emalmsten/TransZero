@@ -2,7 +2,7 @@ import datetime
 import pathlib
 
 import gymnasium as gym
-import numpy
+import numpy as np
 import torch
 
 from optimal_path_finder import calculate_steps_and_turns_to_goal
@@ -62,16 +62,18 @@ maps = {
     ],
 }
 # todo fix min and max moves
-min_moves = {
-    "2x2_0h_0d": 3,
-    "3x3_2h_2d": 6,
-    "4x4_3h_1d": 8,
-    "4x4_3h_3d": 13,
-    "5x5_3h_3d": 12,
-    "6x6_3h_3d": 15,
+max_moves = {
+    "2x2_0h_0d": 6,
+    "3x3_2h_2d": 15,
 
-    "5x5_4h_1d": 15,
-    "6x6_5h_1d": 15
+    "4x4_3h_1d": 18,
+    "4x4_3h_3d": 18,
+
+    "5x5_3h_3d": 25,
+    "6x6_3h_3d": 25,
+
+    "5x5_4h_1d": 25,
+    "6x6_5h_1d": 25
 }
 
 try:
@@ -125,7 +127,7 @@ class MuZeroConfig:
 
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
-        self.seed = 42  # Seed for numpy, torch and the game
+        self.seed = 43  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
         ### Game
@@ -142,7 +144,7 @@ class MuZeroConfig:
 
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
-        self.max_moves = 16 # Maximum number of moves if game is not finished before
+        self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
         self.num_simulations = 10  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
@@ -252,6 +254,9 @@ class MuZeroConfig:
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
+    def get_max_moves(self, custom_map):
+        return max_moves[custom_map]
+
 
 class Game(AbstractGame):
     """
@@ -267,12 +272,17 @@ class Game(AbstractGame):
         self.config = config
         self.size = int(config.custom_map[0]) + 2
 
-        self.env = gym.make("CustomSimpleEnv-v0", negative_reward = config.negative_reward,
-                            custom_map = config.custom_map, testing = config.testing, max_steps = config.max_moves,
-                            start_pos = config.start_pos, random_map = config.random_map)
+        self.env = gym.make("CustomSimpleEnv-v0",
+                            negative_reward = config.negative_reward,
+                            custom_map = config.custom_map,
+                            testing = config.testing,
+                            max_steps = max_moves[config.custom_map],
+                            start_pos = config.start_pos,
+                            random_map = config.random_map,
+                            obstacle = config.obstacle,
+                            )
 
-
-
+        # todo add seed
         # if seed is not None:
         #     self.env.seed(seed)
 
@@ -298,7 +308,7 @@ class Game(AbstractGame):
             obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
 
             # take every 10 and do minus (11 + obs[direction])
-            obs = numpy.where(obs == 10, -direction - 1, obs)
+            obs = np.where(obs == 10, -direction - 1, obs)
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
@@ -326,7 +336,7 @@ class Game(AbstractGame):
             reward = 0.5 + 0.5 * (1 - (env.step_count - env.min_actions) / (env.max_steps - env.min_actions))
             reward = min(1.0, reward)
 
-        if reward < 0.0:
+        if reward < -0.00001:
             print("negative reward")
 
         if env.step_count < env.max_steps and done and reward < 0.00001:
@@ -334,7 +344,7 @@ class Game(AbstractGame):
 
         #return obs, reward, done #, truncated, info
 
-        return numpy.array(obs), reward * 10, done
+        return np.array(obs), reward * 10, done
 
     def legal_actions(self):
         """
@@ -361,7 +371,7 @@ class Game(AbstractGame):
         #obs = obs[:, max(0, (7-(self.size-1))):, [0]]
         obs = self.shape_observation(obs)
 
-        return numpy.array(obs)
+        return np.array(obs)
 
     def close(self):
         """
@@ -417,28 +427,22 @@ class SimpleEnv(MiniGridEnv):
         self.testing = kwargs.pop("testing", False)
         render_mode = "human" #if self.testing else None
 
-        self.negative_reward = kwargs.pop("negative_reward", None)
-
-        self.custom_map_name = kwargs.pop("custom_map", "3x3_2h_2d")
-        self.random_map = kwargs.pop("random_map", True)
-        self.start_pos = kwargs.pop("start_pos", None)
-
-        self.obstacle = kwargs.pop("obstacle", "lava")
+        self.custom_map_name = kwargs.pop("custom_map")
+        self.random_map = kwargs.pop("random_map")
+        self.start_pos = kwargs.pop("start_pos")
+        self.obstacle = kwargs.pop("obstacle")
+        self.negative_reward = kwargs.pop("negative_reward")
+        self.max_steps = max_steps
 
         self.custom_map = maps[self.custom_map_name]
-
         self.size = int(self.custom_map_name[0]) + 2
-        self.min_actions = min_moves[self.custom_map_name]
-
-        self.max_steps = kwargs.pop("max_steps", 0)
-        self.max_steps = self.min_actions * 2
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
         super().__init__(
             mission_space=mission_space,
             grid_size=self.size,
-            max_steps=self.max_steps,
+            max_steps=max_steps,
             render_mode = render_mode,
             see_through_walls=True,
             **kwargs,
@@ -459,16 +463,11 @@ class SimpleEnv(MiniGridEnv):
                 if char == 'H':
                     obstacle = Lava() if self.obstacle == "lava" else Wall()
                     self.grid.set(x, y, obstacle)
-                elif char == 'S' and self.random_map:
-                    self.start_pos = (x, y)
+                elif char == 'S':
+                    self.agent_pos = (x, y)
+                    self.agent_dir = np.random.randint(0, 4)
                 elif char == 'G':
                     self.put_obj(Goal(), x, y)
-
-        if self.start_pos is None and not self.random_map:
-            self.place_agent()
-        else:
-            self.agent_pos = self.start_pos
-            self.agent_dir = 0
 
 
     @staticmethod
@@ -477,43 +476,60 @@ class SimpleEnv(MiniGridEnv):
 
 
     def get_random_map(self):
-        size = int(self.custom_map_name[0])
-        init_map = ["F" * size] * size
-        # set goal
-        init_map[size - 1] = init_map[size - 1][:size - 1] + "G"
-        # count H in custom map
-
+        size = self.size-2
         holes = int(self.custom_map_name[4])
-        letters = ["S"] + ["H"] * holes
 
-        # add H to random positions
-        for letter in letters:
-            while True:
-                x = numpy.random.randint(0, size)
-                y = numpy.random.randint(0, size)
-                if letter == "S":
-                    agent_pos = (x, y)
-                if init_map[y][x] != "H" and init_map[y][x] != "G" and init_map[y][x] != "S":
-                    break
+        # Initialize map with 'F'
+        init_map = np.full((size, size), "F", dtype=str)
 
-            init_map[y] = init_map[y][:x] + letter + init_map[y][x + 1:]
+        # Set the goal position
+        init_map[size - 1, size - 1] = "G"
 
-        step_grid = calculate_steps_and_turns_to_goal(init_map)
-        self.min_actions = step_grid[agent_pos[1], agent_pos[0]]
+        # Get all valid positions (excluding goal)
+        possible_positions = [(x, y) for x in range(size) for y in range(size) if (x, y) != (size - 1, size - 1)]
 
-        # try again
-        if self.min_actions <= 0:
-            return self.get_random_map()
+        # Randomly select positions for 'H'
+        selected_positions = np.random.choice(len(possible_positions), holes, replace=False)
+
+        # Assign 'H' to the selected positions
+        for idx in selected_positions:
+            x, y = possible_positions[idx]
+            init_map[y, x] = "H"
 
         return init_map
 
 
+
     def _gen_grid(self, width, height):
+        walkable_size = self.size - 2
         # Create an empty grid
         if self.random_map:
-            self.custom_map = self.get_random_map()
+            custom_map = self.get_random_map()
+        else:
+            # turn array (self.custom map) of strings to array of arrays
+            custom_map = [list(row) for row in self.custom_map]
+            # if there is an S remove it
+            custom_map = [["F" if cell == "S" else cell for cell in row] for row in custom_map]
 
-        self._gen_grid_from_string(self.custom_map)
+        # todo ["".join(row) for row in init_map]
+        step_grid = calculate_steps_and_turns_to_goal(custom_map)
+        # list all positions which you can reach from the goal
+        reachables = [(y, x) for y in range(len(step_grid)) for x in range(len(step_grid[y])) if step_grid[y][x] > 0]
+
+        # if not more than 20% of all positions are reachable, reroll (goal locked between holes)
+        if not len(reachables) / walkable_size**2 > 0.2:
+            return self._gen_grid(width, height)
+
+        # get random reachable position
+        start_pos = self.start_pos
+        if start_pos is None:
+            start_pos = reachables[np.random.randint(0, len(reachables))]
+
+        # add 3 to the min actions such that the agent can turn in the beginning (todo, not optimal but fine?)
+        self.min_actions = step_grid[start_pos[0], start_pos[1]] + 3
+        custom_map[start_pos[0]][start_pos[1]] = "S"
+
+        self._gen_grid_from_string(custom_map)
         self.mission = "custom mission"
 
     #
