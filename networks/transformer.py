@@ -171,7 +171,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         policy_logits = self.policy_head(transformer_output_last)  # Shape: (B, action_space_size)
         value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
-        # calculate cumulative reward over sequence # todo test
+        # todo check losses and which values and rewards to include there
+
+        # calculate cumulative reward over sequence
         if False:
             reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
         else:

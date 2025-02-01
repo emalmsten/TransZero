@@ -61,7 +61,6 @@ maps = {
         "FFFFG"
     ],
 }
-# todo fix min and max moves
 max_moves = {
     "2x2_0h_0d": 6,
     "3x3_2h_2d": 15,
@@ -511,7 +510,6 @@ class SimpleEnv(MiniGridEnv):
             # if there is an S remove it
             custom_map = [["F" if cell == "S" else cell for cell in row] for row in custom_map]
 
-        # todo ["".join(row) for row in init_map]
         step_grid = calculate_steps_and_turns_to_goal(custom_map)
         # list all positions which you can reach from the goal
         reachables = [(y, x) for y in range(len(step_grid)) for x in range(len(step_grid[y])) if step_grid[y][x] > 0]

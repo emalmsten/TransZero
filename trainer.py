@@ -152,6 +152,7 @@ class Trainer:
             values, rewards, policy_logits, target_value, target_reward, target_policy
         )
         reward_losses[:,0] = 0.0
+        # todo also no losses for the steps after the game concluded
 
         non_padding_mask = ~action_mask
         # Apply mask to losses
