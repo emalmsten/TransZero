@@ -1,4 +1,6 @@
 import torch
+
+import models
 from networks.abstract_network import AbstractNetwork
 from models import mlp
 import torch.nn as nn
@@ -34,16 +36,20 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         downsample = None,
 
         representation_network_type = "res",
-        mlp_head_layers = None
+        mlp_head_layers = None,
+        res_blocks_pred = 0,
+        cum_reward = False
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
+        self.support_size = support_size
         self.full_support_size = 2 * support_size + 1
         self.seq_mode = seq_mode
         self.use_proj = use_proj
         self.representation_network_type = representation_network_type
         self.state_size = 4
+        self.cum_reward = cum_reward
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
@@ -96,6 +102,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = nn.Linear(flat_size, transformer_hidden_size)
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
+        self.state_embedding = nn.Embedding(self.state_size, transformer_hidden_size)
 
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
 
@@ -107,6 +114,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 self.sinusoidal_positional_embedding(max_seq_length + 1, transformer_hidden_size)
             )
 
+        self.positional_encoding_state = nn.Embedding(self.state_size, transformer_hidden_size)
+
         self.transformer_layer = nn.TransformerEncoderLayer(
             d_model=transformer_hidden_size,
             nhead=transformer_heads,
@@ -117,6 +126,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             num_layers=transformer_layers,
             norm = nn.LayerNorm(transformer_hidden_size)
         )
+
+        if res_blocks_pred > 0:
+            self.resblocks = torch.nn.ModuleList(
+                [ResidualBlock(self.transformer_hidden_size) for _ in range(res_blocks_pred)]
+            )
+        else:
+            self.resblocks = None
 
         if mlp_head_layers is not None:
             self.value_head = mlp(
@@ -170,16 +186,26 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Obtain the value prediction from the last token's output
         transformer_output_last = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
 
+        if self.resblocks is not None:
+            for block in self.resblocks:
+                transformer_output_last = block(transformer_output_last)
+
         policy_logits = self.policy_head(transformer_output_last)  # Shape: (B, action_space_size)
         value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         # todo check losses and which values and rewards to include there
-
         # calculate cumulative reward over sequence
-        if False:
-            reward = self.reward_head(transformer_output[:, 1:, :]).sum(dim=1)
+        if action_sequence is not None and self.cum_reward:
+            reward = self.reward_head(transformer_output)
+            scalars = []
+            for i in range(1, reward.size(1)):
+                scalars.append(models.support_to_scalar(reward[:, i, :], self.support_size).item())
+            # sum all the scalars
+            reward = sum(scalars)
+
         else:
             reward = self.reward_head(transformer_output_last)  # Shape: (B, full_support_size)
+            reward = models.support_to_scalar(reward, self.support_size) # todo
 
         return policy_logits, value, reward
 
@@ -194,6 +220,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         # Pass through the transformer encoder
         transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
+
+        if self.resblocks is not None:
+            for block in self.resblocks:
+                transformer_output = block(transformer_output)
 
         policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)

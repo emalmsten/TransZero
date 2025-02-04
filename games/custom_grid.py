@@ -134,7 +134,7 @@ class MuZeroConfig:
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
-        self.negative_reward = -0 #-0.1
+        self.negative_reward = -0.0 #-0.1
         self.obstacle = "lava"
 
         # Evaluate
@@ -196,7 +196,9 @@ class MuZeroConfig:
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [64]
-        self.mlp_head_layers = None
+        self.mlp_head_layers = [32]
+        self.res_blocks_pred = 0
+        self.cum_reward = False
 
         ### Training
         self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
@@ -307,7 +309,8 @@ class Game(AbstractGame):
             obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
 
             # take every 10 and do minus (11 + obs[direction])
-            obs = np.where(obs == 10, -direction - 1, obs)
+            obs = np.where(obs == 1, 0, obs)
+            obs = np.where(obs == 10, direction + 2, obs)
         else:
             raise ValueError('POV must be either "agent" or "god"')
 

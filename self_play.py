@@ -441,7 +441,7 @@ class MCTS:
                 reward, trans_reward = reward.chunk(2, dim=0)
 
             value = models.support_to_scalar(value, self.config.support_size).item()
-            reward = models.support_to_scalar(reward, self.config.support_size).item()
+            # todo reward = models.support_to_scalar(reward, self.config.support_size).item()
 
             if self.config.show_preds:
                 update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
