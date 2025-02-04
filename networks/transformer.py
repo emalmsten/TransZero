@@ -43,6 +43,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.seq_mode = seq_mode
         self.use_proj = use_proj
         self.representation_network_type = representation_network_type
+        self.state_size = 4
 
         def cond_wrap(net):
             return net if self.seq_mode else torch.nn.DataParallel(net)
@@ -95,6 +96,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = nn.Linear(flat_size, transformer_hidden_size)
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
+
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
 
         if positional_embedding_type == 'learned':
@@ -324,6 +326,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Project the root hidden state to the transformer hidden size
         if self.use_proj:
             root_hidden_state = self.hidden_state_proj(root_hidden_state)
+
         state_embedding = root_hidden_state.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
 
         # Total sequence length (including the root hidden state)
@@ -372,11 +375,11 @@ class RepresentationNetwork(torch.nn.Module):
         super().__init__()
         self.downsample = downsample
         if self.downsample:
-            if self.downsample == "resnet":
+            if self.downsample == "resnet_s":
                 self.downsample_net = DownSample(
                     observation_shape[0] * (stacked_observations + 1)
                     + stacked_observations,
-                    num_channels,
+                    num_channels, small=True
                 )
             elif self.downsample == "CNN":
                 self.downsample_net = DownsampleCNN(
@@ -391,26 +394,28 @@ class RepresentationNetwork(torch.nn.Module):
             else:
                 raise NotImplementedError('downsample should be "resnet" or "CNN".')
 
-        if observation_shape[1] == 1 or observation_shape[2] == 1:
-            self.conv_type = "1x1"
         else:
-            self.conv_type = "3x3"
-        #self.conv_type = "1x1" # todo overwrite
+            if observation_shape[1] == 1 or observation_shape[2] == 1:
+                self.conv_type = "1x1"
+            else:
+                self.conv_type = "3x3"
+            # self.conv_type = "1x1" # todo overwrite
 
-        self.conv = conv3x3(
-            observation_shape[0] * (stacked_observations + 1) + stacked_observations,
-            num_channels, conv_type = self.conv_type
-        )
+            self.conv = conv3x3(
+                observation_shape[0] * (stacked_observations + 1) + stacked_observations,
+                num_channels, conv_type = self.conv_type
+            )
 
-        self.bn = torch.nn.BatchNorm2d(num_channels)
+            self.bn = torch.nn.BatchNorm2d(num_channels)
+
+
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
 
         with torch.no_grad():
             dummy_input = torch.zeros(1, observation_shape[0], observation_shape[1], observation_shape[2])
-            dummy_input = self.downsample_net(dummy_input) if self.downsample else dummy_input
-            conv_out = self.conv(dummy_input)
+            conv_out = self.conv(dummy_input) if not self.downsample else self.downsample_net(dummy_input)
             self.flattened_size = conv_out.numel()
             print("flattened_size", self.flattened_size)
 

@@ -102,13 +102,13 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
+        self.custom_map = "5x5_4h_1d" #4x4_3h_1d"
         self.start_pos = None
-        self.random_map = False
+        self.random_map = True
         self.pov = 'agent' # agent or god
 
         # Naming
-        self.project = "TransZeroV2"
+        self.project = "TransZeroV3"
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
@@ -199,7 +199,7 @@ class MuZeroConfig:
         self.mlp_head_layers = None
 
         ### Training
-        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 256  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
@@ -215,7 +215,7 @@ class MuZeroConfig:
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
-        self.replay_buffer_size = 15000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 150000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network

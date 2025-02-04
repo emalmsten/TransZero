@@ -237,8 +237,9 @@ class ResidualBlock(torch.nn.Module):
 
 # Downsample observations before representation network (See paper appendix Network Architecture)
 class DownSample(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, small=False):
         super().__init__()
+        self.small = small
         self.conv1 = torch.nn.Conv2d(
             in_channels,
             out_channels // 2,
@@ -275,9 +276,12 @@ class DownSample(torch.nn.Module):
         for block in self.resblocks2:
             x = block(x)
         x = self.pooling1(x)
-        for block in self.resblocks3:
-            x = block(x)
-        x = self.pooling2(x)
+
+        if not self.small:
+            for block in self.resblocks3:
+                x = block(x)
+            x = self.pooling2(x)
+
         return x
 
 
