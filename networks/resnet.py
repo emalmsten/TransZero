@@ -285,6 +285,48 @@ class DownSample(torch.nn.Module):
         return x
 
 
+# Downsample observations before representation network (See paper appendix Network Architecture)
+class DownSampleTrans(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, size=None):
+        super().__init__()
+        self.size = size
+        self.conv1 = torch.nn.Conv2d(
+            in_channels,
+            out_channels // 2,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False,
+        )
+        self.resblocks1 = torch.nn.ModuleList(
+            [ResidualBlock(out_channels // 2) for _ in range(2)]
+        )
+        self.conv2 = torch.nn.Conv2d(
+            out_channels // 2,
+            out_channels,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False,
+        )
+        self.resblocks2 = torch.nn.ModuleList(
+            [ResidualBlock(out_channels) for _ in range(3)]
+        )
+        self.pooling1 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+
+
+    def forward(self, x):
+        x = self.conv1(x)
+        for block in self.resblocks1:
+            x = block(x)
+        x = self.conv2(x)
+        for block in self.resblocks2:
+            x = block(x)
+        x = self.pooling1(x)
+
+        return x
+
+
 class DownsampleCNN(torch.nn.Module):
     def __init__(self, in_channels, out_channels, h_w):
         super().__init__()
