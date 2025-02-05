@@ -68,7 +68,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     downsample=downsample,
                     fc_layers=fc_layers,
                     encoding_size=self.transformer_hidden_size,
-                    norm_layer=norm_layer
+                    norm_layer=norm_layer,
+                    state_size=self.state_size
                 )
             )
         elif representation_network_type == "mlp":
@@ -209,6 +210,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def prediction_fast(self, root_hidden_state, action_sequence, action_mask):
+        if self.state_size is not None:
+            flat_size = self.state_size[1] * self.state_size[2]
+            # append false to action mask beginning
+            action_mask = torch.cat([torch.zeros(action_mask.size(0), 1, dtype=torch.bool, device=action_mask.device), action_mask], dim=1)
+
+
+
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
         causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
 
@@ -218,6 +226,11 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
         reward = self.reward_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
+
+        if self.state_size is not None:
+            reward = reward[:, flat_size:, :]
+            value = value[:, flat_size:, :]
+            policy_logits = policy_logits[:, flat_size:, :]
 
         return policy_logits, value, reward
 
@@ -250,6 +263,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def representation_3d(self, observation):
+        # observation = (
+        #     torch.tensor(observation)
+        #     .float()
+        #     .unsqueeze(0)
+        #     .to(observation.device)
+        # )
+
         encoded_state = self.representation_network(observation)
 
         # Scale encoded state between [0, 1] (See appendix paper Training)
@@ -351,11 +371,11 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             # Learned positional encoding
             pos_indices = torch.arange(sequence_length, device=embedded_actions.device).unsqueeze(0)  # Shape: (1, sequence_length)
             pos_encoding = self.positional_encoding(pos_indices)  # Shape: (1, sequence_length, transformer_hidden_size)
-            pos_encoding = pos_encoding.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
+            #pos_encoding = pos_encoding.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
         else:
             # Sinusoidal positional encoding
             pos_encoding = self.positional_encoding[:sequence_length]  # Shape: (sequence_length, transformer_hidden_size)
-            pos_encoding = pos_encoding.unsqueeze(0).expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
+            pos_encoding = pos_encoding.unsqueeze(0) #.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         return pos_encoding
 
@@ -364,7 +384,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # root hidden state: (B, x)
         # action sequence: (B, y)
         B = rhs.size(0)
-        C, H, W = self.state_size
 
         # Embed the action sequence
         if action_sequence is None:
@@ -383,13 +402,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                                                     embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
 
         if self.state_size is not None:
+            C, H, W = self.state_size
 
-            assert rhs.size[1] == H and rhs.size[2] == W
+            assert (rhs.size(2)) == H and (rhs.size(3) == W)
             row_indices = torch.arange(H, device=rhs.device).unsqueeze(1).repeat(1, W).reshape(-1)  # [H*W]
             col_indices = torch.arange(W, device=rhs.device).unsqueeze(0).repeat(H, 1).reshape(-1)  # [H*W]
 
             # Get embeddings and sum them
-            pos_encoding_state = self.row_embedding(row_indices) + self.col_embedding(col_indices)  # [H*W, transformer_hidden_size]
+            pos_encoding_state = self.positional_encoding_state_row(row_indices) + self.positional_encoding_state_col(col_indices)  # [H*W, transformer_hidden_size]
             # Expand to match the batch dimension:
             pos_encoding_state = pos_encoding_state.unsqueeze(0)  # [1, H*W, transformer_hidden_size]
             pos_encoding = torch.cat([pos_encoding, pos_encoding_state], dim=1)  # [B, y+1+H*W, transformer_hidden_size]
@@ -440,10 +460,12 @@ class RepresentationNetwork(torch.nn.Module):
         fc_layers = None,
         encoding_size = 32,
         activation=nn.ELU,
-        norm_layer=True
+        norm_layer=True,
+        state_size = None
 
     ):
         super().__init__()
+        self.state_size = state_size
         self.downsample = downsample
         if self.downsample:
             if self.downsample == "resnet_s":
@@ -523,9 +545,9 @@ class RepresentationNetwork(torch.nn.Module):
         for block in self.resblocks:
             x = block(x)
 
-        x = x.view(x.size(0), -1)  # flatten
-
-        x = self.fc_net(x)
+        if self.state_size is None: # TODO
+            x = x.view(x.size(0), -1)  # flatten
+            x = self.fc_net(x)
 
         return x
 
