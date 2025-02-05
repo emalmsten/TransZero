@@ -194,8 +194,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
 
         # todo check losses and which values and rewards to include there
+        fixed_support_in_self_play = False # todo
         # calculate cumulative reward over sequence
-        if action_sequence is not None and self.cum_reward:
+        if action_sequence is not None and self.cum_reward and fixed_support_in_self_play:
             reward = self.reward_head(transformer_output)
             scalars = []
             for i in range(1, reward.size(1)):
