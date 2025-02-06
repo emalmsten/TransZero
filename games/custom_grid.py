@@ -131,6 +131,7 @@ class MuZeroConfig:
 
         ### Game
         self.observation_shape = self.get_observation_shape(self.pov) #  # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
+        self.state_size = (16,3,3) # same as
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -144,7 +145,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
-        self.num_simulations = 10  # Number of future moves self-simulated
+        self.num_simulations = 25  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -162,7 +163,7 @@ class MuZeroConfig:
         # Residual Network
         self.downsample = None  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 8  # Number of channels in the ResNet
+        self.channels = 16  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
@@ -183,8 +184,8 @@ class MuZeroConfig:
         self.transformer_layers = 3
         self.transformer_heads = 4
         self.transformer_hidden_size = 32
-        self.max_seq_length = 50
-        self.positional_embedding_type = "sinus"
+        self.max_seq_length = 25
+        self.positional_embedding_type = "learned"
         self.norm_layer = True
         self.use_proj = False
         self.representation_network_type = "res"  # "res", "cnn" or "mlp"
@@ -196,8 +197,7 @@ class MuZeroConfig:
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [64]
-        self.mlp_head_layers = [32]
-        self.res_blocks_pred = 0
+        self.mlp_head_layers = [16]
         self.cum_reward = False
 
         ### Training
@@ -309,8 +309,7 @@ class Game(AbstractGame):
             obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
 
             # take every 10 and do minus (11 + obs[direction])
-            obs = np.where(obs == 1, 0, obs)
-            obs = np.where(obs == 10, direction + 2, obs)
+            obs = np.where(obs == 10, direction + 3, obs)
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
