@@ -465,7 +465,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 rhs = self.hidden_state_proj(rhs)
         else:
             rhs = rhs.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
-            pos_encoding_state = torch.zeros(B, 0, self.transformer_hidden_size, device=rhs.device)
+            pos_encoding_state = torch.zeros(B, 1, self.transformer_hidden_size, device=rhs.device)
 
         # Concatenate the root hidden state with the positional encoding
         rhs = rhs + pos_encoding_state
