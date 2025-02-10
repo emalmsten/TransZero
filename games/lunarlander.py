@@ -22,6 +22,8 @@ class MuZeroConfig:
         self.logger = "wandb" if not self.debug_mode else None
 
         # Naming
+        self.project = "TransZeroV3"
+
         self.append = "_local_" + "lun_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
@@ -30,7 +32,7 @@ class MuZeroConfig:
 
         # Saving
         self.save_model = True
-        self.save_interval = 500
+        self.save_interval = 5000
 
         # GPU
         self.selfplay_on_gpu = cuda and not self.debug_mode
@@ -68,7 +70,7 @@ class MuZeroConfig:
         self.pb_c_init = 1.25
 
         ### Network
-        self.support_size = 10  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
+        self.support_size = 20  # Value and reward are scaled (with almost sqrt) and encoded on a vector with a range of -support_size to support_size. Choose it so that support_size <= sqrt(max(abs(discounted reward)))
         
         # Residual Network
         self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
@@ -89,20 +91,32 @@ class MuZeroConfig:
         self.fc_value_layers = [64]  # Define the hidden layers in the value network
         self.fc_policy_layers = [64]  # Define the hidden layers in the policy network
 
-        # Transformer
-        self.transformer_layers = 2
-        self.transformer_heads = 4
+        self.transformer_layers = 4
+        self.transformer_heads = 8
         self.transformer_hidden_size = 64
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
+        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
+        # if cnn
+        self.conv_layers_trans = [
+            # (out_channels, kernel_size, stride)
+            (32, 1, 1),  # Output: (batch_size, 16, 3, 3)
+            (64, 1, 1),
+            # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
+        ]
+        self.fc_layers_trans = [64]
+        self.mlp_head_layers = [16]
+        self.cum_reward = False
+        self.state_size = None #(16,3,3) # same as
+
 
         ### Training
         self.checkpoint_interval = 10
         self.training_steps = 400000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128 # 64  # Number of parts of games to train on at each training step # todo
-        self.value_loss_weight = 1  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
 
         # Learning rate
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
@@ -110,15 +124,15 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.005  # Initial learning rate
-        self.lr_decay_rate = 1  # Set it to 1 to use a constant learning rate
+        self.lr_init = 0.0025  # Initial learning rate
+        self.lr_decay_rate = 0.99  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 0.02 * self.training_steps
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
-        self.replay_buffer_size = 2000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 200000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element # todo consider longer
-        self.td_steps = 30  # Number of steps in the future to take into account for calculating the target value
+        self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
