@@ -39,7 +39,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         representation_network_type = "res",
         mlp_head_layers = None,
         cum_reward = False,
-        state_size = None
+        state_size = None,
+        num_state_values = None # none for continous
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
@@ -53,6 +54,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.cum_reward = cum_reward
         self.downsample = downsample
         self.positional_embedding_type = positional_embedding_type
+        self.num_state_values = num_state_values
 
 
         def cond_wrap(net):
@@ -107,7 +109,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
         if self.state_size is not None:
-            self.state_embedding = nn.Embedding(10, transformer_hidden_size)
+            # linear embedding
+            self.state_embedding = nn.Embedding(self.state_values, transformer_hidden_size) if self.num_state_values else nn.Linear(self.state_size[0], transformer_hidden_size)
+            #self.state_embedding =
 
         self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
 
@@ -211,6 +215,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
 
         # Pass through the transformer encoder
+        #print(input_sequence.size())
+
         transformer_output = self.transformer_encoder(input_sequence)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Obtain the value prediction from the last token's output
@@ -457,7 +463,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             rhs = rhs.permute(0, 2, 3, 1).reshape(B, H * W, C)
             if self.representation_network_type == "none":
                 # change dtype to int
-                rhs = rhs.int()
+                if self.num_state_values:
+                    rhs = rhs.int()
+                #rhs = rhs.int()
                 rhs = self.state_embedding(rhs)
                 rhs = rhs.view(B, H * W, self.transformer_hidden_size)
 
