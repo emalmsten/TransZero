@@ -6,6 +6,7 @@ from models import mlp
 import torch.nn as nn
 import math
 from networks.resnet import DownSample, DownsampleCNN, conv3x3, ResidualBlock, DownSampleTrans
+from networks.stable_transformer import StableTransformerXL
 
 
 class MuZeroTransformerNetwork(AbstractNetwork):
@@ -40,7 +41,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         mlp_head_layers = None,
         cum_reward = False,
         state_size = None,
-        num_state_values = None # none for continous
+        num_state_values = None, # none for continous,
+        stable_transformer = True
     ):
         super().__init__()
         print("MuZeroTransformerNetwork")
@@ -55,6 +57,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         self.downsample = downsample
         self.positional_embedding_type = positional_embedding_type
         self.num_state_values = num_state_values
+        self.stable_transformer = stable_transformer
 
 
         def cond_wrap(net):
@@ -144,6 +147,19 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             norm = nn.LayerNorm(transformer_hidden_size)
         )
 
+        if self.stable_transformer:
+            self.transformer_encoder = StableTransformerXL(
+                d_input=transformer_hidden_size,
+                n_layers=transformer_layers,
+                n_heads=transformer_heads,
+                d_head_inner=transformer_hidden_size // transformer_heads,  # Adjust if needed
+                d_ff_inner=4 * transformer_hidden_size,  # Common practice
+                dropout=0.1,
+                dropouta=0.0,
+                mem_len=100,  # Adjust memory length as per requirement
+            )
+            self.memory = self.transformer_encoder.init_memory(1) # batch size
+
         if mlp_head_layers is not None:
             self.value_head = mlp(
                 self.transformer_hidden_size,
@@ -217,7 +233,16 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Pass through the transformer encoder
         #print(input_sequence.size())
 
-        transformer_output = self.transformer_encoder(input_sequence)  # Shape: (B, sequence_length, transformer_hidden_size)
+        if self.stable_transformer:
+            input_sequence = input_sequence.transpose(0, 1)
+
+            result = self.transformer_encoder(input_sequence)
+            transformer_output = result["logits"]
+            transformer_output = transformer_output.transpose(0, 1)
+        else:
+            transformer_output = self.transformer_encoder(input_sequence)
+
+        # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Obtain the value prediction from the last token's output
         transformer_output_last = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
@@ -257,7 +282,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
 
         # Pass through the transformer encoder
-        transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
+        if self.stable_transformer:
+            input_sequence = input_sequence.transpose(0, 1)
+
+            result = self.transformer_encoder(input_sequence, src_key_padding_mask=action_mask)
+            transformer_output = result["logits"]
+            transformer_output = transformer_output.transpose(0, 1)
+        else:
+            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)

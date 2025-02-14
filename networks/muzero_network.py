@@ -56,6 +56,7 @@ class MuZeroNetwork:
                 mlp_head_layers=config.mlp_head_layers,
                 cum_reward=config.cum_reward,
                 state_size=config.state_size,
+                stable_transformer=config.stable_transformer,
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
