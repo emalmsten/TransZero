@@ -102,10 +102,10 @@ class MuZeroConfig:
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "5x5_4h_1d" #4x4_3h_1d"
+        self.custom_map = "4x4_3h_3d" #4x4_3h_1d"
         self.start_pos = None
         self.random_map = True
-        self.pov = 'agent' # agent or god
+        self.pov = 'god' # agent or god
 
         # Naming
         self.project = "TransZeroV3"
@@ -131,7 +131,6 @@ class MuZeroConfig:
 
         ### Game
         self.observation_shape = self.get_observation_shape(self.pov) #  # (7, 7, 3)  # Dimensions of the game observation, must be 3D (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
-        self.state_size = (16,3,3) # same as
         self.action_space = list(range(3))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
@@ -185,7 +184,7 @@ class MuZeroConfig:
         self.transformer_heads = 4
         self.transformer_hidden_size = 32
         self.max_seq_length = 25
-        self.positional_embedding_type = "learned"
+        self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
         self.representation_network_type = "res"  # "res", "cnn" or "mlp"
@@ -199,6 +198,9 @@ class MuZeroConfig:
         self.fc_layers_trans = [64]
         self.mlp_head_layers = [16]
         self.cum_reward = False
+        self.state_size = None #(16,3,3) # same as
+        self.stable_transformer=False
+
 
         ### Training
         self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
@@ -292,6 +294,32 @@ class Game(AbstractGame):
             self.env = minigrid.wrappers.FullyObsWrapper(self.env)
 
 
+    def one_hot_encode_grid(self, obs, direction):
+        """
+        Converts a 2D observation grid into a multi-channel one-hot encoded representation.
+
+        Args:
+        - obs: 2D NumPy array of shape (H, W), representing the world.
+        - direction: Integer (0-3) indicating the agent's direction.
+
+        Returns:
+        - A NumPy array of shape (C, H, W) where C is the number of channels.
+        """
+        H, W = obs.shape
+        num_dirs = 4  # Four possible directions (up, right, down, left)
+
+        # Create empty one-hot encoded map with additional channels
+        one_hot_map = np.zeros((num_dirs + 2, H, W), dtype=np.uint8)
+
+        # Direction encoding
+        one_hot_map[direction, 0, 0] = 1  # Agent's position in the direction channel
+
+        # Lava (8) and Goal (9) encoding
+        one_hot_map[4] = (obs == 8).astype(np.uint8)  # Lava channel
+        one_hot_map[5] = (obs == 9).astype(np.uint8)  # Goal channel
+
+        return one_hot_map
+
     def shape_observation(self, obs):
         """
         Convert the observation to the required shape.
@@ -310,6 +338,10 @@ class Game(AbstractGame):
 
             # take every 10 and do minus (11 + obs[direction])
             obs = np.where(obs == 10, direction + 3, obs)
+        elif self.config.pov == 'god_dim':
+            pass
+
+
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
