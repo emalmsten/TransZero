@@ -206,7 +206,7 @@ class SelfPlay:
 
         if self.config.show_preds:
             # append to file that is made if it does not exist
-            file_path = "predictions/run2.json"
+            file_path = "predictions/run_both_3x3_rand.json"
             with open(file_path, "a") as f:
                 json.dump(game_dict, f)
                 f.write('\n')  # Add a newline after each JSON object
@@ -287,12 +287,40 @@ class SelfPlay:
             new_state_dict[new_key] = v
         return new_state_dict
 
-def update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits, action_sequence, support_size):
+def update_pred_dict(pred_dict, value, reward, policy_logits, action_sequence, action_space):
+    as_dict = {
+        0: 'L',
+        1: 'R',
+        2: 'F'
+    }
+
+    policy_values = torch.softmax(
+        torch.tensor([policy_logits[0][a] for a in action_space]), dim=0
+    ).tolist()
+
+
+    pred_dict["predictions"].append(
+        {
+            "as_str": [as_dict[a] for a in action_sequence],
+
+            "v": value,
+            "r": reward,
+            "p": policy_values,
+
+            "as": action_sequence,
+
+        }
+    )
+
+
+def update_pred_dict_double(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits, action_sequence, support_size):
+
+
     pred_dict["predictions"].append(
         {
             "v": value,
             "r": reward,
-            "p": policy_logits.tolist(),
+            "p": policy_logits,
 
             "tv": models.support_to_scalar(trans_value, support_size).item(),
             "tr": models.support_to_scalar(trans_reward, support_size).item(),
@@ -334,7 +362,7 @@ class MCTS:
 
         if self.config.show_preds:
             pred_dict = {
-                "observation": observation.squeeze().item(),
+                "observation": observation.squeeze().tolist(),
                 "predictions": []
             }
 
@@ -372,7 +400,10 @@ class MCTS:
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
             if self.config.show_preds:
-                update_pred_dict(pred_dict, root_predicted_value, reward, policy_logits, root_predicted_trans_value, trans_reward, trans_policy_logits, [], self.config.support_size)
+                if is_double_net:
+                    update_pred_dict_double(pred_dict, root_predicted_value, reward, policy_logits, root_predicted_trans_value, trans_reward, trans_policy_logits, [], self.config.support_size)
+                else:
+                    update_pred_dict(pred_dict, root_predicted_value, reward, policy_logits, [], self.config.action_space)
 
             assert (
                 legal_actions
@@ -444,8 +475,11 @@ class MCTS:
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
             if self.config.show_preds:
-                update_pred_dict(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
+                if is_double_net:
+                    update_pred_dict_double(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
                                  [int(a) for a in actions], self.config.support_size)
+                else:
+                    update_pred_dict(pred_dict, value, reward, policy_logits, [int(a) for a in actions], self.config.action_space)
 
             node.expand(
                 self.config.action_space,
@@ -536,8 +570,15 @@ class MCTS:
         else:
             raise NotImplementedError("More than two player mode not implemented.")
 
+a_dict_cg = {
+    0: 'L',
+    1: 'R',
+    2: 'F'
+}
+
 
 class Node:
+
     def __init__(self, prior, name="root"):
         self.visit_count = 0
         self.to_play = -1
@@ -572,7 +613,8 @@ class Node:
         ).tolist()
         policy = {a: policy_values[i] for i, a in enumerate(actions)}
         for action, p in policy.items():
-            child_name = f"{self.name}_{action}" if self.name != "r" else f"a_{action}"
+            a_name = a_dict_cg[action]
+            child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
             self.children[action] = Node(p, name=child_name)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):

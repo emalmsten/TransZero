@@ -7,6 +7,9 @@ import pathlib
 import pickle
 import sys
 import time
+
+import numpy as np
+
 import models
 
 
@@ -622,7 +625,80 @@ def cmd_line_init():
         print("\nDone")
 
 
+
 def seq_testing(muzero, file):
+    from games.custom_grid import Game
+    import re
+    import ast
+
+
+    action_map = {'R': 0,'L': 1,'F': 2}
+    model = mz_net.MuZeroNetwork(muzero.config)
+    with open(file, 'r') as f:
+        seqs = f.readlines()
+
+    data = seqs[0]
+    seqs = seqs[1:]
+
+    data = re.sub(r'\],,\s*\[', '], [', data)
+
+    # Step 2: Fix number lists (e.g., change "[ 2  5  0]" to "[2, 5, 0]")
+    # This regex finds sequences of digits separated by whitespace within square brackets
+    def fix_numbers(match):
+        numbers = match.group(1)
+        # Split on whitespace and then join with commas
+        nums_fixed = ', '.join(numbers.split())
+        return f'[{nums_fixed}]'
+
+    # Apply the substitution. The pattern looks for a '[' followed by numbers and whitespace, then a ']'
+    data = re.sub(r'\[\s*([\d\s]+?)\s*\]', fix_numbers, data)
+
+    # first line is an observation dict
+    obs = ast.literal_eval(data)
+    # to torch
+    obs['image'] = torch.tensor(obs['image'])
+    obs = Game.shape_observation('god', 3, obs)
+
+    obs = (
+                torch.tensor(obs)
+                .float()
+                .unsqueeze(0)
+                .to(next(model.parameters()).device)
+            )
+
+    summary = []
+
+    seqs = [seq.strip().split(',') for seq in seqs if len(seq) > 1 and (not seq.startswith("#"))]
+    print(seqs)
+    for seq in seqs:
+        print(seq)
+        (
+            value,
+            reward,
+            policy_logits,
+
+            encoded_state,
+        ) = model.initial_inference(obs)
+        if len(seq) > 1:
+            actions = [action_map[a] for a in seq[1:]]
+            policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
+
+        value = models.support_to_scalar(value, muzero.config.support_size).item()
+        reward = models.support_to_scalar(reward, muzero.config.support_size).item()
+        summary.append((seq, value))
+        print(f"""
+            Inital state {seq[0]}
+            Actions: {seq[1:]}
+            Value: {value}
+            Policy: {policy_logits}
+            Reward: {reward}
+        """)
+
+    for seq, value in summary:
+        print(f"{seq}: {value}")
+
+
+def seq_testing_(muzero, file):
     action_map = {'L': 0,'D': 1,'R': 2,'U': 3,}
     model = mz_net.MuZeroNetwork(muzero.config)
     with open(file, 'r') as f:
@@ -639,7 +715,7 @@ def seq_testing(muzero, file):
             policy_logits,
             reward,
             encoded_state,
-        ) = model.initial_inference(torch.tensor([[[int(seq[0])]]], dtype=torch.float32))
+        ) = model.initial_inference(torch.tensor([[[[int(seq[0])]]]], dtype=torch.float32))
         if len(seq) > 1:
             actions = [action_map[a] for a in seq[1:]]
             policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
@@ -728,14 +804,11 @@ def setup(test=False):
         }
         # todo cleanup
         if test:
-            custom_map = "3x3_1h_1d"
-            args.test_mode = "other"
-            args.seq_file = "manual_seqs/test_1.txt"
-            args.checkpoint_path = f"wandb_data/base_run_fulcon_20241119/frozen_lake_{custom_map}_resnet_base_run/model.checkpoint"
-            args.checkpoint_path = f"models/trans_model_500_{custom_map}.checkpoint"
-            args.checkpoint_path = f"models/fulcon_model.checkpoint"
-            args.checkpoint_path = f"models/cust_grid.checkpoint"
-            args.config={"testing": True} #, "custom_map": custom_map}
+            args.test_mode = "std"
+            args.seq_file = "manual_seqs/grid_3x3_t1.txt"
+
+            args.checkpoint_path = f"models/trans3x3rand.checkpoint"
+            args.config={"testing": True}
 
         logger = "wandb"
 

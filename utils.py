@@ -31,7 +31,8 @@ def refresh(cfg):
         cfg.selfplay_on_gpu = False
         cfg.reanalyse_on_gpu = False
     if cfg.network != "double":
-        cfg.show_preds = False
+        #cfg.show_preds = False
+        pass
     reset_names(cfg)
     if cfg.game_name == "custom_grid":
         cfg.max_moves = cfg.get_max_moves(cfg.custom_map)

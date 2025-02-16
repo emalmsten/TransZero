@@ -18,6 +18,11 @@ maps = {
         "FHF",
         "FFG",
     ],
+    "3x3_2h_3d": [
+        "FFF",
+        "FHH",
+        "FFG",
+    ],
     "4x4_3h_1d": [
         "SFHF",
         "FFFF",
@@ -64,6 +69,7 @@ maps = {
 max_moves = {
     "2x2_0h_0d": 6,
     "3x3_2h_2d": 15,
+    "3x3_2h_3d": 15,
 
     "4x4_3h_1d": 18,
     "4x4_3h_3d": 18,
@@ -96,6 +102,7 @@ class MuZeroConfig:
 
         # Local
         self.testing = False
+        self.show_preds = False and self.testing
         self.debug_mode = False or self.testing
 
         # Essentials
@@ -252,8 +259,9 @@ class MuZeroConfig:
     def get_observation_shape(self, pov):
         if pov == 'agent':
             return (1, min(7, int((self.custom_map[0]))+1), 7)
-        elif pov == 'god':
-            return (1, int(self.custom_map[0]), int(self.custom_map[2]))
+        elif 'god' in pov:
+            channels = 1 if pov == 'god' else 6
+            return (channels, int(self.custom_map[0]), int(self.custom_map[2]))
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
@@ -290,11 +298,11 @@ class Game(AbstractGame):
         #     self.env.seed(seed)
 
         #self.env = minigrid.wrappers.ImgObsWrapper(self.env)
-        if config.pov == 'god':
+        if 'god' in config.pov:
             self.env = minigrid.wrappers.FullyObsWrapper(self.env)
 
-
-    def one_hot_encode_grid(self, obs, direction):
+    @staticmethod
+    def one_hot_encode_grid(obs, dir):
         """
         Converts a 2D observation grid into a multi-channel one-hot encoded representation.
 
@@ -305,14 +313,14 @@ class Game(AbstractGame):
         Returns:
         - A NumPy array of shape (C, H, W) where C is the number of channels.
         """
-        H, W = obs.shape
+        _, H, W = obs.shape
         num_dirs = 4  # Four possible directions (up, right, down, left)
 
         # Create empty one-hot encoded map with additional channels
         one_hot_map = np.zeros((num_dirs + 2, H, W), dtype=np.uint8)
 
         # Direction encoding
-        one_hot_map[direction, 0, 0] = 1  # Agent's position in the direction channel
+        one_hot_map[dir, 0, 0] = 1  # Agent's position in the direction channel
 
         # Lava (8) and Goal (9) encoding
         one_hot_map[4] = (obs == 8).astype(np.uint8)  # Lava channel
@@ -320,7 +328,8 @@ class Game(AbstractGame):
 
         return one_hot_map
 
-    def shape_observation(self, obs):
+    @staticmethod
+    def shape_observation(pov, size, obs):
         """
         Convert the observation to the required shape.
 
@@ -329,24 +338,24 @@ class Game(AbstractGame):
 
         Returns:
             Observation in the required shape.
+
+
         """
-        if self.config.pov == 'agent':
-            obs = obs['image'][:, max(0, (7 - (self.size - 1))):, [0]].swapaxes(0, 2)
-        elif self.config.pov == 'god':
-            direction = obs['direction']
+        if pov == 'agent':
+            return obs['image'][:, max(0, (7 - (size - 1))):, [0]].swapaxes(0, 2)
+        elif 'god' in pov:
+            dir = obs['direction']
             obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
 
-            # take every 10 and do minus (11 + obs[direction])
-            obs = np.where(obs == 10, direction + 3, obs)
-        elif self.config.pov == 'god_dim':
-            pass
+            if pov == 'one_hot_god':
+                return Game.one_hot_encode_grid(obs, dir)
 
+            # take every 10 and do minus (11 + obs[direction])
+            obs = np.where(obs == 10, dir + 3, obs)
+            return obs
 
         else:
             raise ValueError('POV must be either "agent" or "god"')
-
-
-        return obs
 
 
     def step(self, action):
@@ -360,7 +369,7 @@ class Game(AbstractGame):
             The new observation, the reward and a boolean if the game has ended.
         """
         obs, reward, done, _, _ = self.env.step(action)
-        obs = self.shape_observation(obs)
+        obs = Game.shape_observation(self.config.pov, self.size, obs)
 
         env = self.env.unwrapped
 
