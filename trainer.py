@@ -79,6 +79,7 @@ class Trainer:
                 value_loss,
                 reward_loss,
                 policy_loss,
+                enc_state_loss
             ) = self.update_weights(batch)
 
             if self.config.PER:
@@ -125,6 +126,7 @@ class Trainer:
                     "value_loss": value_loss,
                     "reward_loss": reward_loss,
                     "policy_loss": policy_loss,
+                    "enc_state_loss": enc_state_loss if enc_state_loss is not None else 0.0
                 }
             )
 
@@ -143,7 +145,7 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
-    def loss_loop_trans(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, action_mask):
+    def loss_loop_trans(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, action_mask, trans_output = None, rep_enc_states = None):
         (values, rewards, policy_logits) = predictions
         (target_value, target_reward, target_policy) = targets
 
@@ -151,6 +153,17 @@ class Trainer:
         value_losses, reward_losses, policy_losses = self.loss_function(
             values, rewards, policy_logits, target_value, target_reward, target_policy
         )
+
+        # Generate exponentially decreasing weights
+        if self.config.loss_weight_decay is not None:
+            weighting_factors = torch.tensor(
+                [0.6 ** i for i in range(self.config.num_unroll_steps + 1)], device=values.device).unsqueeze(0)
+
+            value_losses *= weighting_factors
+            reward_losses *= weighting_factors
+            policy_losses *= weighting_factors
+
+
         reward_losses[:,0] = 0.0
         # todo also no losses for the steps after the game concluded
 
@@ -172,6 +185,16 @@ class Trainer:
         reward_loss = reward_losses.sum(dim=1)
         policy_loss = policy_losses.sum(dim=1)
 
+        if rep_enc_states is not None:
+            enc_state_losses = self.loss_function_states(trans_output, rep_enc_states)
+            if self.config.loss_weight_decay is not None:
+                enc_state_losses *= weighting_factors
+            enc_state_losses = enc_state_losses * non_padding_mask
+            enc_state_losses = enc_state_losses[:, 1:] / scaling_factors[:, 1:]
+            enc_state_loss = enc_state_losses.sum(dim=1)
+        else:
+            enc_state_loss = None
+
         if priorities is not None:
             B, T, D = values.shape
             merged_values = values.reshape(B * T, D)
@@ -185,7 +208,7 @@ class Trainer:
                     numpy.abs(pred_value_scalars - target_value_scalar) ** self.config.PER_alpha
             )
 
-        return value_loss, reward_loss, policy_loss, priorities
+        return value_loss, reward_loss, policy_loss, priorities, enc_state_loss
 
 
 
@@ -242,6 +265,7 @@ class Trainer:
         """
         Perform one training step.
         """
+
         double_net = self.config.network == "double"
         trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
         full_transformer = self.config.network == "transformer"
@@ -255,6 +279,7 @@ class Trainer:
             weight_batch,
             gradient_scale_batch,
             mask_batch,
+            forward_obs_batch
         ) = batch
 
         # Keep values as scalars for calculating the priorities for the prioritized replay
@@ -272,6 +297,8 @@ class Trainer:
         target_policy = torch.tensor(target_policy).float().to(device)
         gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
         mask_batch = torch.tensor(mask_batch).to(device) # bool
+        if forward_obs_batch is not None:
+            forward_obs_batch = torch.stack(forward_obs_batch).float().to(device)
 
         # observation_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
@@ -302,7 +329,7 @@ class Trainer:
 
         if full_transformer:
             # start the action batch from 1 since the first action is not used
-            trans_value, trans_reward, trans_policy_logits= self.model.recurrent_inference_fast(
+            trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
                 root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
             )
             # todo, only really reward necessary
@@ -310,6 +337,18 @@ class Trainer:
             trans_reward[:, 0] = reward
             trans_policy_logits[:, 0] = policy_logits
             predictions = (trans_value, trans_reward, trans_policy_logits)
+
+            if self.config.encoding_loss_weight:
+                B, Seq, C, H, W = forward_obs_batch.shape
+                forward_obs_batch = forward_obs_batch.reshape(B*Seq, C, H, W)
+                rep_enc_states = self.model.representation(forward_obs_batch)
+                rep_enc_states = self.model.create_input_sequence(rep_enc_states, None)
+                rep_enc_states = self.model.transformer_encoder(rep_enc_states)
+
+                rep_enc_states = rep_enc_states.reshape(B, Seq, -1)
+            else:
+                rep_enc_states = None
+
 
 
         loop_length = action_batch.shape[1] if not full_transformer else 0
@@ -342,10 +381,12 @@ class Trainer:
         #     predictions, target_value, target_reward, target_policy,
         #     target_value_scalar, priorities, gradient_scale_batch)
         # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
+        enc_state_loss = None
         if full_transformer:
-            value_loss, reward_loss, policy_loss, priorities = self.loss_loop_trans(
-                predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch
-            )
+            value_loss, reward_loss, policy_loss, priorities, enc_state_loss = self.loss_loop_trans(
+                predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch,
+                transformer_output, rep_enc_states)
+
         else:
             value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
                 predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
@@ -356,9 +397,16 @@ class Trainer:
 
 
         # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
-        loss = value_loss * self.config.value_loss_weight + reward_loss + policy_loss
+        reward_loss_weight = 1 if self.config.predict_reward else 0
+        loss = value_loss * self.config.value_loss_weight + reward_loss * reward_loss_weight + policy_loss
+
         if double_net:
-            loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss + trans_policy_loss
+            loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss * reward_loss_weight + trans_policy_loss
+
+        if enc_state_loss is not None:
+            loss += (enc_state_loss * self.config.encoding_loss_weight)
+            # for plotting
+            enc_state_loss = enc_state_loss.mean().item()
 
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
@@ -383,7 +431,7 @@ class Trainer:
             reward_loss = (reward_loss, trans_reward_loss)
             policy_loss = (policy_loss, trans_policy_loss)
 
-        return priorities, loss, value_loss, reward_loss, policy_loss
+        return priorities, loss, value_loss, reward_loss, policy_loss, enc_state_loss
 
     def warmup_lr_scheduler(self, optimizer, warmup_steps, total_steps):
         def lr_lambda(current_step):
@@ -426,3 +474,13 @@ class Trainer:
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1)
         return value_loss, reward_loss, policy_loss
+
+    @staticmethod
+    def loss_function_states(
+        enc_state,
+        target_enc_state,
+    ):
+        # MSE
+        # Compute the MSE loss by summing squared differences over the last dimension
+        state_loss = ((enc_state - target_enc_state) ** 2).sum(-1)
+        return state_loss

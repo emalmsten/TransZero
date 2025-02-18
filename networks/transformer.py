@@ -300,7 +300,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             value = value[:, (flat_size - 1):, :]
             policy_logits = policy_logits[:, (flat_size - 1):, :]
 
-        return policy_logits, value, reward
+        return policy_logits, value, reward, transformer_output
 
 
     def random_prediction(self, device):
@@ -522,8 +522,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def recurrent_inference_fast(self, root_hidden_state, action_sequence, mask):
-        policy_logits, value, reward = self.prediction_fast(root_hidden_state, action_sequence, mask)
-        return value, reward, policy_logits
+        policy_logits, value, reward, transformer_output = self.prediction_fast(root_hidden_state, action_sequence, mask)
+        return value, reward, policy_logits, transformer_output
 
 
     def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):

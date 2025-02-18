@@ -1,5 +1,6 @@
 import datetime
 import pathlib
+import time
 
 import gymnasium as gym
 import numpy as np
@@ -143,6 +144,7 @@ class MuZeroConfig:
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
         self.negative_reward = -0.0 #-0.1
         self.obstacle = "lava"
+        self.predict_reward = False
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -214,6 +216,9 @@ class MuZeroConfig:
         self.batch_size = 256  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.encoding_loss_weight = None # None for not using this
+        self.loss_weight_decay = None # None for not using
+
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -411,7 +416,7 @@ class Game(AbstractGame):
         obs, info = self.env.reset()
 
         #obs = obs[:, max(0, (7-(self.size-1))):, [0]]
-        obs = self.shape_observation(obs)
+        obs = Game.shape_observation(self.config.pov, self.size, obs)
 
         return np.array(obs)
 
@@ -426,7 +431,9 @@ class Game(AbstractGame):
         Display the game observation.
         """
         #self.env.render()
-        input("Press enter to take a step ")
+        # sleep for 1 second
+        time.sleep(0.1)
+        #input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
         """

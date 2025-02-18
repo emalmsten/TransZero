@@ -371,7 +371,7 @@ class MCTS:
             root = override_root_with
             root_predicted_value = None
         else:
-            root = Node(0)
+            root = Node(0, use_reward=self.config.predict_reward)
             # Observation in right shape
             observation = (
                 torch.tensor(observation)
@@ -579,7 +579,7 @@ a_dict_cg = {
 
 class Node:
 
-    def __init__(self, prior, name="root"):
+    def __init__(self, prior, name="root", use_reward=True):
         self.visit_count = 0
         self.to_play = -1
         self.prior = prior
@@ -587,6 +587,7 @@ class Node:
         self.children = {}
         self.hidden_state = None
         self.reward = 0
+        self.use_reward = use_reward
 
         # for debugging
         self.name = name
@@ -605,7 +606,7 @@ class Node:
         neural network.
         """
         self.to_play = to_play
-        self.reward = reward
+        self.reward = reward if self.use_reward else 0
         self.hidden_state = hidden_state
 
         policy_values = torch.softmax(
@@ -615,7 +616,7 @@ class Node:
         for action, p in policy.items():
             a_name = a_dict_cg[action]
             child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = Node(p, name=child_name)
+            self.children[action] = Node(p, name=child_name, use_reward=self.use_reward)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -702,6 +703,31 @@ class GameHistory:
             stacked_observations = numpy.concatenate(
                 (stacked_observations, previous_observation)
             )
+
+        return stacked_observations
+
+    def get_forward_stacked_observations(self, index, num_stacked_observations):
+        """
+        Stack the observation at `index` and the next `num_stacked_observations`
+        along a new axis. If there are not enough future observations, pad with zeros.
+
+        This version preserves the original channel dimension. For example, if
+        observations are (1, H, W), the output will be (num_stacked+1, 1, H, W).
+        """
+        index = index % len(self.observation_history)
+        obs_list = []
+        # Include the starting observation and future observations.
+        for offset in range(num_stacked_observations + 1):
+            pos = index + offset
+            if pos < len(self.observation_history):
+                obs_list.append(torch.from_numpy(self.observation_history[pos].copy()))
+            else:
+                obs_list.append(torch.zeros_like(torch.from_numpy(self.observation_history[index].copy())))
+                # torch version of exact same
+                # obs_list.append(torch.zeros_like(self.observation_history[index
+
+        # Use np.stack to create a new axis for the time dimension.
+        stacked_observations = torch.stack(obs_list, dim=0)
 
         return stacked_observations
 

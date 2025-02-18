@@ -127,6 +127,7 @@ class MuZero:
             "value_loss": 0,
             "reward_loss": 0,
             "policy_loss": 0,
+            "enc_state_loss": 0,
             "num_played_games": 0,
             "num_played_steps": 0,
             "num_reanalysed_games": 0,

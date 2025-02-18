@@ -17,6 +17,7 @@ keys = [
     "value_loss",
     "reward_loss",
     "policy_loss",
+    "enc_state_loss",
     "num_played_games",
     "num_played_steps",
     "num_reanalysed_games",
@@ -95,6 +96,7 @@ def wandb_logging(info, counter, is_double_network):
         "Value_loss": info["value_loss"],
         "Reward_loss": info["reward_loss"],
         "Policy_loss": info["policy_loss"],
+        "Enc_state_loss": info["enc_state_loss"],
     }
 
     if is_double_network:

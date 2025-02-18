@@ -81,6 +81,8 @@ class ReplayBuffer:
 
         ) = ([], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
+        forward_obs_batch = [] if self.config.encoding_loss_weight else None
+
 
         for game_id, game_history, game_prob in self.sample_n_games(
             self.config.batch_size
@@ -95,6 +97,7 @@ class ReplayBuffer:
             mask_batch.append(mask)
 
             index_batch.append([game_id, game_pos])
+
             observation_batch.append(
                 game_history.get_stacked_observations(
                     game_pos,
@@ -102,6 +105,14 @@ class ReplayBuffer:
                     len(self.config.action_space),
                 )
             )
+
+            if self.config.encoding_loss_weight:
+                forward_obs_batch.append(
+                    game_history.get_forward_stacked_observations(
+                        game_pos,
+                        self.config.num_unroll_steps,
+                    )
+                )
 
             gradient_scale_batch.append(
                 [
@@ -136,6 +147,7 @@ class ReplayBuffer:
                 weight_batch,
                 gradient_scale_batch,
                 mask_batch,
+                forward_obs_batch
             ),
         )
 
