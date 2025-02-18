@@ -144,7 +144,7 @@ class MuZeroConfig:
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
         self.negative_reward = -0.0 #-0.1
         self.obstacle = "lava"
-        self.predict_reward = False
+        self.predict_reward = True
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
