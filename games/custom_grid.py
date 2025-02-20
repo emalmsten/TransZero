@@ -265,7 +265,12 @@ class MuZeroConfig:
         if pov == 'agent':
             return (1, min(7, int((self.custom_map[0]))+1), 7)
         elif 'god' in pov:
-            channels = 1 if pov == 'god' else 6
+            channels = 1
+            if pov == 'one_hot_god':
+                channels = 6
+            elif pov == 'two_hot_god':
+                channels = 3
+
             return (channels, int(self.custom_map[0]), int(self.custom_map[2]))
         else:
             raise ValueError('POV must be either "agent" or "god"')
@@ -324,14 +329,47 @@ class Game(AbstractGame):
         # Create empty one-hot encoded map with additional channels
         one_hot_map = np.zeros((num_dirs + 2, H, W), dtype=np.uint8)
 
+        # find agents position
+        agent_pos = np.where(obs == 10)
+
         # Direction encoding
-        one_hot_map[dir, 0, 0] = 1  # Agent's position in the direction channel
+        one_hot_map[dir, agent_pos[1], agent_pos[0]] = 1
 
         # Lava (8) and Goal (9) encoding
         one_hot_map[4] = (obs == 8).astype(np.uint8)  # Lava channel
         one_hot_map[5] = (obs == 9).astype(np.uint8)  # Goal channel
 
         return one_hot_map
+
+    @staticmethod
+    def two_hot_encode_grid(obs, dir):
+        """
+        Converts a 2D observation grid into a multi-channel encoded representation.
+
+        Args:
+        - obs: 2D NumPy array of shape (H, W), representing the world.
+        - direction: Integer (0-3) indicating the agent's direction.
+
+        Returns:
+        - A NumPy array of shape (C, H, W) where C is the number of channels.
+        """
+        _, H, W = obs.shape
+
+        # Create empty one-hot encoded map with additional channels
+        one_hot_map = np.zeros((3, H, W), dtype=np.uint8)
+
+        # find agents position
+        agent_pos = np.where(obs == 10)
+
+        # Direction encoding
+        one_hot_map[0, agent_pos[1], agent_pos[0]] = dir + 1
+
+        # Lava (8) and Goal (9) encoding
+        one_hot_map[1] = (obs == 8).astype(np.uint8)  # Lava channel
+        one_hot_map[2] = (obs == 9).astype(np.uint8)  # Goal channel
+
+        return one_hot_map
+
 
     @staticmethod
     def shape_observation(pov, size, obs):
@@ -354,6 +392,8 @@ class Game(AbstractGame):
 
             if pov == 'one_hot_god':
                 return Game.one_hot_encode_grid(obs, dir)
+            elif pov == 'two_hot_god':
+                return Game.two_hot_encode_grid(obs, dir)
 
             # take every 10 and do minus (11 + obs[direction])
             obs = np.where(obs == 10, dir + 3, obs)

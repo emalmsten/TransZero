@@ -156,8 +156,23 @@ class Trainer:
 
         # Generate exponentially decreasing weights
         if self.config.loss_weight_decay is not None:
-            weighting_factors = torch.tensor(
-                [0.6 ** i for i in range(self.config.num_unroll_steps + 1)], device=values.device).unsqueeze(0)
+
+            def calc_weighting_factors():
+                weighting_factors = torch.tensor(
+                    [self.config.loss_weight_decay ** i for i in range(self.config.num_unroll_steps + 1)],
+                    device=values.device
+                ).unsqueeze(0)
+
+                # 2. Normalize
+                weighting_sum = weighting_factors.sum()
+                weighting_factors = weighting_factors / weighting_sum
+
+                # 3. Scale to match the total sum of (num_unroll_steps + 1)
+                n_steps = self.config.num_unroll_steps + 1
+                weighting_factors = weighting_factors * n_steps
+                return weighting_factors
+
+            weighting_factors = calc_weighting_factors()
 
             value_losses *= weighting_factors
             reward_losses *= weighting_factors
@@ -186,7 +201,7 @@ class Trainer:
         policy_loss = policy_losses.sum(dim=1)
 
         if rep_enc_states is not None:
-            enc_state_losses = self.loss_function_states(trans_output, rep_enc_states)
+            enc_state_losses = self.loss_function_states(trans_output, rep_enc_states.detach())
             if self.config.loss_weight_decay is not None:
                 enc_state_losses *= weighting_factors
             enc_state_losses = enc_state_losses * non_padding_mask

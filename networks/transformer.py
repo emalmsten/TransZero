@@ -111,6 +111,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = nn.Linear(flat_size, transformer_hidden_size)
 
         self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
+
+        # only used if rep net is none
         if self.state_size is not None:
             # linear embedding
             self.state_embedding = nn.Embedding(self.state_values, transformer_hidden_size) if self.num_state_values else nn.Linear(self.state_size[0], transformer_hidden_size)
@@ -295,6 +297,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
         reward = self.reward_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
 
+        # only return the predicted action tokens
         if self.state_size is not None:
             reward = reward[:, (flat_size - 1):, :]
             value = value[:, (flat_size - 1):, :]
@@ -488,16 +491,17 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             C, H, W = self.state_size
             assert (rhs.size(2)) == H and (rhs.size(3) == W)
 
-            # Get positional encoding for the state
+            # Get positional encoding for the states
             pos_encoding_state = self.get_positional_encoding_2d(H, W, embedded_actions, rhs.device)
 
             # flatten out dim 1 and dim 2
             rhs = rhs.permute(0, 2, 3, 1).reshape(B, H * W, C)
+
+            # if rep net hasn't made an encoding
             if self.representation_network_type == "none":
-                # change dtype to int
+                # if state values are discrete, embed them
                 if self.num_state_values:
                     rhs = rhs.int()
-                #rhs = rhs.int()
                 rhs = self.state_embedding(rhs)
                 rhs = rhs.view(B, H * W, self.transformer_hidden_size)
 
@@ -507,12 +511,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             rhs = rhs.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
             pos_encoding_state = torch.zeros(B, 1, self.transformer_hidden_size, device=rhs.device)
 
-        # Concatenate the root hidden state with the positional encoding
-        rhs = rhs + pos_encoding_state
-
         # Project the root hidden state to the transformer hidden size
         if self.use_proj:
             rhs = self.hidden_state_proj(rhs)
+
+        # Concatenate the root hidden state with the positional encoding
+        rhs = rhs + pos_encoding_state
+
+
 
         # Construct the input sequence by concatenating the state embedding and action embeddings
         state_action_sequence = torch.cat([rhs, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)

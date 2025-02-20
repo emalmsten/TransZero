@@ -174,6 +174,7 @@ class MuZero:
                 name=str(self.config.log_name), # to string:
                 config=self.config.__dict__,
                 dir=str(self.config.results_path),
+                resume="allow",
             )
         else:
             self.wandb_run = None

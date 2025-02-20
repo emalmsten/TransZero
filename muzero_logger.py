@@ -78,7 +78,7 @@ def tensorboard_logging(info, counter, writer):
     writer.add_scalar("3.Loss/Reward_loss", info["reward_loss"], counter)
     writer.add_scalar("3.Loss/Policy_loss", info["policy_loss"], counter)
 
-def wandb_logging(info, counter, is_double_network):
+def wandb_logging(info, counter, offline_cache, is_double_network):
     metrics = {
         "Total_reward": info["total_reward"],
         "Mean_value": info["mean_value"],
@@ -104,7 +104,21 @@ def wandb_logging(info, counter, is_double_network):
         metrics["Trans_reward_loss"] = info["trans_reward_loss"]
         metrics["Trans_policy_loss"] = info["trans_policy_loss"]
 
-    wandb.log(metrics, step=counter)
+    log_data = {"step": counter, "metrics": metrics}  # Example datametrics, step=counter
+
+    try:
+        wandb.log(log_data["metrics"], step = log_data["step"])  # Try logging
+        if offline_cache:  # If there are cached logs, sync them
+            print("Syncing cached logs...")
+            for cached_data in offline_cache:
+                wandb.log(cached_data["metrics"], step = cached_data["step"])
+            offline_cache.clear()  # Clear cache after syncing
+
+    except:  # If WANDB is offline, cache logs
+        print("WANDB connection lost, caching log...")
+        offline_cache.append(log_data)  # Store logs locally
+
+
 
 
 def logging_loop(muzero, logger):
@@ -123,13 +137,15 @@ def logging_loop(muzero, logger):
 
     # Loop for updating the training performance
     counter = 0
+    offline_cache = []  # Stores logs when offline
+
     try:
         while counter == 0 or info["training_step"] < muzero.config.training_steps:
             info = ray.get(muzero.shared_storage_worker.get_info.remote(keys))
             if logger == "tensorboard":
                 tensorboard_logging(info, counter, writer)
             elif logger == "wandb":
-                wandb_logging(info, counter, is_double_network)
+                wandb_logging(info, counter, offline_cache, is_double_network)
             if counter % 10 == 0 or counter < 3:
                 print(
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
