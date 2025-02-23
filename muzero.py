@@ -344,7 +344,7 @@ class MuZero:
                     for history in results
                 ]
             )
-        return result
+        return [history.reward_history for history in results]
 
     def load_model(self, checkpoint_path=None, replay_buffer_path=None):
         """
@@ -779,7 +779,20 @@ def main(args):
     elif args.test_mode == "viz":
         print("vizualizing")
         visualize_model(muzero)
+    elif args.test_mode == "n_rand_maps":
+        print("more map testing")
+        muzero.config.show_preds = True
+        name = "4x4_trans_rand_test.json"
+        muzero.config.preds_file = f"predictions/preds/{name}"
+
+        #for i in range(3):
+        results = muzero.test(render=False, opponent="self", muzero_player=None, num_tests=2)
+        # put results into file
+        with open(f"predictions/results/{name}", "w") as f:
+            json.dump(results, f)
+
     elif args.test_mode is not None:
+        # todo, loop with N amount of maps
         muzero.test(render=True, opponent="self", muzero_player=None)
     else:
         muzero.train()
@@ -802,14 +815,16 @@ def setup(test=False):
         # manual override
         args.game_name = "custom_grid" #"gridworld" # #"lunarlander"
         args.config = {
-            "debug_mode": False or (sys.gettrace() is not None)
+            "debug_mode": False or (sys.gettrace() is not None),
         }
+        if test or args.config["debug_mode"]:
+            args.config["logger"] = None
         # todo cleanup
         if test:
-            args.test_mode = "std"
+            args.test_mode = "n_rand_maps"
             args.seq_file = "manual_seqs/grid_3x3_t1.txt"
 
-            args.checkpoint_path = f"models/trans3x3rand.checkpoint"
+            args.checkpoint_path = f"models/trans4x4rand.checkpoint"
             args.config={"testing": True}
 
         logger = "wandb"

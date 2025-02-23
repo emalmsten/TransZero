@@ -7,7 +7,11 @@ import numpy as np
 import torch
 
 from optimal_path_finder import calculate_steps_and_turns_to_goal
-from .abstract_game import AbstractGame
+# todo
+try:
+    from .abstract_game import AbstractGame
+except ImportError:
+    from abstract_game import AbstractGame
 
 maps = {
     "2x2_0h_0d": [
@@ -104,16 +108,18 @@ class MuZeroConfig:
         # Local
         self.testing = False
         self.show_preds = False and self.testing
+        self.preds_file = "predictions/4x4_preds/transformer/test.json"
         self.debug_mode = False or self.testing
 
         # Essentials
         self.network = "transformer"
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
-        self.custom_map = "4x4_3h_3d" #4x4_3h_1d"
-        self.start_pos = None
+        self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
+        self.start_pos = None #(0,1)
+        self.start_dir = None # todo 0: right, 1: down, 2: left, 3: up
         self.random_map = True
-        self.pov = 'god' # agent or god
+        self.pov = '1_hot_god' # agent or god
 
         # Naming
         self.project = "TransZeroV3"
@@ -153,7 +159,7 @@ class MuZeroConfig:
         ### Self-Play
         self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
-        self.num_simulations = 25  # Number of future moves self-simulated
+        self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -171,7 +177,7 @@ class MuZeroConfig:
         # Residual Network
         self.downsample = None  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 16  # Number of channels in the ResNet
+        self.channels = 12  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
@@ -189,8 +195,8 @@ class MuZeroConfig:
         self.fc_policy_layers = [32]  # Define the hidden layers in the policy network
 
         # Transformer
-        self.transformer_layers = 3
-        self.transformer_heads = 4
+        self.transformer_layers = 4
+        self.transformer_heads = 8
         self.transformer_hidden_size = 32
         self.max_seq_length = 25
         self.positional_embedding_type = "sinus"
@@ -204,16 +210,18 @@ class MuZeroConfig:
                 (64, 1, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
-        self.fc_layers_trans = [64]
-        self.mlp_head_layers = [16]
+        self.fc_layers_trans = [128, 64]
+        self.mlp_head_layers = [32, 16]
         self.cum_reward = False
         self.state_size = None #(16,3,3) # same as
         self.stable_transformer=False
+        self.state_size = None #(16, 4, 4) # same as
+        self.stable_transformer = False
 
 
         ### Training
-        self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 256  # Number of parts of games to train on at each training step
+        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
+        self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None # None for not using this
@@ -225,7 +233,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001 # res: 0.015
+        self.lr_init = 0.003 # res: 0.015
         self.lr_decay_rate = 0.95
         self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -266,9 +274,9 @@ class MuZeroConfig:
             return (1, min(7, int((self.custom_map[0]))+1), 7)
         elif 'god' in pov:
             channels = 1
-            if pov == 'one_hot_god':
+            if pov == '1_hot_god':
                 channels = 6
-            elif pov == 'two_hot_god':
+            elif pov == '2_hot_god':
                 channels = 3
 
             return (channels, int(self.custom_map[0]), int(self.custom_map[2]))
@@ -299,6 +307,7 @@ class Game(AbstractGame):
                             testing = config.testing,
                             max_steps = max_moves[config.custom_map],
                             start_pos = config.start_pos,
+                            start_dir = config.start_dir,
                             random_map = config.random_map,
                             obstacle = config.obstacle,
                             )
@@ -333,7 +342,7 @@ class Game(AbstractGame):
         agent_pos = np.where(obs == 10)
 
         # Direction encoding
-        one_hot_map[dir, agent_pos[1], agent_pos[0]] = 1
+        one_hot_map[dir, agent_pos[1], agent_pos[2]] = 1
 
         # Lava (8) and Goal (9) encoding
         one_hot_map[4] = (obs == 8).astype(np.uint8)  # Lava channel
@@ -362,7 +371,7 @@ class Game(AbstractGame):
         agent_pos = np.where(obs == 10)
 
         # Direction encoding
-        one_hot_map[0, agent_pos[1], agent_pos[0]] = dir + 1
+        one_hot_map[0, agent_pos[1], agent_pos[2]] = dir + 1
 
         # Lava (8) and Goal (9) encoding
         one_hot_map[1] = (obs == 8).astype(np.uint8)  # Lava channel
@@ -389,10 +398,11 @@ class Game(AbstractGame):
         elif 'god' in pov:
             dir = obs['direction']
             obs = obs['image'].swapaxes(0, 2)[[0], 1:-1, 1:-1]
+            #obs = obs.swapaxes(1,2)
 
-            if pov == 'one_hot_god':
+            if pov == '1_hot_god':
                 return Game.one_hot_encode_grid(obs, dir)
-            elif pov == 'two_hot_god':
+            elif pov == '2_hot_god':
                 return Game.two_hot_encode_grid(obs, dir)
 
             # take every 10 and do minus (11 + obs[direction])
@@ -506,7 +516,7 @@ class SimpleEnv(MiniGridEnv):
         self,
         size=5,
         #agent_start_pos=(1, 1),
-        agent_start_dir=0,
+        #agent_start_dir=0,
         max_steps: int | None = None,
         **kwargs,
     ):
@@ -519,6 +529,7 @@ class SimpleEnv(MiniGridEnv):
         self.custom_map_name = kwargs.pop("custom_map")
         self.random_map = kwargs.pop("random_map")
         self.start_pos = kwargs.pop("start_pos")
+        self.start_dir = kwargs.pop("start_dir")
         self.obstacle = kwargs.pop("obstacle")
         self.negative_reward = kwargs.pop("negative_reward")
         self.max_steps = max_steps
@@ -554,7 +565,7 @@ class SimpleEnv(MiniGridEnv):
                     self.grid.set(x, y, obstacle)
                 elif char == 'S':
                     self.agent_pos = (x, y)
-                    self.agent_dir = np.random.randint(0, 4)
+                    self.agent_dir = self.start_dir if self.start_dir is not None else np.random.randint(0, 4)
                 elif char == 'G':
                     self.put_obj(Goal(), x, y)
 
@@ -563,11 +574,8 @@ class SimpleEnv(MiniGridEnv):
     def _gen_mission():
         return "custom mission"
 
-
-    def get_random_map(self):
-        size = self.size-2
-        holes = int(self.custom_map_name[4])
-
+    @staticmethod
+    def get_random_map(size, holes):
         # Initialize map with 'F'
         init_map = np.full((size, size), "F", dtype=str)
 
@@ -593,12 +601,13 @@ class SimpleEnv(MiniGridEnv):
         walkable_size = self.size - 2
         # Create an empty grid
         if self.random_map:
-            custom_map = self.get_random_map()
+            custom_map = self.get_random_map(walkable_size, int(self.custom_map_name[4]))
         else:
             # turn array (self.custom map) of strings to array of arrays
             custom_map = [list(row) for row in self.custom_map]
             # if there is an S remove it
             custom_map = [["F" if cell == "S" else cell for cell in row] for row in custom_map]
+
 
         step_grid = calculate_steps_and_turns_to_goal(custom_map)
         # list all positions which you can reach from the goal

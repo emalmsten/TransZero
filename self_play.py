@@ -206,7 +206,7 @@ class SelfPlay:
 
         if self.config.show_preds:
             # append to file that is made if it does not exist
-            file_path = "predictions/run_both_3x3_rand.json"
+            file_path = self.config.preds_file
             with open(file_path, "a") as f:
                 json.dump(game_dict, f)
                 f.write('\n')  # Add a newline after each JSON object
