@@ -270,14 +270,17 @@ class MuZeroConfig:
 
 
     def get_observation_shape(self, pov):
+        size = int((self.custom_map[0]))
         if pov == 'agent':
-            return (1, min(7, int((self.custom_map[0]))+1), 7)
+            return (1, min(7, size+1), 7)
         elif 'god' in pov:
             channels = 1
             if pov == '1_hot_god':
                 channels = 6
             elif pov == '2_hot_god':
                 channels = 3
+            elif pov == 'kinda_god':
+                return (1, 1, 3 + 2*(size-1))
 
             return (channels, int(self.custom_map[0]), int(self.custom_map[2]))
         else:
@@ -319,6 +322,32 @@ class Game(AbstractGame):
         #self.env = minigrid.wrappers.ImgObsWrapper(self.env)
         if 'god' in config.pov:
             self.env = minigrid.wrappers.FullyObsWrapper(self.env)
+
+
+    @staticmethod
+    def one_dim_encode_grid(obs, dir):
+        agent_positions = np.argwhere(obs == 10)
+
+        agent_idx = agent_positions[0]
+        # Swap indices: column is x, row is y.
+        agent_coord = [agent_idx[1], agent_idx[2]]
+
+        # Find all lava positions (value 8)
+        lava_indices = np.argwhere(obs == 9)
+        # Swap indices for each lava coordinate
+        lava_coords = [[pos[1], pos[2]] for pos in lava_indices]
+
+        # Combine agent and lava coordinates into one flat list.
+        # The resulting list is: [agent_x, agent_y, lava1_x, lava1_y, lava2_x, lava2_y, ...]
+        result = np.array(agent_coord + [coord for pair in lava_coords for coord in pair])
+
+        # prepend dir
+        result = np.insert(result, 0, dir)
+        # insert two one dim dimensions
+        result = np.expand_dims(result, axis=0)
+        result = np.expand_dims(result, axis=0)
+
+        return result
 
     @staticmethod
     def one_hot_encode_grid(obs, dir):
@@ -404,6 +433,8 @@ class Game(AbstractGame):
                 return Game.one_hot_encode_grid(obs, dir)
             elif pov == '2_hot_god':
                 return Game.two_hot_encode_grid(obs, dir)
+            elif pov == 'kinda_god':
+                return Game.one_dim_encode_grid(obs, dir)
 
             # take every 10 and do minus (11 + obs[direction])
             obs = np.where(obs == 10, dir + 3, obs)

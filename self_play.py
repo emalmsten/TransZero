@@ -144,7 +144,7 @@ class SelfPlay:
             self.game.render()
 
         if self.config.show_preds:
-            game_dict = {"game": game_number, "results": []}
+            game_dict = {"game": game_number, "results": [], "chosen_actions": []}
 
         with torch.no_grad():
 
@@ -183,6 +183,7 @@ class SelfPlay:
 
                     if self.config.show_preds:
                         game_dict["results"].append(mcts_info["predictions"])
+                        game_dict["chosen_actions"].append(int(action))
 
                 else:
                     action, root = self.select_opponent_action(
@@ -276,7 +277,8 @@ class SelfPlay:
 
         return action
 
-    def remove_module_prefix(self, state_dict):
+    @staticmethod
+    def remove_module_prefix(state_dict):
         new_state_dict = {}
         for k, v in state_dict.items():
             # Check if ".module." appears in the key
@@ -301,7 +303,6 @@ def update_pred_dict(pred_dict, value, reward, policy_logits, action_sequence, a
 
     pred_dict["predictions"].append(
         {
-            "as_str": [as_dict[a] for a in action_sequence],
 
             "v": value,
             "r": reward,
