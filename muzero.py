@@ -26,7 +26,7 @@ import trainer
 import wandb
 import argparse
 from utils import refresh, print_config
-
+from self_play import SelfPlay
 
 import networks.muzero_network as mz_net
 from muzero_logger import logging_loop
@@ -194,7 +194,7 @@ class MuZero:
 
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_cpus=0,
+            num_cpus=1,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
@@ -212,7 +212,7 @@ class MuZero:
 
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
-                num_cpus=0,
+                num_cpus=1,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
             ).remote(self.checkpoint, self.config)
 
@@ -221,7 +221,7 @@ class MuZero:
         print("num_gpus_per_worker", num_gpus_per_worker)
         self.self_play_workers = [
             self_play.SelfPlay.options(
-                num_cpus=0,
+                num_cpus=1,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
                 self.checkpoint,
@@ -627,113 +627,88 @@ def cmd_line_init():
         print("\nDone")
 
 
+def seq_testing(muzero, file, results_file):
+    from self_play import update_pred_dict
 
-def seq_testing(muzero, file):
-    from games.custom_grid import Game
-    import re
-    import ast
-
-
-    action_map = {'R': 0,'L': 1,'F': 2}
     model = mz_net.MuZeroNetwork(muzero.config)
+    try:
+        model.set_weights(muzero.checkpoint["weights"])
+    except Exception as e:
+        #print(f"Error: {e}")
+        print(f"\ntrying new weights\n")
+        model.set_weights(SelfPlay.remove_module_prefix(muzero.checkpoint["weights"]))
+    model.eval()
+
+    all_runs_dicts = []
+
     with open(file, 'r') as f:
-        seqs = f.readlines()
+        preds = [json.loads(line) for line in f.readlines()]
+    preds = [pred['results'] for pred in preds]
 
-    data = seqs[0]
-    seqs = seqs[1:]
+    def get_obs_as_pair(all_runs):
+        def get_single_pair(run):
+            observations = [pred['observation'] for pred in run]
+            predictions = [pred['predictions'] for pred in run]
+            actions_sequences = [[pred['as'] for pred in preds] for preds in predictions]
+            return [{"obs": obs, "as": as_seq} for obs, as_seq in zip(observations, actions_sequences)]
 
-    data = re.sub(r'\],,\s*\[', '], [', data)
+        return [get_single_pair(run) for run in all_runs]
 
-    # Step 2: Fix number lists (e.g., change "[ 2  5  0]" to "[2, 5, 0]")
-    # This regex finds sequences of digits separated by whitespace within square brackets
-    def fix_numbers(match):
-        numbers = match.group(1)
-        # Split on whitespace and then join with commas
-        nums_fixed = ', '.join(numbers.split())
-        return f'[{nums_fixed}]'
+    all_runs = get_obs_as_pair(preds)
+    for i, run in enumerate(all_runs):
+        print(f"Run {i}")
+        run_dict = {
+            "game": 0,
+            "results": []
+        }
 
-    # Apply the substitution. The pattern looks for a '[' followed by numbers and whitespace, then a ']'
-    data = re.sub(r'\[\s*([\d\s]+?)\s*\]', fix_numbers, data)
+        for step in run:
+            obs_ar = step['obs']
+            pred_dict = {
+                "observation": obs_ar,
+                "predictions": []
+            }
 
-    # first line is an observation dict
-    obs = ast.literal_eval(data)
-    # to torch
-    obs['image'] = torch.tensor(obs['image'])
-    obs = Game.shape_observation('god', 3, obs)
-
-    obs = (
-                torch.tensor(obs)
+            obs = (
+                torch.tensor(obs_ar)
                 .float()
                 .unsqueeze(0)
                 .to(next(model.parameters()).device)
-            )
+            ).unsqueeze(0)
 
-    summary = []
+            (
+                value,
+                reward,
+                policy_logits,
+                encoded_state,
+            ) = model.initial_inference(obs)
+            value = models.support_to_scalar(value, muzero.config.support_size).item()
+            reward = models.support_to_scalar(reward, muzero.config.support_size).item()
 
-    seqs = [seq.strip().split(',') for seq in seqs if len(seq) > 1 and (not seq.startswith("#"))]
-    print(seqs)
-    for seq in seqs:
-        print(seq)
-        (
-            value,
-            reward,
-            policy_logits,
+            update_pred_dict(pred_dict, value, reward, policy_logits, [], [0,1,2])
 
-            encoded_state,
-        ) = model.initial_inference(obs)
-        if len(seq) > 1:
-            actions = [action_map[a] for a in seq[1:]]
-            policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
+            for actions in step['as']:
+                if actions == []:
+                    continue
+                policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
+                value = models.support_to_scalar(value, muzero.config.support_size).item()
+                reward = models.support_to_scalar(reward, muzero.config.support_size).item()
 
-        value = models.support_to_scalar(value, muzero.config.support_size).item()
-        reward = models.support_to_scalar(reward, muzero.config.support_size).item()
-        summary.append((seq, value))
-        print(f"""
-            Inital state {seq[0]}
-            Actions: {seq[1:]}
-            Value: {value}
-            Policy: {policy_logits}
-            Reward: {reward}
-        """)
+                update_pred_dict(pred_dict, value, reward, policy_logits, actions,[0,1,2])
 
-    for seq, value in summary:
-        print(f"{seq}: {value}")
+            run_dict['results'].append(pred_dict)
+        all_runs_dicts.append(run_dict)
 
 
-def seq_testing_(muzero, file):
-    action_map = {'L': 0,'D': 1,'R': 2,'U': 3,}
-    model = mz_net.MuZeroNetwork(muzero.config)
-    with open(file, 'r') as f:
-        seqs = f.readlines()
+    with open(results_file, "w") as f:
+        for game_dict in all_runs_dicts:
+            json.dump(game_dict, f)
+            f.write('\n')  # Add a newline after each JSON object
 
-    summary = []
 
-    seqs = [seq.strip().split(',') for seq in seqs if len(seq) > 1 and (not seq.startswith("#"))]
-    print(seqs)
-    for seq in seqs:
-        print(seq)
-        (
-            value,
-            policy_logits,
-            reward,
-            encoded_state,
-        ) = model.initial_inference(torch.tensor([[[[int(seq[0])]]]], dtype=torch.float32))
-        if len(seq) > 1:
-            actions = [action_map[a] for a in seq[1:]]
-            policy_logits, value, reward = model.prediction(encoded_state, torch.tensor([actions]))
+    return all_runs_dicts
 
-        value = models.support_to_scalar(value, muzero.config.support_size).item()
-        summary.append((seq, value))
-        print(f"""
-            Inital state {seq[0]}
-            Actions: {seq[1:]}
-            Value: {value}
-            Policy: {policy_logits}
-            Reward: {reward}
-        """)
 
-    for seq, value in summary:
-        print(f"{seq}: {value}")
 
 def visualize_model(muzero):
     from torchviz import make_dot
@@ -775,18 +750,21 @@ def main(args):
 
     if args.test_mode == "seq":
         print("seq testing")
-        seq_testing(muzero, args.seq_file)
+        seq_file = "predictions/preds/5x5_res_ra_1000_old.json"
+        results_file = "predictions/double_preds/5x5_trans_on_res_ra_1000.json"
+        seq_testing(muzero, seq_file, results_file)
+
     elif args.test_mode == "viz":
         print("vizualizing")
         visualize_model(muzero)
-    elif args.test_mode == "n_rand_maps":
+    elif args.test_mode == "n_maps":
         print("more map testing")
         muzero.config.show_preds = True
-        name = "4x4_trans_rand_test.json"
+        name = "5x5_res_ra_1000_new.json"
         muzero.config.preds_file = f"predictions/preds/{name}"
 
         #for i in range(3):
-        results = muzero.test(render=False, opponent="self", muzero_player=None, num_tests=2)
+        results = muzero.test(render=False, opponent="self", muzero_player=None, num_tests=1000)
         # put results into file
         with open(f"predictions/results/{name}", "w") as f:
             json.dump(results, f)
@@ -808,7 +786,7 @@ def setup(test=False):
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
     args = parser.parse_args()
 
-    if args.run_from_cluster == "db":
+    if args.run_from_cluster == "db" or "rp":
         wandb_key = os.getenv("WANDB_API_KEY")
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
@@ -821,10 +799,8 @@ def setup(test=False):
             args.config["logger"] = None
         # todo cleanup
         if test:
-            args.test_mode = "n_rand_maps"
-            args.seq_file = "manual_seqs/grid_3x3_t1.txt"
-
-            args.checkpoint_path = f"models/trans4x4rand.checkpoint"
+            args.test_mode = "n_maps" #
+            args.checkpoint_path = f"models/res/res_5x5_ra.checkpoint"
             args.config={"testing": True}
 
         logger = "wandb"
