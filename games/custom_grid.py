@@ -116,10 +116,10 @@ class MuZeroConfig:
         self.game_name = "custom_grid"
         self.logger = "wandb" if not self.debug_mode else None
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
-        self.start_pos = None #(0,1)
+        self.start_pos = None #(3,1) #None #(0,1)
         self.start_dir = None # todo 0: right, 1: down, 2: left, 3: up
         self.random_map = True
-        self.pov = '1_hot_god' # agent or god
+        self.pov = 'agent' # agent, god, 1_hot_god, 2_hot_god
 
         # Naming
         self.project = "TransZeroV3"
@@ -213,8 +213,6 @@ class MuZeroConfig:
         self.fc_layers_trans = [128, 64]
         self.mlp_head_layers = [32, 16]
         self.cum_reward = False
-        self.state_size = None #(16,3,3) # same as
-        self.stable_transformer=False
         self.state_size = None #(16, 4, 4) # same as
         self.stable_transformer = False
 
@@ -226,7 +224,6 @@ class MuZeroConfig:
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None # None for not using this
         self.loss_weight_decay = None # None for not using
-
 
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
@@ -659,6 +656,25 @@ class SimpleEnv(MiniGridEnv):
 
         self._gen_grid_from_string(custom_map)
         self.mission = "custom mission"
+
+        if False: # todo
+            import json
+            file_path = f"custom_maps/{walkable_size}x{walkable_size}.json"
+            with open(file_path, "a") as f:
+                game_dict = {
+                    "map": custom_map.tolist(),
+                    "start_pos": start_pos,
+                    "start_dir": self.agent_dir,
+                    "min_actions": int(self.min_actions)
+                }
+                json.dump(game_dict, f)
+                f.write('\n')  # Add a newline after each JSON object
+                f.flush()
+
+
+
+
+
 
     #
     # def step(self, action):
