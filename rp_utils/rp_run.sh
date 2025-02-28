@@ -24,5 +24,6 @@ conda install -c conda-forge "ray-default" -y
 pip install nevergrad wandb box2d-py minigrid
 
 # lunarlander
+cd ~
 cd TransZero
 python muzero.py -rfc rp -game "custom_grid"
