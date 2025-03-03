@@ -36,8 +36,6 @@ class SelfPlay:
             print(f"trying new weights")
             self.model.set_weights(self.remove_module_prefix(initial_checkpoint["weights"]))
 
-
-
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
         self.model.eval()
@@ -577,6 +575,13 @@ a_dict_cg = {
     2: 'F'
 }
 
+a_dict_ll = {
+    0: 'N',
+    1: 'L',
+    2: 'M',
+    3: 'R'
+}
+
 
 class Node:
 
@@ -614,8 +619,9 @@ class Node:
             torch.tensor([policy_logits[0][a] for a in actions]), dim=0
         ).tolist()
         policy = {a: policy_values[i] for i, a in enumerate(actions)}
+        a_dict = a_dict_cg if len(actions) == 3 else a_dict_ll
         for action, p in policy.items():
-            a_name = a_dict_cg[action]
+            a_name = a_dict[action]
             child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
             self.children[action] = Node(p, name=child_name, use_reward=self.use_reward)
 

@@ -49,6 +49,9 @@ class MuZeroConfig:
         self.action_space = list(range(4))  # Fixed list of all possible actions. You should only edit the length
         self.players = list(range(1))  # List of players. You should only edit the length
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
+        self.predict_reward = True
+
+
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
@@ -98,7 +101,7 @@ class MuZeroConfig:
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
+        self.representation_network_type = "none"# "mlp"  # "res", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
             # (out_channels, kernel_size, stride)
@@ -109,7 +112,9 @@ class MuZeroConfig:
         self.fc_layers_trans = [64]
         self.mlp_head_layers = [16]
         self.cum_reward = False
-        self.state_size = None #(16,3,3) # same as
+        self.state_size = None #(1,1,8) #None #(16,3,3) # same as
+        self.stable_transformer = False
+
 
 
         ### Training
@@ -117,6 +122,8 @@ class MuZeroConfig:
         self.training_steps = 400000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128 # 64  # Number of parts of games to train on at each training step # todo
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.encoding_loss_weight = None # None for not using this
+        self.loss_weight_decay = None # None for not using
 
         # Learning rate
         self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD

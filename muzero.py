@@ -194,7 +194,7 @@ class MuZero:
 
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
-            num_cpus=1,
+            num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
@@ -212,7 +212,7 @@ class MuZero:
 
         if self.config.use_last_model_value:
             self.reanalyse_worker = replay_buffer.Reanalyse.options(
-                num_cpus=1,
+                num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
             ).remote(self.checkpoint, self.config)
 
@@ -221,7 +221,7 @@ class MuZero:
         print("num_gpus_per_worker", num_gpus_per_worker)
         self.self_play_workers = [
             self_play.SelfPlay.options(
-                num_cpus=1,
+                num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             ).remote(
                 self.checkpoint,
@@ -786,12 +786,12 @@ def setup(test=False):
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
     args = parser.parse_args()
 
-    if args.run_from_cluster == "db" or "rp":
+    if args.run_from_cluster == "db" or args.run_from_cluster == "rp":
         wandb_key = os.getenv("WANDB_API_KEY")
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "custom_grid" #"gridworld" # #"lunarlander"
+        args.game_name = "lunarlander"#"custom_grid" #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
