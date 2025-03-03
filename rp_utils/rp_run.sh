@@ -19,8 +19,10 @@ apt install swig -y
 
 # install dependencies
 #conda env create -f environment.yml
-conda install numpy==1.26.4 gymnasium pytorch torchvision torchaudio pytorch-cuda=12.1 nevergrad=1.0.1 bayesian-optimization=1.2.0 -c pytorch -c nvidia -c conda-forge -y
+# pytorch torchvision torchaudio pytorch-cuda=12.1
+conda install numpy==1.26.4 gymnasium nevergrad=1.0.1 bayesian-optimization=1.2.0 -c conda-forge -y
 conda install -c conda-forge "ray-default" box2d-py -y
+pip3 install torch torchvision torchaudio
 pip install nevergrad wandb minigrid
 pip install --upgrade ray
 
