@@ -28,4 +28,4 @@ pip install --upgrade ray
 
 # lunarlander
 # npm?
-python muzero.py -rfc rp -game "custom_grid"
+#python muzero.py -rfc rp -game "custom_grid" -c "rp_utils/configs/resnet_base.json"
