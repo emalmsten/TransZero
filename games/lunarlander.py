@@ -54,8 +54,6 @@ class MuZeroConfig:
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
         self.predict_reward = True
 
-
-
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
@@ -81,7 +79,7 @@ class MuZeroConfig:
         # Residual Network
         self.downsample = False  # Downsample observations before representation network, False / "CNN" (lighter) / "resnet" (See paper appendix Network Architecture)
         self.blocks = 3  # Number of blocks in the ResNet
-        self.channels = 12  # Number of channels in the ResNet
+        self.channels = 16  # Number of channels in the ResNet
         self.reduced_channels_reward = 4  # Number of channels in reward head
         self.reduced_channels_value = 4  # Number of channels in value head
         self.reduced_channels_policy = 4  # Number of channels in policy head
@@ -98,13 +96,13 @@ class MuZeroConfig:
         self.fc_policy_layers = [64]  # Define the hidden layers in the policy network
 
         self.transformer_layers = 4
-        self.transformer_heads = 8
+        self.transformer_heads = 16
         self.transformer_hidden_size = 64
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "none"# "mlp"  # "res", "cnn" or "mlp"
+        self.representation_network_type = "mlp"# "mlp"  # "res", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
             # (out_channels, kernel_size, stride)
@@ -118,11 +116,9 @@ class MuZeroConfig:
         self.state_size = None #(1,1,8) #None #(16,3,3) # same as
         self.stable_transformer = False
 
-
-
         ### Training
         self.checkpoint_interval = 10
-        self.training_steps = 400000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 500000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128 # 64  # Number of parts of games to train on at each training step # todo
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None # None for not using this
@@ -134,13 +130,13 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.0025  # Initial learning rate
+        self.lr_init = 0.001  # Initial learning rate
         self.lr_decay_rate = 0.99  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 0.02 * self.training_steps
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
-        self.replay_buffer_size = 200000  # Number of self-play games to keep in the replay buffer
+        self.replay_buffer_size = 100000  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 10  # Number of game moves to keep for every batch element # todo consider longer
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network

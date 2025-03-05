@@ -1,0 +1,4 @@
+{
+  "network": "resnet",
+  "lr_init": 0.005
+}
