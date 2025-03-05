@@ -136,11 +136,12 @@ def logging_loop(muzero, logger):
         keys.append("trans_policy_loss")
 
     # Loop for updating the training performance
-    counter = 0
+    first_step = muzero.wandb_run.step
+    counter = first_step
     offline_cache = []  # Stores logs when offline
 
     try:
-        while counter == 0 or info["training_step"] < muzero.config.training_steps:
+        while counter == first_step or info["training_step"] < muzero.config.training_steps:
             info = ray.get(muzero.shared_storage_worker.get_info.remote(keys))
             if logger == "tensorboard":
                 tensorboard_logging(info, counter, writer)
@@ -166,11 +167,11 @@ def logging_loop(muzero, logger):
 def end_script(muzero, writer, logger):
     muzero.terminate_workers()
 
-    if muzero.config.save_model:
-        # Persist replay buffer to disk
-        save_buffer(muzero)
-        # Persist model to disk
-        # save_model(muzero)
+    # if muzero.config.save_model:
+    #     # Persist replay buffer to disk
+    #     save_buffer(muzero)
+    #     # Persist model to disk
+    #     # save_model(muzero)
 
     if logger == "tensorboard":
         writer.close()
@@ -178,24 +179,6 @@ def end_script(muzero, writer, logger):
         wandb.finish()
 
 
-# def save_model(muzero):
-#     path = muzero.config.results_path / "model.ckpt"
-#     print(f"\n\nPersisting model to disk at {path}")
-#     torch.save(muzero.state_dict(), str(path))
-
-
-def save_buffer(muzero):
-    path = muzero.config.results_path / "replay_buffer.pkl"
-    print(f"\n\nPersisting replay buffer games to disk at {path}, num steps = {muzero.checkpoint['num_played_steps']}")
-    pickle.dump(
-        {
-            "buffer": muzero.replay_buffer,
-            "num_played_games": muzero.checkpoint["num_played_games"],
-            "num_played_steps": muzero.checkpoint["num_played_steps"],
-            "num_reanalysed_games": muzero.checkpoint["num_reanalysed_games"],
-        },
-        open(path, "wb"),
-    )
 
 
 def init_tensorboard(muzero):
@@ -218,5 +201,5 @@ def init_tensorboard(muzero):
 
 
 def init_wandb(muzero):
-    wandb.config.update(muzero.config.__dict__)
+
     print("Training...\nGo to https://wandb.ai/ to see real-time training performance.\n")

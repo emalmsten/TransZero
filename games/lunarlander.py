@@ -16,10 +16,13 @@ class MuZeroConfig:
         self.testing = False
         self.debug_mode = False or self.testing
 
+        self.logger = "wandb" if not self.debug_mode else None
+        self.wandb_project_name = "TransZeroV3"
+        self.wandb_entity = "elhmalmsten-tu-delft"
+
         # Essentials
         self.network = "transformer"
         self.game_name = "lunarlander"
-        self.logger = "wandb" if not self.debug_mode else None
 
         # Naming
         self.project = "TransZeroV3"
@@ -32,7 +35,7 @@ class MuZeroConfig:
 
         # Saving
         self.save_model = True
-        self.save_interval = 5000
+        self.save_interval = 10000
 
         # GPU
         self.selfplay_on_gpu = cuda and not self.debug_mode

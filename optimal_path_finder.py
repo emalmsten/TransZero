@@ -56,35 +56,54 @@ def calculate_steps_and_turns_to_goal(grid):
     turns = np.array(turns)
     return distance + turns
 
+
+def random_map_generator(size, holes):
+    from games.custom_grid import SimpleEnv
+
+    custom_map = SimpleEnv.get_random_map(size, holes)
+
+    step_grid = calculate_steps_and_turns_to_goal(custom_map)
+    # list all positions which you can reach from the goal
+    reachables = [(y, x) for y in range(len(step_grid)) for x in range(len(step_grid[y])) if step_grid[y][x] > 0]
+
+    # if not more than 20% of all positions are reachable, reroll (goal locked between holes)
+    if not len(reachables) / size ** 2 > 0.2:
+        return random_map_generator(size, holes)
+
+    start_pos = reachables[np.random.randint(0, len(reachables))]
+
+    return custom_map, start_pos
+
+
 #
-# # Example usage
-# grid = [
-#     ["F", "F", "H", "F"],
-#     ["F", "F", "H", "F"],
-#     ["H", "F", "F", "F"],
-#     ["H", "H", "F", "G"],
-# ]
-# grid = [
-#         "SFH",
-#         "FHF",
-#         "FFG",
-#     ]
+# if __name__ == "__main__":
+#     num_maps = 1000
+#     maps = []
 #
+#     # Create the custom game
+#     for i in range(num_maps):
+#         random_map, start_pos = random_map_generator(4, 3)
+#         direction = np.random.randint(0, 4)
+#         game_dict = {
+#             "map": random_map.tolist(),
+#             "start_pos": start_pos,
+#             "start_dir": direction
+#         }
+#         # turn to string
+#         maps.append(game_dict)
 #
-# distance_result, turns_result = calculate_steps_and_turns_to_goal(grid)
-# total_result = np.array(distance_result) + np.array(turns_result)
+#     # save to json file
+#     import json
+#     with open("custom_maps/4x4.json", "w") as f:
+#         json.dump(maps, f)
 #
+#     print("Maps saved to custom_maps.json")
 #
+#     # open maps and try to retrive one
+#     with open("custom_maps/4x4.json", "r") as f:
+#         maps = json.load(f)
 #
-# # Pretty print the results
-# print("Steps to Goal:")
-# for row in distance_result:
-#     print(row)
-#
-# print("\nTurns to Goal:")
-# for row in turns_result:
-#     print(row)
-#
-# print("\nTotal Cost to Goal:")
-# for row in total_result:
-#     print(row)
+#     print("Maps loaded from custom_maps.json")
+#     print(maps[3])
+
+

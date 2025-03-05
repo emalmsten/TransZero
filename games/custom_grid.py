@@ -111,10 +111,14 @@ class MuZeroConfig:
         self.preds_file = "predictions/4x4_preds/transformer/test.json"
         self.debug_mode = False or self.testing
 
+        self.logger = "wandb" if not self.debug_mode else None
+        self.wandb_project_name = "TransZeroV3"
+        self.wandb_entity = "elhmalmsten-tu-delft"
+
         # Essentials
         self.network = "transformer"
         self.game_name = "custom_grid"
-        self.logger = "wandb" if not self.debug_mode else None
+
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
         self.start_pos = None #(3,1) #None #(0,1)
         self.start_dir = None # todo 0: right, 1: down, 2: left, 3: up
@@ -122,7 +126,6 @@ class MuZeroConfig:
         self.pov = 'agent' # agent, god, 1_hot_god, 2_hot_god
 
         # Naming
-        self.project = "TransZeroV3"
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
         path = self.root / "results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'

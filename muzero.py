@@ -153,6 +153,34 @@ class MuZero:
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
 
+
+    def init_wandb(self, args):
+        if args.wandb_run_id is not None: # restart wandb run
+            self.wandb_run = wandb.init(
+                entity=self.config.wandb_entity,
+                project=self.config.wandb_project_name,
+                resume="must",
+                dir=str(self.config.results_path),
+                id=args.wandb_run_id
+            )
+
+        else:
+            self.wandb_run = wandb.init(
+                entity=self.config.wandb_entity,
+                project=self.config.wandb_project_name,
+                name=str(self.config.log_name),  # to string:
+                config=self.config.__dict__,
+                dir=str(self.config.results_path),
+                resume="allow",
+            )
+            import yaml
+            fp = f"{str(self.config.results_path)}/config.yaml"
+            with open(fp, "w") as f:
+                yaml.dump(self.config, f)
+            wandb.save(fp)
+
+
+
     def train(self):
         """
         Spawn ray workers and launch the training.
@@ -160,24 +188,7 @@ class MuZero:
         Args:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
-        logger = self.config.logger if hasattr(self.config, "logger") else None
-
-        if logger is not None or self.config.save_model:
-            if type(self.config.results_path) is str:
-                self.config.results_path = pathlib.Path(self.config.results_path)
-            self.config.results_path.mkdir(parents=True, exist_ok=True)
-
-        if self.config.logger == "wandb":
-            self.wandb_run = wandb.init(
-                entity="elhmalmsten-tu-delft",
-                project=self.config.project,
-                name=str(self.config.log_name), # to string:
-                config=self.config.__dict__,
-                dir=str(self.config.results_path),
-                resume="allow",
-            )
-        else:
-            self.wandb_run = None
+        logger = self.config.logger
 
         # Manage GPUs
         if 0 < self.num_gpus:
@@ -202,7 +213,6 @@ class MuZero:
             self.checkpoint,
             self.config,
             self.wandb_run,
-
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
@@ -261,6 +271,7 @@ class MuZero:
             self.test_worker.continuous_self_play.remote(
                 self.shared_storage_worker, None, True
             )
+
 
             logging_loop(self, logger)
 
@@ -356,10 +367,9 @@ class MuZero:
             replay_buffer_path (str): Path to replay_buffer.pkl
         """
         # Load checkpoint
-        if checkpoint_path:
-            checkpoint_path = pathlib.Path(checkpoint_path)
-            self.checkpoint = torch.load(checkpoint_path)
-            print(f"\nUsing checkpoint from {checkpoint_path}")
+        checkpoint_path = pathlib.Path(checkpoint_path)
+        self.checkpoint = torch.load(checkpoint_path)
+        print(f"\nUsing checkpoint from {checkpoint_path}")
 
         # Load replay buffer
         if replay_buffer_path:
@@ -370,7 +380,7 @@ class MuZero:
             self.checkpoint["num_played_steps"] = replay_buffer_infos[
                 "num_played_steps"
             ]
-            print(self.checkpoint["num_played_steps"])
+            print("steps:", self.checkpoint["num_played_steps"])
             self.checkpoint["num_played_games"] = replay_buffer_infos[
                 "num_played_games"
             ]
@@ -401,6 +411,32 @@ class MuZero:
         dm.compare_virtual_with_real_trajectories(obs, game, horizon)
         input("Press enter to close all plots")
         dm.close_all()
+
+
+    def get_wandb_artifacts(self, run_id):
+
+        # Initialize W&B API
+        api = wandb.Api()
+
+        # Define the entity, project, and run ID
+        entity = self.config.wandb_entity
+        project = self.config.wandb_project_name
+
+        # Fetch the run
+        run = api.run(f"{entity}/{project}/{run_id}")
+        artifacts = run.logged_artifacts()
+
+        latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-2:]
+
+        # Filter for the model artifact and the data artifact
+        model_artifact = next(a for a in latest_artifacts if a.type == 'model')
+        data_artifact = next(a for a in latest_artifacts if a.type == 'data')
+
+        model_path = model_artifact.download() + "/model.checkpoint"
+        buffer_path = data_artifact.download() + "/replay_buffer.pkl"
+
+        return model_path, buffer_path
+
 
 
 @ray.remote(num_cpus=0, num_gpus=0)
@@ -448,7 +484,7 @@ def hyperparameter_search(
                 print(f"Launching new experiment: {param.value}")
                 muzero = MuZero(game_name, param.value, parallel_experiments)
                 muzero.param = param
-                muzero.train(logger)
+                muzero.train()
                 running_experiments.append(muzero)
                 budget -= 1
 
@@ -474,7 +510,7 @@ def hyperparameter_search(
                         print(f"Launching new experiment: {param.value}")
                         muzero = MuZero(game_name, param.value, parallel_experiments)
                         muzero.param = param
-                        muzero.train(logger)
+                        muzero.train()
                         running_experiments[i] = muzero
                         budget -= 1
                     else:
@@ -737,16 +773,9 @@ def visualize_model(muzero):
     dot_representation = make_dot((value, reward, policy_logits, hidden_state), params=dict(model.named_parameters()))
     dot_representation.render(f"graphs/representation_graph_{network}_shared", format="png")
 
-
-def main(args):
-    if args.game_name is None:
-        cmd_line_init()
-        return
-
-    print(f"Selected game: {args.game_name}")
-    muzero = MuZero(args.game_name, args.config)
-    if args.checkpoint_path is not None:
-        muzero.load_model(checkpoint_path=args.checkpoint_path)
+def setup_testing(muzero, args):
+    if args.model_path is not None:
+        muzero.load_model(checkpoint_path=args.model_path)
 
     if args.test_mode == "seq":
         print("seq testing")
@@ -769,11 +798,45 @@ def main(args):
         with open(f"predictions/results/{name}", "w") as f:
             json.dump(results, f)
 
-    elif args.test_mode is not None:
-        # todo, loop with N amount of maps
-        muzero.test(render=True, opponent="self", muzero_player=None)
     else:
-        muzero.train()
+        muzero.test(render=True, opponent="self", muzero_player=None)
+
+
+
+
+
+def main(args):
+    if args.game_name is None:
+        cmd_line_init()
+        return
+
+    print(f"Selected game: {args.game_name}")
+    muzero = MuZero(args.game_name, args.config)
+
+    if args.test_mode is not None:
+        return setup_testing(muzero, args)
+
+    logger = muzero.config.logger
+
+    if logger:
+        if muzero.config.save_model:
+            if type(muzero.config.results_path) is str:
+                muzero.config.results_path = pathlib.Path(muzero.config.results_path)
+            muzero.config.results_path.mkdir(parents=True, exist_ok=True)
+
+        if logger == "wandb":
+            muzero.init_wandb(args)
+
+    if args.wandb_run_id is not None: # if wandb id in args
+        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id)
+    else:
+        checkpoint_path = args.model_path
+        replay_buffer_path = args.replay_buffer_path
+
+    if checkpoint_path is not None:
+        muzero.load_model(checkpoint_path, replay_buffer_path)
+
+    muzero.train()
 
 
 def setup(test=False):
@@ -781,9 +844,11 @@ def setup(test=False):
     parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
     parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test') # seq or other
     parser.add_argument('-sf', '--seq_file', type=str, default=None, help='If seq testing, load from this file')
-    parser.add_argument('-ckpt', '--checkpoint_path', type=str, default=None, help='Load MuZero from checkpoint')
     parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='From which cluster to run, none if local')
     parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
+    parser.add_argument('-mp', '--model_path', type=str, default=None, help='Path to model.checkpoint')
+    parser.add_argument('-rbp', '--replay_buffer_path', type=str, default=None, help='Path to replay_buffer.pkl')
+    parser.add_argument('-wid', '--wandb_run_id', type=str, default=None, help='Wandb id')
     args = parser.parse_args()
 
     if args.run_from_cluster == "db" or args.run_from_cluster == "rp":
@@ -791,16 +856,24 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "lunarlander"#"custom_grid" #"gridworld" # #
+        args.game_name = "custom_grid" #"lunarlander"# #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
         if test or args.config["debug_mode"]:
             args.config["logger"] = None
         # todo cleanup
+
+        # args.replay_buffer_path = f"models/replays/replay_buffer_wandb.pkl"
+        # args.model_path = f"models/trans/test_model_wandb.checkpoint"
+
+        # args.model_path = f"model_step-2500_name-20250304_121011_local_grid_test:v0"
+        # args.replay_buffer_path = f"buffer-20250304_121011_local_grid_test:v9"
+        #
+        #args.wandb_run_id = "sbqswxz0"
+
         if test:
             args.test_mode = "n_maps" #
-            args.checkpoint_path = f"models/res/res_5x5_ra.checkpoint"
             args.config={"testing": True}
 
         logger = "wandb"

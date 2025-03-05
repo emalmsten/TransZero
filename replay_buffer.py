@@ -25,7 +25,7 @@ class ReplayBuffer:
         )
         if self.total_samples != 0:
             print(
-                f"Replay buffer initialized with {self.total_samples} samples ({self.num_played_games} games).\n"
+                f"Replay buffer initialized with {self.total_samples} samples ({self.num_played_games} games and with {self.num_played_steps} steps).\n"
             )
 
         # Fix random generator seed
