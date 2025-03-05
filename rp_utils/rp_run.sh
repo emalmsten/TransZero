@@ -23,8 +23,9 @@ apt install swig -y
 conda install numpy==1.26.4 gymnasium nevergrad=1.0.1 bayesian-optimization=1.2.0 -c conda-forge -y
 conda install -c conda-forge "ray-default" box2d-py -y
 pip3 install torch torchvision torchaudio
-pip install nevergrad wandb minigrid
+pip install gym nevergrad wandb minigrid
 pip install --upgrade ray
+pip install --upgrade nevergrad
 
 # lunarlander
 # npm?

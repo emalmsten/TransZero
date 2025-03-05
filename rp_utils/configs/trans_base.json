@@ -1,4 +1,4 @@
 {
-  "network": "resnet",
-  "lr_init": 0.005
+  "network": "transformer",
+  "lr_init": 0.001
 }
