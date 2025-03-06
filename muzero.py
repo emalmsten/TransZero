@@ -426,7 +426,7 @@ class MuZero:
         run = api.run(f"{entity}/{project}/{run_id}")
         artifacts = run.logged_artifacts()
 
-        latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-2:]
+        latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-3:]
 
         # Filter for the model artifact and the data artifact
         model_artifact = next(a for a in latest_artifacts if a.type == 'model')
@@ -870,7 +870,7 @@ def setup(test=False):
         # args.model_path = f"model_step-2500_name-20250304_121011_local_grid_test:v0"
         # args.replay_buffer_path = f"buffer-20250304_121011_local_grid_test:v9"
         #
-        #args.wandb_run_id = "sbqswxz0"
+        args.wandb_run_id = "kddo7ygt"
 
         if test:
             args.test_mode = "n_maps" #
