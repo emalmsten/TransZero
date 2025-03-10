@@ -168,8 +168,8 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
 
-        self.softmax_limits = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]  # [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
-        self.softmax_temps = [0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]  # [0.4, 0.35, 0.15, 0.05] # res 1, 0.5, 0.25
+        self.softmax_limits = [0.25, 0.5, 0.75, 1]  # [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]#
+        self.softmax_temps = [0.4, 0.35, 0.15, 0.05]  # res [ 0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1] #
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -188,9 +188,10 @@ class Game(AbstractGame):
     Game wrapper for LunarLander-v3.
     """
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, config=None):
         # Initialize the LunarLander-v3 environment from gymnasium.
-        self.env = gym.make("LunarLander-v3")
+        render_mode = "human" if config.testing else None
+        self.env = gym.make("LunarLander-v3", render_mode=render_mode)
         if seed is not None:
             # In gymnasium, reset returns a tuple (observation, info)
             self.env.reset(seed=seed)
@@ -243,7 +244,7 @@ class Game(AbstractGame):
         Render the current game state.
         """
         self.env.render()
-        input("Press enter to take a step ")
+        #input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
         """

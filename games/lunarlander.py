@@ -164,8 +164,8 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
 
-        self.softmax_limits = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]#[0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
-        self.softmax_temps = [ 0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1] #[0.4, 0.35, 0.15, 0.05] # res 1, 0.5, 0.25
+        self.softmax_limits = [0.25, 0.5, 0.75, 1] # [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]#
+        self.softmax_temps = [0.4, 0.35, 0.15, 0.05] # res [ 0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1] #
 
 
 
