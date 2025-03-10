@@ -20,7 +20,7 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
-        self.max_time_minutes = 2
+        self.max_time_minutes = None
 
         # Local
         self.testing = False
