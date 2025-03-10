@@ -140,8 +140,17 @@ def logging_loop(muzero, logger):
     counter = first_step
     offline_cache = []  # Stores logs when offline
 
+    start_time = time.time()  # Record the start time
+    # check if config has max time minutes
+    max_time_seconds = muzero.config.max_time_minutes * 60 if muzero.config.max_time_minutes else float("inf")
+
     try:
         while counter == first_step or info["training_step"] < muzero.config.training_steps:
+
+            if time.time() - start_time > max_time_seconds:
+                print(f"Max time reached: {muzero.config.max_time_minutes} minutes")
+                break
+
             info = ray.get(muzero.shared_storage_worker.get_info.remote(keys))
             if logger == "tensorboard":
                 tensorboard_logging(info, counter, writer)
