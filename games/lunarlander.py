@@ -6,6 +6,10 @@ import torch
 
 from .abstract_game import AbstractGame
 
+try:
+    import pygame
+except ModuleNotFoundError:
+    print("pygame is not installed, please install it to use the rendering feature")
 
 class MuZeroConfig:
     def __init__(self, root=None):
@@ -130,7 +134,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001  # Initial learning rate
+        self.lr_init = 0.0075  # Initial learning rate
         self.lr_decay_rate = 0.99  # Set it to 1 to use a constant learning rate
         self.lr_decay_steps = 0.02 * self.training_steps
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -158,6 +162,11 @@ class MuZeroConfig:
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
 
+        self.softmax_limits = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]#[0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
+        self.softmax_temps = [ 0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1] #[0.4, 0.35, 0.15, 0.05] # res 1, 0.5, 0.25
+
+
+
     def visit_softmax_temperature_fn(self, trained_steps):
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
@@ -166,14 +175,10 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.25 * self.training_steps:
-            return 0.4
-        elif trained_steps < 0.5 * self.training_steps:
-            return 0.35
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.15
-        else:
-            return 0.05
+        for i, limit in enumerate(self.softmax_limits):
+            if trained_steps < limit * self.training_steps:
+                return self.softmax_temps[i]
+
 
 
 class Game(AbstractGame):
@@ -181,8 +186,8 @@ class Game(AbstractGame):
     Game wrapper.
     """
 
-    def __init__(self, seed=None):
-        self.env = DeterministicLunarLander()
+    def __init__(self, seed=None, config=None):
+        self.env = DeterministicLunarLander(config)
         # self.env = gym.make("LunarLander-v2")
         if seed is not None:
             self.env.seed(seed)
@@ -234,7 +239,10 @@ class Game(AbstractGame):
         Display the game observation.
         """
         self.env.render()
-        input("Press enter to take a step ")
+        # sleep
+        # import time
+        # time.sleep(0.2)
+        #input("Press enter to take a step ")
 
     def action_to_string(self, action_number):
         """
@@ -346,7 +354,7 @@ class DeterministicLunarLander(gym.Env, EzPickle):
 
     continuous = False
 
-    def __init__(self):
+    def __init__(self, config):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
@@ -373,6 +381,12 @@ class DeterministicLunarLander(gym.Env, EzPickle):
             self.action_space = spaces.Discrete(4)
 
         self.reset()
+
+        if config.testing:
+            pygame.init()
+            self.screen = pygame.display.set_mode((VIEWPORT_W, VIEWPORT_H))
+            pygame.display.set_caption("Environment Render")
+            self.clock = pygame.time.Clock()
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -642,12 +656,14 @@ class DeterministicLunarLander(gym.Env, EzPickle):
         return np.array(state, dtype=np.float32), reward, done, {}
 
     def render(self, mode="human"):
-        from gym.envs.classic_control import rendering
+        from Rendering import Viewer, Transform
 
+        # Create the viewer if it doesn't exist.
         if self.viewer is None:
-            self.viewer = rendering.Viewer(VIEWPORT_W, VIEWPORT_H)
+            self.viewer = Viewer(VIEWPORT_W, VIEWPORT_H)
             self.viewer.set_bounds(0, VIEWPORT_W / SCALE, 0, VIEWPORT_H / SCALE)
 
+        # Update particle properties.
         for obj in self.particles:
             obj.ttl -= 0.15
             obj.color1 = (
@@ -663,26 +679,28 @@ class DeterministicLunarLander(gym.Env, EzPickle):
 
         self._clean_particles(False)
 
+        # Draw sky polygons.
         for p in self.sky_polys:
             self.viewer.draw_polygon(p, color=(0, 0, 0))
 
+        # Draw particles and other objects.
         for obj in self.particles + self.drawlist:
             for f in obj.fixtures:
-                trans = f.body.transform
-                if type(f.shape) is circleShape:
-                    t = rendering.Transform(translation=trans * f.shape.pos)
-                    self.viewer.draw_circle(
-                        f.shape.radius, 20, color=obj.color1
-                    ).add_attr(t)
-                    self.viewer.draw_circle(
-                        f.shape.radius, 20, color=obj.color2, filled=False, linewidth=2
-                    ).add_attr(t)
+                trans = f.body.transform  # Expected to be transform-like (supports "trans * point")
+                if isinstance(f.shape, circleShape):  # assuming circleShape is defined
+                    # Compute the transformed center.
+                    center = trans * f.shape.pos
+                    t = Transform(translation=center)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=obj.color1).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=obj.color2, filled=False, linewidth=2).add_attr(t)
                 else:
                     path = [trans * v for v in f.shape.vertices]
                     self.viewer.draw_polygon(path, color=obj.color1)
-                    path.append(path[0])
-                    self.viewer.draw_polyline(path, color=obj.color2, linewidth=2)
+                    polyline_path = list(path)
+                    polyline_path.append(path[0])
+                    self.viewer.draw_polyline(polyline_path, color=obj.color2, linewidth=2)
 
+        # Draw helipad flags.
         for x in [self.helipad_x1, self.helipad_x2]:
             flagy1 = self.helipad_y
             flagy2 = flagy1 + 50 / SCALE
@@ -696,7 +714,7 @@ class DeterministicLunarLander(gym.Env, EzPickle):
                 color=(0.8, 0.8, 0),
             )
 
-        return self.viewer.render(return_rgb_array=mode == "rgb_array")
+        return self.viewer.render(return_rgb_array=(mode == "rgb_array"))
 
     def close(self):
         if self.viewer is not None:

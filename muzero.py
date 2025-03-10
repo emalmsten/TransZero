@@ -49,7 +49,7 @@ class MuZero:
         # >>> muzero.test(render=True)
     """
 
-    def __init__(self, game_name, config=None, split_resources_in=1):
+    def __init__(self, game_name, config=None, restart_wandb_id = None, test=None, split_resources_in=1):
         # Load the game and the config from the module with the game name
         try:
             game_module = importlib.import_module("games." + game_name)
@@ -62,21 +62,13 @@ class MuZero:
             raise err
 
         # Overwrite the config
+        if restart_wandb_id is not None:
+            print(f"Using config from: {restart_wandb_id}")
+            wandb_config = get_wandb_config(self.config.wandb_entity, self.config.wandb_project_name, restart_wandb_id)
+            self.overwrite_config(wandb_config)
+
         if config:
-            if type(config) is str:
-                print(f"Config is string")
-                config = json.loads(config)
-            if type(config) is dict:
-                print(f"Config is dict")
-                for param, value in config.items():
-                    if hasattr(self.config, param):
-                        setattr(self.config, param, value)
-                    else:
-                        raise AttributeError(
-                            f"{game_name} config has no attribute '{param}'. Check the config file for the complete list of parameters."
-                        )
-            else:
-                self.config = config
+            self.overwrite_config(config)
 
         refresh(self.config)
         print(f"Config: {print_config(self.config)}")
@@ -152,6 +144,21 @@ class MuZero:
         self.reanalyse_worker = None
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
+
+
+    def overwrite_config(self, config):
+
+        if type(config) is str:
+            print(f"Config is string")
+            config = json.loads(config)
+        if type(config) is dict:
+            for param, value in config.items():
+                if hasattr(self.config, param):
+                    setattr(self.config, param, value)
+                else:
+                    raise AttributeError(
+                        f"Config has no attribute '{param}'. Check the config file for the complete list of parameters."
+                    )
 
 
     def init_wandb(self, args):
@@ -799,10 +806,19 @@ def setup_testing(muzero, args):
             json.dump(results, f)
 
     else:
-        muzero.test(render=True, opponent="self", muzero_player=None)
+        results = muzero.test(render=True, opponent="self", muzero_player=None)
+        print(results)
 
 
+def get_wandb_config(entity, project, run_id):
+    config = wandb.Api().run(f"{entity}/{project}/{run_id}").config
+    # remove "project" attribute
+    del config["project"]
+    del config["results_path"]
+    if "observation_shape" in config:
+        config["observation_shape"] = tuple(config["observation_shape"])
 
+    return config
 
 
 def main(args):
@@ -810,12 +826,10 @@ def main(args):
         cmd_line_init()
         return
 
+    test_mode = args.test_mode
+
     print(f"Selected game: {args.game_name}")
-    muzero = MuZero(args.game_name, args.config)
-
-    if args.test_mode is not None:
-        return setup_testing(muzero, args)
-
+    muzero = MuZero(args.game_name, args.config, restart_wandb_id=args.wandb_run_id, test=test_mode is not None)
     logger = muzero.config.logger
 
     if logger:
@@ -836,7 +850,10 @@ def main(args):
     if checkpoint_path is not None:
         muzero.load_model(checkpoint_path, replay_buffer_path)
 
-    muzero.train()
+    if args.test_mode is not None:
+        return setup_testing(muzero, args)
+    else:
+        muzero.train()
 
 
 def setup(test=False):
