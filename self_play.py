@@ -21,7 +21,7 @@ class SelfPlay:
         self.config = config
         if (hasattr(self.config, "game_name") and self.config.game_name == "frozen_lake"
                 or self.config.game_name == "custom_grid"
-                or self.config.game_name == "lunarlander"):
+                or "lunarlander" in self.config.game_name):
             self.game = Game(seed, config=config)
         else:
             self.game = Game()
