@@ -37,6 +37,12 @@ def support_to_scalar(logits, support_size):
     Transform a categorical representation to a scalar
     See paper appendix Network Architecture
     """
+    if support_size == 1:
+        # switch 0 and 1st dimension, it has shape (10,1)
+        # if logits.shape[0] > 1 or logits.shape[1] > 1:
+        #     print(logits.shape)
+        return logits
+
     # Decode to a scalar
     probabilities = torch.softmax(logits, dim=1)
     support = (
@@ -53,6 +59,8 @@ def support_to_scalar(logits, support_size):
         ** 2
         - 1
     )
+    # if x.shape[0] > 1 or x.shape[1] > 1:
+    #     print(x.shape)
     return x
 
 
@@ -61,6 +69,11 @@ def scalar_to_support(x, support_size):
     Transform a scalar to a categorical representation with (2 * support_size + 1) categories
     See paper appendix Network Architecture
     """
+
+    if support_size == 1:
+        # add dimension to the end, it has shape (10,10)
+        return x.unsqueeze(-1)
+
     # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
 
@@ -76,6 +89,7 @@ def scalar_to_support(x, support_size):
     prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
     indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
+
     return logits
 
 

@@ -24,7 +24,7 @@ class MuZeroResidualNetwork(AbstractNetwork):
     ):
         super().__init__()
         self.action_space_size = action_space_size
-        self.full_support_size = 2 * support_size + 1
+        self.full_support_size = 2 * support_size + 1 if support_size > 1 else 1
         self.seq_mode = seq_mode
 
         def cond_wrap(net):

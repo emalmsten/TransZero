@@ -48,7 +48,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
         self.support_size = support_size
-        self.full_support_size = 2 * support_size + 1
+        self.full_support_size = 2 * support_size + 1 if support_size > 1 else 1
         self.seq_mode = seq_mode
         self.use_proj = use_proj
         self.representation_network_type = representation_network_type
