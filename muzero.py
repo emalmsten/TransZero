@@ -875,7 +875,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "custom_grid" #"lunarlander"# #"gridworld" # #
+        args.game_name = "lunarlander" #"custom_grid" #"lunarlander"# #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
@@ -883,16 +883,10 @@ def setup(test=False):
             args.config["logger"] = None
         # todo cleanup
 
-        # args.replay_buffer_path = f"models/replays/replay_buffer_wandb.pkl"
-        # args.model_path = f"models/trans/test_model_wandb.checkpoint"
-
-        # args.model_path = f"model_step-2500_name-20250304_121011_local_grid_test:v0"
-        # args.replay_buffer_path = f"buffer-20250304_121011_local_grid_test:v9"
-        #
-        args.wandb_run_id = "kddo7ygt"
+        args.wandb_run_id = "v2zipqay"
 
         if test:
-            args.test_mode = "n_maps" #
+            args.test_mode = "n_maps!!" #
             args.config={"testing": True}
 
         logger = "wandb"
@@ -924,7 +918,7 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=False)
+    args = setup(test=True)
     main(args)
     wandb.finish()
     ray.shutdown()
