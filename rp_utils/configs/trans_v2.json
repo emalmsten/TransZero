@@ -1,0 +1,13 @@
+{
+  "network": "transformer",
+  "lr_init": 0.004,
+  "lr_decay_rate": 1,
+  "td_steps": 5,
+  "num_unroll_steps": 5,
+  "training_steps": 1000000,
+  "transformer_hidden_size": 128,
+  "append": "_v2",
+  "num_simulations": 50,
+  "lr_decay_rate": 1
+}
+
