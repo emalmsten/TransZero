@@ -1,6 +1,6 @@
 {
   "network": "transformer",
-  "lr_init": 0.004,
+  "lr_init": 0.003,
   "lr_decay_rate": 1,
   "td_steps": 5,
   "num_unroll_steps": 5,
