@@ -234,10 +234,10 @@ class Trainer:
 
         if self.config.network == "transformer":
             (values, rewards, policy_logits) = predictions
-        else: #if True:
+        else:
             values, rewards, policy_logits = zip(*predictions)  # Unpack predictions
-            values = torch.stack(values, dim=1).squeeze(-1)  # Shape: (time_steps, batch_size)
-            rewards = torch.stack(rewards, dim=1).squeeze(-1)  # Shape: (time_steps, batch_size)
+            values = torch.stack(values, dim=1) #.squeeze(-1)  # Shape: (time_steps, batch_size)
+            rewards = torch.stack(rewards, dim=1)#.squeeze(-1)  # Shape: (time_steps, batch_size)
             policy_logits = torch.stack(policy_logits, dim=1)  # Shape: (time_steps, batch_size, policy_size)
 
         # Compute losses
@@ -484,7 +484,6 @@ class Trainer:
         target_reward,
         target_policy,
     ):
-        # Cross-entropy seems to have a better convergence than MSE
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=-1)(value)).sum(-1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=-1)(reward)).sum(-1)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1)
