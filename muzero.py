@@ -815,6 +815,7 @@ def get_wandb_config(entity, project, run_id):
     # remove "project" attribute
     del config["project"]
     del config["results_path"]
+    del config["max_time_minutes"]
     if "observation_shape" in config:
         config["observation_shape"] = tuple(config["observation_shape"])
 
