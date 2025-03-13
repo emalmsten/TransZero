@@ -47,6 +47,13 @@ maps = {
         "FFFFF",
         "FFFFF"
     ],
+    "5x5_9h_3d": [
+        "SHHHG",
+        "FHHHF",
+        "FHHHF",
+        "FFFFF",
+        "HFFFH"
+    ],
     "6x6_3h_3d": [
         "SFHFGF",
         "FFHFFF",
@@ -80,6 +87,7 @@ max_moves = {
     "4x4_3h_3d": 18,
 
     "5x5_3h_3d": 25,
+    "5x5_9h_3d": 25,
     "6x6_3h_3d": 25,
 
     "5x5_4h_1d": 25,
