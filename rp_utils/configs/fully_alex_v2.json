@@ -7,7 +7,7 @@
   "replay_buffer_size": 2000,
   "td_steps": 30,
   "num_unroll_steps": 10,
-  "append": "_alex_v1.5",
-  "softmax_limits": [1],
-  "softmax_temps": [0.35]
+  "append": "_alex_v2",
+  "softmax_limits": [0.25, 0.5, 0.75, 1],
+  "softmax_temps": [0.4, 0.35, 0.15, 0.05]
 }
