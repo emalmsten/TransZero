@@ -131,7 +131,7 @@ class MuZeroConfig:
         ### Training
         self.checkpoint_interval = 10
         self.training_steps = 500000  # Total number of training steps (ie weights update according to a batch)
-        self.batch_size = 128  # 64  # Number of parts of games to train on at each training step # todo
+        self.batch_size = 128  # 64  # Number of parts of games to train on at each training step
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None  # None for not using this
         self.loss_weight_decay = None  # None for not using
@@ -149,7 +149,7 @@ class MuZeroConfig:
 
         ### Replay Buffer
         self.replay_buffer_size = 100000  # Number of self-play games to keep in the replay buffer
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element # todo consider longer
+        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1

@@ -384,7 +384,7 @@ class RepresentationNetwork(torch.nn.Module):
             self.conv_type = "1x1"
         else:
             self.conv_type = "3x3"
-        #self.conv_type = "1x1" # todo overwrite
+        #self.conv_type = "1x1"
 
         self.conv = conv3x3(
             observation_shape[0] * (stacked_observations + 1) + stacked_observations,

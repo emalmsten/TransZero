@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from optimal_path_finder import calculate_steps_and_turns_to_goal
-# todo
+# todo test this
 try:
     from .abstract_game import AbstractGame
 except ImportError:
@@ -131,7 +131,7 @@ class MuZeroConfig:
 
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
         self.start_pos = None #(3,1) #None #(0,1)
-        self.start_dir = None # todo 0: right, 1: down, 2: left, 3: up
+        self.start_dir = None # 0: right, 1: down, 2: left, 3: up
         self.random_map = True
         self.pov = 'agent' # agent, god, 1_hot_god, 2_hot_god
 

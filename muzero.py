@@ -334,7 +334,6 @@ class MuZero:
         results = []
         for i in range(num_tests):
             print(f"Testing {i+1}/{num_tests}")
-            # todo remove games played as last arg?
             results.append(
                 ray.get(
                     self_play_worker.play_game.remote(
@@ -885,7 +884,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
+        args.game_name = "custom_grid" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
@@ -893,7 +892,7 @@ def setup(test=False):
             args.config["logger"] = None
         # todo cleanup
 
-        args.wandb_run_id = "6k4ghx4k"
+        #args.wandb_run_id = "6k4ghx4k"
         #args.wandb_model_number = 320000
         #args.model_path = "models/trans/trans_lunar_320k.checkpoint"
 
@@ -930,14 +929,9 @@ def setup(test=False):
 
 
 if __name__ == "__main__":
-    args = setup(test=True)
+    args = setup(test=False)
     main(args)
     wandb.finish()
     ray.shutdown()
 
 
-# todo wandb
-# todo conda install conda-forge::
-
-# todo conda install numpy==1.26.4 pytorch torchvision torchaudio pytorch-cuda=12.1 nevergrad=1.0.1 bayesian-optimization=1.2.0 -c pytorch -c nvidia -c conda-forge -y
-# conda install -c conda-forge "ray-default"
