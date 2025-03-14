@@ -85,9 +85,9 @@ class Viewer:
                 radius = int(geom.params["radius"] * scale)
                 color = tuple(int(c * 255) if isinstance(c, float) else int(c) for c in geom.params["color"])
                 if geom.params["filled"]:
-                    pygame.draw.circle(self.screen, "yellow", center, radius)
+                    pygame.draw.circle(self.screen, "red", center, radius)
                 else:
-                    pygame.draw.circle(self.screen, "yellow", center, radius, geom.params["linewidth"])
+                    pygame.draw.circle(self.screen, "red", center, radius, geom.params["linewidth"])
             elif geom.geom_type == "polyline":
                 pts = [(x + geom.transform[0], y + geom.transform[1]) for (x, y) in geom.params["points"]]
                 pts = [self.world_to_screen(pt) for pt in pts]

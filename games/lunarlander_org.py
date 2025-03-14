@@ -25,6 +25,8 @@ class MuZeroConfig:
         # Local
         self.testing = False
         self.debug_mode = False or self.testing
+        self.render_mode = None #"rgb_array"  # None, human or rgb_array
+        self.gif_name = "test"
 
         self.logger = "wandb" if not self.debug_mode else None
         self.wandb_project_name = "TransZeroV3"
@@ -190,11 +192,19 @@ class Game(AbstractGame):
 
     def __init__(self, seed=None, config=None):
         # Initialize the LunarLander-v3 environment from gymnasium.
-        render_mode = "human" if config.testing else None
-        self.env = gym.make("LunarLander-v3", render_mode=render_mode)
+        self.save_gif = config.render_mode == "rgb_array"
+
+        self.env = gym.make("LunarLander-v3", render_mode=config.render_mode)
+
         if seed is not None:
             # In gymnasium, reset returns a tuple (observation, info)
             self.env.reset(seed=seed)
+
+        if self.save_gif:
+            self.gif_path = f"gifs/lunarlander_org/{config.gif_name}.gif"
+            self.rgb_arr = []
+
+        self.done = False
 
     def step(self, action):
         """
@@ -211,6 +221,7 @@ class Game(AbstractGame):
         # For gymnasium, step returns (observation, reward, terminated, truncated, info)
         observation, reward, terminated, truncated, info = self.env.step(action)
         done = terminated or truncated
+        self.done = done
         # Wrap observation in triple-nested list to match shape (1, 1, observation_dim)
         return numpy.array([[observation]]), reward, done
 
@@ -243,7 +254,17 @@ class Game(AbstractGame):
         """
         Render the current game state.
         """
-        self.env.render()
+        frame = self.env.render()
+
+        if self.save_gif:
+            self.rgb_arr.append(frame)
+
+            # if game is over
+            if self.done or len(self.rgb_arr) == 700:
+                import imageio
+                print(f"Saving gif to {self.gif_path}")
+                imageio.mimsave(f"{self.gif_path}", self.rgb_arr, fps=30)
+                print("Gif saved.")
         #input("Press enter to take a step ")
 
     def action_to_string(self, action_number):

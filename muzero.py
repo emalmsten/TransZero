@@ -420,7 +420,7 @@ class MuZero:
         dm.close_all()
 
 
-    def get_wandb_artifacts(self, run_id):
+    def get_wandb_artifacts(self, run_id, wandb_model_number = None, download_replay_buffer = False):
 
         # Initialize W&B API
         api = wandb.Api()
@@ -435,12 +435,19 @@ class MuZero:
 
         latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-3:]
 
+        if wandb_model_number is not None:
+            model_artifact = next(a for a in artifacts if str(wandb_model_number) in a.name)
+        else:
+            model_artifact = next(a for a in latest_artifacts if a.type == 'model')
+
         # Filter for the model artifact and the data artifact
-        model_artifact = next(a for a in latest_artifacts if a.type == 'model')
         data_artifact = next(a for a in latest_artifacts if a.type == 'data')
 
         model_path = model_artifact.download() + "/model.checkpoint"
-        buffer_path = data_artifact.download() + "/replay_buffer.pkl"
+        buffer_path = None
+        if download_replay_buffer:
+            buffer_path = data_artifact.download() + "/replay_buffer.pkl"
+
 
         return model_path, buffer_path
 
@@ -808,6 +815,7 @@ def setup_testing(muzero, args):
     else:
         results = muzero.test(render=True, opponent="self", muzero_player=None)
         print(results)
+        print(f"total reward: {sum(results[0])}")
 
 
 def get_wandb_config(entity, project, run_id):
@@ -815,6 +823,7 @@ def get_wandb_config(entity, project, run_id):
     # remove "project" attribute
     del config["project"]
     del config["results_path"]
+    del config["testing"]
     if "max_time_minutes" in config:
         del config["max_time_minutes"]
     if "observation_shape" in config:
@@ -844,7 +853,7 @@ def main(args):
             muzero.init_wandb(args)
 
     if args.wandb_run_id is not None: # if wandb id in args
-        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id)
+        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id, args.wandb_model_number, download_replay_buffer=test_mode is not None)
     else:
         checkpoint_path = args.model_path
         replay_buffer_path = args.replay_buffer_path
@@ -868,6 +877,7 @@ def setup(test=False):
     parser.add_argument('-mp', '--model_path', type=str, default=None, help='Path to model.checkpoint')
     parser.add_argument('-rbp', '--replay_buffer_path', type=str, default=None, help='Path to replay_buffer.pkl')
     parser.add_argument('-wid', '--wandb_run_id', type=str, default=None, help='Wandb id')
+    parser.add_argument('-wmn', '--wandb_model_number', type=bool, default=None, help='Model number from wandb id')
     args = parser.parse_args()
 
     if args.run_from_cluster == "db" or args.run_from_cluster == "rp":
@@ -875,7 +885,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "lunarlander" #"custom_grid" #"lunarlander"# #"gridworld" # #
+        args.game_name = "lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
@@ -883,7 +893,9 @@ def setup(test=False):
             args.config["logger"] = None
         # todo cleanup
 
-        args.wandb_run_id = "v2zipqay"
+        args.wandb_run_id = "6k4ghx4k"
+        #args.wandb_model_number = 320000
+        #args.model_path = "models/trans/trans_lunar_320k.checkpoint"
 
         if test:
             args.test_mode = "n_maps!!" #

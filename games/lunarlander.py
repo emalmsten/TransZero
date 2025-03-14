@@ -21,6 +21,7 @@ class MuZeroConfig:
         # Local
         self.testing = False
         self.debug_mode = False or self.testing
+        self.render_mode = None  # human or rgb_array
 
         self.logger = "wandb" if not self.debug_mode else None
         self.wandb_project_name = "TransZeroV3"
@@ -191,8 +192,19 @@ class Game(AbstractGame):
     def __init__(self, seed=None, config=None):
         self.env = DeterministicLunarLander(config)
         # self.env = gym.make("LunarLander-v2")
+
         if seed is not None:
             self.env.seed(seed)
+
+        self.done = False
+
+        self.save_gif = config.render_mode == "rgb_array"
+        if self.save_gif:
+            self.gifs_path = "gifs"
+            self.gif_name = "lunarlander_trans4"
+            self.gif_path = f"{self.gifs_path}/{self.gif_name}"
+            self.rgb_arr = []
+
 
     def step(self, action):
         """
@@ -242,7 +254,17 @@ class Game(AbstractGame):
         """
         Display the game observation.
         """
-        self.env.render()
+        frame = self.env.render()
+        # write arr to file if save gif
+
+        if self.save_gif:
+            self.rgb_arr.append(frame)
+
+            # if game is over
+            if self.done or len(self.rgb_arr) == 700:
+                import imageio
+                imageio.mimsave(f"{self.gif_path}.gif", self.rgb_arr, fps=30)
+
         # sleep
         # import time
         # time.sleep(0.2)
@@ -659,7 +681,7 @@ class DeterministicLunarLander(gym.Env, EzPickle):
             reward = +100
         return np.array(state, dtype=np.float32), reward, done, {}
 
-    def render(self, mode="human"):
+    def render(self, mode="rgb_array"):
         from Rendering import Viewer, Transform
 
         # Create the viewer if it doesn't exist.
