@@ -1,4 +1,5 @@
 {
+  "training_steps": 600000,
   "network": "fully_connected",
   "batch_size": 128,
   "lr_init": 0.005,
