@@ -16,6 +16,6 @@
   "num_simulations": 50,
   "fc_representation_layers": [16],
   "mlp_head_layers": [32, 16],
-  "training_steps": 1000000
+  "training_steps": 600000
 
 }
