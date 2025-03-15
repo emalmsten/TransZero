@@ -852,7 +852,7 @@ def main(args):
             muzero.init_wandb(args)
 
     if args.wandb_run_id is not None: # if wandb id in args
-        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id, args.wandb_model_number, download_replay_buffer=test_mode is not None)
+        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id, args.wandb_model_number, download_replay_buffer=test_mode is None)
     else:
         checkpoint_path = args.model_path
         replay_buffer_path = args.replay_buffer_path
