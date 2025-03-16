@@ -10,6 +10,7 @@ import torch
 import models
 import networks.muzero_network as mz_net
 
+jal = True
 
 @ray.remote
 class SelfPlay:
@@ -41,6 +42,8 @@ class SelfPlay:
         self.model.to(torch.device("cuda" if self.config.selfplay_on_gpu else "cpu"))
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
         self.model.eval()
+
+        self.mvc = MinimalVarianceConstraintPolicy(beta=5.0, discount_factor=0.95)
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
         game_number = 0
@@ -252,13 +255,14 @@ class SelfPlay:
                 'Wrong argument: "opponent" argument should be "self", "human", "expert" or "random"'
             )
 
+
     @staticmethod
-    def select_action(node, temperature):
+    def std_action_selection(node, temperature):
         """
-        Select action according to the visit count distribution and the temperature.
-        The temperature is changed dynamically with the visit_softmax_temperature function
-        in the config.
-        """
+                Select action according to the visit count distribution and the temperature.
+                The temperature is changed dynamically with the visit_softmax_temperature function
+                in the config.
+                """
         visit_counts = numpy.array(
             [child.visit_count for child in node.children.values()], dtype="int32"
         )
@@ -276,6 +280,22 @@ class SelfPlay:
             action = numpy.random.choice(actions, p=visit_count_distribution)
 
         return action
+
+
+    def mvc_action_selection(self, tree):
+        action_space_size = len(self.config.action_space)
+        policy_dist = self.mvc.softmaxed_distribution(tree, action_space_size)
+        action = policy_dist.sample().item()
+
+
+    def select_action(self, node, temperature):
+        if jal: # todo
+            return self.mvc_action_selection(node)
+        else:
+            return self.std_action_selection(node, temperature)
+
+
+
 
     @staticmethod
     def remove_module_prefix(state_dict):
@@ -372,7 +392,10 @@ class MCTS:
             root = override_root_with
             root_predicted_value = None
         else:
-            root = Node(0, use_reward=self.config.predict_reward)
+            if jal:
+                root = JalNode(0, use_reward=self.config.predict_reward)
+            else:
+                root = Node(0, use_reward=self.config.predict_reward)
             # Observation in right shape
             observation = (
                 torch.tensor(observation)
@@ -583,6 +606,63 @@ a_dict_ll = {
     2: 'M',
     3: 'R'
 }
+
+
+class JalNode:
+
+    def __init__(self, prior, name="root", use_reward=True):
+        self.visit_count = 0
+        self.to_play = -1
+        self.prior = prior
+        self.value_sum = 0
+        self.children = {}
+        self.hidden_state = None
+        self.reward = 0
+        self.use_reward = use_reward
+
+        # for debugging
+        self.name = name
+
+    def expanded(self):
+        return len(self.children) > 0
+
+    def value(self):
+        if self.visit_count == 0:
+            return 0
+        return self.value_sum / self.visit_count
+
+    def expand(self, actions, to_play, reward, policy_logits, hidden_state):
+        """
+        We expand a node using the value, reward and policy prediction obtained from the
+        neural network.
+        """
+        self.to_play = to_play
+        self.reward = reward if self.use_reward else 0
+        self.hidden_state = hidden_state
+
+        policy_values = torch.softmax(
+            torch.tensor([policy_logits[0][a] for a in actions]), dim=0
+        ).tolist()
+        policy = {a: policy_values[i] for i, a in enumerate(actions)}
+        a_dict = a_dict_cg if len(actions) == 3 else a_dict_ll
+        for action, p in policy.items():
+            a_name = a_dict[action]
+            child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
+            self.children[action] = JalNode(p, name=child_name, use_reward=self.use_reward)
+
+    def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
+        """
+        At the start of each search, we add dirichlet noise to the prior of the root to
+        encourage the search to explore new actions.
+        """
+        actions = list(self.children.keys())
+        noise = numpy.random.dirichlet([dirichlet_alpha] * len(actions))
+        frac = exploration_fraction
+        for a, n in zip(actions, noise):
+            self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
+
+    def __repr__(self):
+        return self.name
 
 
 class Node:
