@@ -51,6 +51,7 @@ class MuZero:
 
     def __init__(self, game_name, config=None, restart_wandb_id = None, test=None, split_resources_in=1):
         # Load the game and the config from the module with the game name
+        self.wandb_run = None
         try:
             game_module = importlib.import_module("games." + game_name)
             self.Game = game_module.Game

@@ -112,6 +112,9 @@ class MuZeroConfig:
     def __init__(self, root=None):
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
+        self.mvc_beta = 1.0
+        self.mvc_discount = 1.0
+
 
         self.max_time_minutes = None
 
@@ -132,7 +135,7 @@ class MuZeroConfig:
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
         self.start_pos = None #(3,1) #None #(0,1)
         self.start_dir = None # 0: right, 1: down, 2: left, 3: up
-        self.random_map = True
+        self.random_map = False
         self.pov = 'agent' # agent, god, 1_hot_god, 2_hot_god
 
         # Naming

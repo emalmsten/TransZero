@@ -9,6 +9,7 @@ import torch
 
 import models
 import networks.muzero_network as mz_net
+from value_utils.policies import MinimalVarianceConstraintPolicy
 
 jal = True
 
@@ -43,7 +44,8 @@ class SelfPlay:
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
         self.model.eval()
 
-        self.mvc = MinimalVarianceConstraintPolicy(beta=5.0, discount_factor=0.95)
+        if jal:
+            self.mvc = MinimalVarianceConstraintPolicy(beta=self.config.mvc_beta, discount_factor=self.config.mvc_discount)
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
         game_number = 0
@@ -173,6 +175,9 @@ class SelfPlay:
                         self.game.to_play(),
                         temperature != 0
                     )
+
+                    if jal:
+                        root.reset_var_val()
                     action = self.select_action(
                         root,
                         temperature
@@ -194,6 +199,7 @@ class SelfPlay:
                     )
 
                 observation, reward, done = self.game.step(action)
+
 
                 if render:
                     print(f"Played action: {self.game.action_to_string(action)}")
@@ -286,6 +292,7 @@ class SelfPlay:
         action_space_size = len(self.config.action_space)
         policy_dist = self.mvc.softmaxed_distribution(tree, action_space_size)
         action = policy_dist.sample().item()
+        return action
 
 
     def select_action(self, node, temperature):
@@ -393,7 +400,7 @@ class MCTS:
             root_predicted_value = None
         else:
             if jal:
-                root = JalNode(0, use_reward=self.config.predict_reward)
+                root = JalNode(0, use_reward=self.config.predict_reward, parent=None)
             else:
                 root = Node(0, use_reward=self.config.predict_reward)
             # Observation in right shape
@@ -435,6 +442,8 @@ class MCTS:
             assert set(legal_actions).issubset(
                 set(self.config.action_space)
             ), "Legal actions should be a subset of the action space."
+
+
             root.expand(
                 legal_actions,
                 to_play,
@@ -442,6 +451,8 @@ class MCTS:
                 policy_logits,
                 hidden_state,
             )
+            if jal:
+                root.value_evaluation = root_predicted_value
 
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -498,6 +509,7 @@ class MCTS:
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
 
+
             if self.config.show_preds:
                 if is_double_net:
                     update_pred_dict_double(pred_dict, value, reward, policy_logits, trans_value, trans_reward, trans_policy_logits,
@@ -512,6 +524,8 @@ class MCTS:
                 policy_logits,
                 hidden_state,
             )
+            if jal:
+                node.value_evaluation = value
 
             self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
@@ -610,7 +624,7 @@ a_dict_ll = {
 
 class JalNode:
 
-    def __init__(self, prior, name="root", use_reward=True):
+    def __init__(self, prior, parent = None, name="root", use_reward=True):
         self.visit_count = 0
         self.to_play = -1
         self.prior = prior
@@ -619,6 +633,14 @@ class JalNode:
         self.hidden_state = None
         self.reward = 0
         self.use_reward = use_reward
+
+        # new
+        self.parent = None
+        self.variance = None
+        self.policy_value = None
+
+        # the value from the neural network
+        self.value_evaluation = 0.0
 
         # for debugging
         self.name = name
@@ -648,7 +670,7 @@ class JalNode:
         for action, p in policy.items():
             a_name = a_dict[action]
             child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = JalNode(p, name=child_name, use_reward=self.use_reward)
+            self.children[action] = JalNode(p, name=child_name, use_reward=self.use_reward, parent=self)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -663,6 +685,12 @@ class JalNode:
 
     def __repr__(self):
         return self.name
+
+    def reset_var_val(self):
+        self.variance = None
+        self.policy_value = None
+        for child in self.children.values():
+            child.reset_var_val()
 
 
 class Node:

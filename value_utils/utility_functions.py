@@ -1,7 +1,5 @@
 import torch as th
 
-from value_utils.node import Node
-from value_utils.policies import PolicyDistribution
 from value_utils.value_transforms import IdentityValueTransform, ValueTransform
 
 
@@ -9,14 +7,17 @@ from value_utils.value_transforms import IdentityValueTransform, ValueTransform
 
 # TODO: can improve this implementation
 def policy_value(
-    node: Node,
-    policy: PolicyDistribution | th.distributions.Categorical,
+    node,
+    policy,  # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
 ):
+    action_space_size = 3  # todo emil hardcoded
+
     # return the q value the node with the given policy
     # with the defualt tree evaluator, this should return the same as the default value
 
-    if node.terminal:
+    # added false since it cant happen in muzero // Emil
+    if False and node.terminal:
         val = th.tensor(node.reward, dtype=th.float32)
         node.policy_value = val
         return val
@@ -27,10 +28,10 @@ def policy_value(
     if isinstance(policy, th.distributions.Categorical):
         pi = policy
     else:
-        pi = policy.softmaxed_distribution(node, include_self=True)
+        pi = policy.softmaxed_distribution(node, include_self=True, action_space_size=action_space_size)
 
     probabilities: th.Tensor = pi.probs
-    assert probabilities.shape[-1] == int(node.action_space.n) + 1
+    assert probabilities.shape[-1] == int(action_space_size) + 1
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
     child_values = th.zeros_like(child_propabilities, dtype=th.float32)
@@ -45,22 +46,22 @@ def policy_value(
     return val
 
 
-def reward_variance(node: Node):
+def reward_variance(node):
     return 0.0
 
 
-def value_evaluation_variance(node: Node):
+def value_evaluation_variance(node):
     # if we want to duplicate the default tree evaluator, we can return 1 / visits
     # In reality, the variance should be lower for terminal nodes
-    if node.terminal:
+    if False: # todo emil, node.terminal does not exist for muzero:
         return 1.0 / float(node.visits)
     else:
         return 1.0
 
 
 def independent_policy_value_variance(
-    node: Node,
-    policy: PolicyDistribution | th.distributions.Categorical,
+    node,
+    policy,
     discount_factor: float,
 ):
     if node.variance is not None:
@@ -89,8 +90,8 @@ def independent_policy_value_variance(
 
 
 def get_children_policy_values(
-    parent: Node,
-    policy: PolicyDistribution,
+    parent,
+    policy, # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
     transform: ValueTransform = IdentityValueTransform,
 ) -> th.Tensor:
@@ -103,7 +104,7 @@ def get_children_policy_values(
 
 
 def get_children_inverse_variances(
-    parent: Node, policy: PolicyDistribution, discount_factor: float
+    parent, policy, discount_factor: float
 ) -> th.Tensor:
     inverse_variances = th.zeros(int(parent.action_space.n), dtype=th.float32)
     for action, child in parent.children.items():
@@ -115,8 +116,8 @@ def get_children_inverse_variances(
 
 
 def get_children_policy_values_and_inverse_variance(
-    parent: Node,
-    policy: PolicyDistribution,
+    parent,
+    policy, # PolicyDistribution
     discount_factor: float,
     transform: ValueTransform = IdentityValueTransform,
     include_self: bool = False,
@@ -124,10 +125,11 @@ def get_children_policy_values_and_inverse_variance(
     """
     This is more efficent than calling get_children_policy_values and get_children_variances separately
     """
-    vals = th.ones(int(parent.action_space.n) + include_self, dtype=th.float32) * -th.inf
+    action_space_size = 3 # todo hardcoded
+    vals = th.ones(action_space_size + include_self, dtype=th.float32) * -th.inf
     inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
     for action, child in parent.children.items():
-        pi = policy.softmaxed_distribution(child, include_self=True)
+        pi = policy.softmaxed_distribution(child, action_space_size=action_space_size, include_self=True)
         vals[action] = policy_value(child, pi, discount_factor)
         inv_vars[action] = 1 / independent_policy_value_variance(
             child, pi, discount_factor
@@ -139,33 +141,35 @@ def get_children_policy_values_and_inverse_variance(
     normalized_vals = transform.normalize(vals)
     return normalized_vals, inv_vars
 
-def expanded_mask(node: Node) -> th.Tensor:
+def expanded_mask(node) -> th.Tensor:
     mask = th.zeros(int(node.action_space.n), dtype=th.float32)
     mask[node.children] = 1.0
     return mask
 
-def get_children_visits(node: Node) -> th.Tensor:
-    visits = th.zeros(int(node.action_space.n), dtype=th.float32)
+def get_children_visits(node) -> th.Tensor:
+    action_space_size = 3 # todo hardcoded
+
+    visits = th.zeros(action_space_size, dtype=th.float32)
     for action, child in node.children.items():
-        visits[action] = child.visits
+        visits[action] = child.visit_count
 
     return visits
 
-def get_transformed_default_values(node: Node, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
+def get_transformed_default_values(node, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
     vals = th.ones(int(node.action_space.n), dtype=th.float32) * -th.inf
     for action, child in node.children.items():
         vals[action] = child.default_value()
 
     return transform.normalize(vals)
 
-def puct_multiplier(c: float, node: Node):
+def puct_multiplier(c: float, node):
     """
     lambda_N from the mcts as policy optimisation paper.
     """
     return c * (node.visits**0.5) / (node.visits + int(node.action_space.n))
 
 
-def Q_theta_tensor(node: Node, discount: float, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
+def Q_theta_tensor(node, discount: float, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
     """
     Returns a vector with the Q_theta values. Zero for unvisited nodes, for visited nodes it is return + the discoutned value evaluation of the node
     """
