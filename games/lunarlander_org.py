@@ -22,6 +22,8 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
 
+        self.mvc_beta = 1
+
         # Local
         self.testing = False
         self.debug_mode = False or self.testing

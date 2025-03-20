@@ -70,8 +70,7 @@ class PolicyDistribution(Policy):
         """
         Returns a random action from the distribution
         """
-        # todo hardcoded
-        return int(self.softmaxed_distribution(node, action_space_size=3).sample().item())
+        return int(self.softmaxed_distribution(node).sample().item())
 
     @abstractmethod
     def _probs(self, node) -> th.Tensor:
@@ -97,7 +96,7 @@ class PolicyDistribution(Policy):
         return th.cat([probs, th.tensor([self_prob])])
 
     def softmaxed_distribution(
-        self, node, action_space_size, include_self=False, **kwargs
+        self, node, include_self=False, **kwargs
     ) -> th.distributions.Categorical:
         """
         Relative probabilities with self handling
@@ -105,7 +104,7 @@ class PolicyDistribution(Policy):
         # policy for leaf nodes
         # note to emil, leaf node handling, not really relevant for now
         if include_self and len(node.children) == 0:
-            probs = th.zeros(action_space_size + include_self, dtype=th.float32)
+            probs = th.zeros(node.action_space_size + include_self, dtype=th.float32)
             probs[-1] = 1.0
             return th.distributions.Categorical(probs=probs)
 
@@ -128,22 +127,20 @@ class MinimalVarianceConstraintPolicy(PolicyDistribution):
     Selects the action with the highest inverse variance of the q value.
     Should return the same as the default tree evaluator
     """
-    def __init__(self, beta: float, discount_factor = 1.0, *args, **kwargs):
+    def __init__(self, config, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.beta = beta
-        self.discount_factor = discount_factor
+        self.beta = config.mvc_beta
+        self.discount_factor = config.discount
 
-    def get_beta(self, node):
+    def get_beta(self):
         return self.beta
 
     def _probs(self, node) -> th.Tensor:
 
-        beta = self.get_beta(node)
-
         normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(node, self, self.discount_factor, self.value_transform)
         # for action in node.children:
         #     probs[action] = th.exp(beta * (normalized_vals[action] - normalized_vals.max())) * inv_vars[action]
-        logits = beta * th.nan_to_num(normalized_vals)
+        logits = self.beta * th.nan_to_num(normalized_vals)
         # logits - logits.max() is to avoid numerical instability
         probs = inv_vars * th.exp(logits - logits.max())
         return probs

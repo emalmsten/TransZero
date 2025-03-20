@@ -113,7 +113,6 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
         self.mvc_beta = 1.0
-        self.mvc_discount = 1.0
 
 
         self.max_time_minutes = None

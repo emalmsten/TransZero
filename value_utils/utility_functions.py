@@ -11,7 +11,6 @@ def policy_value(
     policy,  # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
 ):
-    action_space_size = 3  # todo emil hardcoded
 
     # return the q value the node with the given policy
     # with the defualt tree evaluator, this should return the same as the default value
@@ -31,7 +30,7 @@ def policy_value(
         pi = policy.softmaxed_distribution(node, include_self=True, action_space_size=action_space_size)
 
     probabilities: th.Tensor = pi.probs
-    assert probabilities.shape[-1] == int(action_space_size) + 1
+    assert probabilities.shape[-1] == node.action_space_size + 1
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
     child_values = th.zeros_like(child_propabilities, dtype=th.float32)
@@ -125,11 +124,10 @@ def get_children_policy_values_and_inverse_variance(
     """
     This is more efficent than calling get_children_policy_values and get_children_variances separately
     """
-    action_space_size = 3 # todo hardcoded
-    vals = th.ones(action_space_size + include_self, dtype=th.float32) * -th.inf
+    vals = th.ones(parent.action_space_size + include_self, dtype=th.float32) * -th.inf
     inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
     for action, child in parent.children.items():
-        pi = policy.softmaxed_distribution(child, action_space_size=action_space_size, include_self=True)
+        pi = policy.softmaxed_distribution(child, action_space_size=parent.action_space_size, include_self=True)
         vals[action] = policy_value(child, pi, discount_factor)
         inv_vars[action] = 1 / independent_policy_value_variance(
             child, pi, discount_factor
@@ -147,9 +145,8 @@ def expanded_mask(node) -> th.Tensor:
     return mask
 
 def get_children_visits(node) -> th.Tensor:
-    action_space_size = 3 # todo hardcoded
 
-    visits = th.zeros(action_space_size, dtype=th.float32)
+    visits = th.zeros(node.action_space_size, dtype=th.float32)
     for action, child in node.children.items():
         visits[action] = child.visit_count
 

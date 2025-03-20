@@ -45,7 +45,7 @@ class SelfPlay:
         self.model.eval()
 
         if jal:
-            self.mvc = MinimalVarianceConstraintPolicy(beta=self.config.mvc_beta, discount_factor=self.config.mvc_discount)
+            self.mvc = MinimalVarianceConstraintPolicy(config=self.config)
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
         game_number = 0
@@ -136,6 +136,7 @@ class SelfPlay:
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
         """
+
         game_history = GameHistory()
         observation = self.game.reset()
         game_history.action_history.append(0)
@@ -289,8 +290,7 @@ class SelfPlay:
 
 
     def mvc_action_selection(self, tree):
-        action_space_size = len(self.config.action_space)
-        policy_dist = self.mvc.softmaxed_distribution(tree, action_space_size)
+        policy_dist = self.mvc.softmaxed_distribution(tree)
         action = policy_dist.sample().item()
         return action
 
@@ -300,8 +300,6 @@ class SelfPlay:
             return self.mvc_action_selection(node)
         else:
             return self.std_action_selection(node, temperature)
-
-
 
 
     @staticmethod
@@ -315,6 +313,7 @@ class SelfPlay:
                 new_key = k
             new_state_dict[new_key] = v
         return new_state_dict
+
 
 def update_pred_dict(pred_dict, value, reward, policy_logits, action_sequence, action_space):
     as_dict = {
@@ -400,7 +399,7 @@ class MCTS:
             root_predicted_value = None
         else:
             if jal:
-                root = JalNode(0, use_reward=self.config.predict_reward, parent=None)
+                root = JalNode(0, use_reward=self.config.predict_reward, parent=None, action_space_size=len(self.config.action_space))
             else:
                 root = Node(0, use_reward=self.config.predict_reward)
             # Observation in right shape
@@ -624,7 +623,7 @@ a_dict_ll = {
 
 class JalNode:
 
-    def __init__(self, prior, parent = None, name="root", use_reward=True):
+    def __init__(self, prior, action_space_size, parent = None, name="root", use_reward=True):
         self.visit_count = 0
         self.to_play = -1
         self.prior = prior
@@ -635,9 +634,10 @@ class JalNode:
         self.use_reward = use_reward
 
         # new
-        self.parent = None
+        self.parent = parent # todo emil investigate if diff compared to "None"
         self.variance = None
         self.policy_value = None
+        self.action_space_size = action_space_size
 
         # the value from the neural network
         self.value_evaluation = 0.0
@@ -670,7 +670,11 @@ class JalNode:
         for action, p in policy.items():
             a_name = a_dict[action]
             child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = JalNode(p, name=child_name, use_reward=self.use_reward, parent=self)
+            self.children[action] = JalNode(p,
+                                            action_space_size=self.action_space_size,
+                                            name=child_name,
+                                            use_reward=self.use_reward,
+                                            parent=self)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
