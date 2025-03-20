@@ -11,8 +11,6 @@ import models
 import networks.muzero_network as mz_net
 from value_utils.policies import MinimalVarianceConstraintPolicy
 
-jal = True
-
 @ray.remote
 class SelfPlay:
     """
@@ -44,7 +42,7 @@ class SelfPlay:
         print(f"Using {'cuda' if self.config.selfplay_on_gpu else 'cpu'} for self-play.")
         self.model.eval()
 
-        if jal:
+        if self.config.action_selection == "mvc":
             self.mvc = MinimalVarianceConstraintPolicy(config=self.config)
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
@@ -177,8 +175,9 @@ class SelfPlay:
                         temperature != 0
                     )
 
-                    if jal:
+                    if self.config.action_selection == "mvc":
                         root.reset_var_val()
+
                     action = self.select_action(
                         root,
                         temperature
@@ -296,7 +295,7 @@ class SelfPlay:
 
 
     def select_action(self, node, temperature):
-        if jal: # todo
+        if self.config.action_selection == "mvc":
             return self.mvc_action_selection(node)
         else:
             return self.std_action_selection(node, temperature)
@@ -398,8 +397,8 @@ class MCTS:
             root = override_root_with
             root_predicted_value = None
         else:
-            if jal:
-                root = JalNode(0, use_reward=self.config.predict_reward, parent=None, action_space_size=len(self.config.action_space))
+            if self.config.action_selection == "mvc":
+                root = MVCNode(0, use_reward=self.config.predict_reward, parent=None, action_space_size=len(self.config.action_space))
             else:
                 root = Node(0, use_reward=self.config.predict_reward)
             # Observation in right shape
@@ -446,12 +445,13 @@ class MCTS:
             root.expand(
                 legal_actions,
                 to_play,
+                root_predicted_value,
                 reward,
                 policy_logits,
                 hidden_state,
+
             )
-            if jal:
-                root.value_evaluation = root_predicted_value
+
 
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -519,12 +519,12 @@ class MCTS:
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
+                value,
                 reward,
                 policy_logits,
                 hidden_state,
             )
-            if jal:
-                node.value_evaluation = value
+
 
             self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
@@ -621,9 +621,9 @@ a_dict_ll = {
 }
 
 
-class JalNode:
+class Node:
 
-    def __init__(self, prior, action_space_size, parent = None, name="root", use_reward=True):
+    def __init__(self, prior, name="root", use_reward=True):
         self.visit_count = 0
         self.to_play = -1
         self.prior = prior
@@ -631,16 +631,8 @@ class JalNode:
         self.children = {}
         self.hidden_state = None
         self.reward = 0
+        self.value_evaluation = 0
         self.use_reward = use_reward
-
-        # new
-        self.parent = parent # todo emil investigate if diff compared to "None"
-        self.variance = None
-        self.policy_value = None
-        self.action_space_size = action_space_size
-
-        # the value from the neural network
-        self.value_evaluation = 0.0
 
         # for debugging
         self.name = name
@@ -648,18 +640,23 @@ class JalNode:
     def expanded(self):
         return len(self.children) > 0
 
+    def make_child(self, prior, child_name):
+        """Factory method to create a child node."""
+        return Node(prior, name=child_name, use_reward=self.use_reward)
+
     def value(self):
         if self.visit_count == 0:
             return 0
         return self.value_sum / self.visit_count
 
-    def expand(self, actions, to_play, reward, policy_logits, hidden_state):
+    def expand(self, actions, to_play, value, reward, policy_logits, hidden_state):
         """
         We expand a node using the value, reward and policy prediction obtained from the
         neural network.
         """
         self.to_play = to_play
         self.reward = reward if self.use_reward else 0
+        self.value_evaluation = value
         self.hidden_state = hidden_state
 
         policy_values = torch.softmax(
@@ -670,11 +667,7 @@ class JalNode:
         for action, p in policy.items():
             a_name = a_dict[action]
             child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = JalNode(p,
-                                            action_space_size=self.action_space_size,
-                                            name=child_name,
-                                            use_reward=self.use_reward,
-                                            parent=self)
+            self.children[action] = self.make_child(p, child_name)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -690,65 +683,33 @@ class JalNode:
     def __repr__(self):
         return self.name
 
+
+class MVCNode(Node):
+    def __init__(self, prior, action_space_size, parent=None, name="root", use_reward=True):
+        super().__init__(prior, name, use_reward)
+        self.parent = parent
+        self.variance = None
+        self.policy_value = None
+        self.action_space_size = action_space_size
+
+    def make_child(self, prior, child_name):
+        """
+        Override the factory method to create a MVCNode child.
+        """
+        return MVCNode(prior,
+                       action_space_size=self.action_space_size,
+                       name=child_name,
+                       use_reward=self.use_reward,
+                       parent=self)
+
     def reset_var_val(self):
+        """
+        Reset the variance and policy_value attributes recursively.
+        """
         self.variance = None
         self.policy_value = None
         for child in self.children.values():
             child.reset_var_val()
-
-
-class Node:
-
-    def __init__(self, prior, name="root", use_reward=True):
-        self.visit_count = 0
-        self.to_play = -1
-        self.prior = prior
-        self.value_sum = 0
-        self.children = {}
-        self.hidden_state = None
-        self.reward = 0
-        self.use_reward = use_reward
-
-        # for debugging
-        self.name = name
-
-    def expanded(self):
-        return len(self.children) > 0
-
-    def value(self):
-        if self.visit_count == 0:
-            return 0
-        return self.value_sum / self.visit_count
-
-    def expand(self, actions, to_play, reward, policy_logits, hidden_state):
-        """
-        We expand a node using the value, reward and policy prediction obtained from the
-        neural network.
-        """
-        self.to_play = to_play
-        self.reward = reward if self.use_reward else 0
-        self.hidden_state = hidden_state
-
-        policy_values = torch.softmax(
-            torch.tensor([policy_logits[0][a] for a in actions]), dim=0
-        ).tolist()
-        policy = {a: policy_values[i] for i, a in enumerate(actions)}
-        a_dict = a_dict_cg if len(actions) == 3 else a_dict_ll
-        for action, p in policy.items():
-            a_name = a_dict[action]
-            child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = Node(p, name=child_name, use_reward=self.use_reward)
-
-    def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
-        """
-        At the start of each search, we add dirichlet noise to the prior of the root to
-        encourage the search to explore new actions.
-        """
-        actions = list(self.children.keys())
-        noise = numpy.random.dirichlet([dirichlet_alpha] * len(actions))
-        frac = exploration_fraction
-        for a, n in zip(actions, noise):
-            self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
 
     def __repr__(self):
         return self.name

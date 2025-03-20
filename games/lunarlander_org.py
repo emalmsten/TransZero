@@ -22,6 +22,7 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
 
+        self.action_selection = "mvc" # mvc or std
         self.mvc_beta = 1
 
         # Local

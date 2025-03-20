@@ -885,7 +885,7 @@ def setup(test=False):
         wandb.login(key=wandb_key, relogin=True)
     elif args.run_from_cluster is None:
         # manual override
-        args.game_name = "custom_grid" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
+        args.game_name = "lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
         args.config = {
             "debug_mode": False or (sys.gettrace() is not None),
         }
