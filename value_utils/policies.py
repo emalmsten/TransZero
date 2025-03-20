@@ -150,6 +150,7 @@ class MinimalVarianceConstraintPolicy(PolicyDistribution):
 
     def self_prob(self, node: Node, probs: th.Tensor) -> float:
         # todo emil, just a guess
+        return 0
         """
         Returns the relative probability of selecting the node itself,
         under the same 'exp(beta * value) * inv_var' scheme used for children.
