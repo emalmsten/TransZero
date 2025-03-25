@@ -485,15 +485,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         pos_encoding_ac = self.get_positional_encoding(sequence_length_ac,
                                                     embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
 
-        try: # todo for debugging, remove when bug found
-            embedded_actions = embedded_actions + pos_encoding_ac
-        except Exception as e:
-            print("embedded_actions", embedded_actions.size())
-            print("pos_encoding_ac", pos_encoding_ac.size())
-            print(len(action_sequence))
-            print(action_sequence)
-            raise e
 
+        embedded_actions = embedded_actions + pos_encoding_ac
 
 
         if self.state_size is not None:
