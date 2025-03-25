@@ -27,7 +27,7 @@ def policy_value(
     if isinstance(policy, th.distributions.Categorical):
         pi = policy
     else:
-        pi = policy.softmaxed_distribution(node, include_self=True, action_space_size=action_space_size)
+        pi = policy.softmaxed_distribution(node, include_self=True, action_space_size=node.action_space_size)
 
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
@@ -46,6 +46,7 @@ def policy_value(
 
 
 def reward_variance(node):
+    # todo, need to figure out the reward variance for deterministic environments
     return 0.0
 
 
@@ -100,6 +101,13 @@ def get_children_policy_values(
         vals[action] = policy_value(child, policy, discount_factor)
     vals = transform.normalize(vals)
     return vals
+
+
+
+# todo emil, test validitiy of this
+def compute_inverse_q_variance(x, policy, discount_factor: float):
+    q_variance = independent_policy_value_variance(x, policy, discount_factor)
+    return 1.0 / q_variance
 
 
 def get_children_inverse_variances(

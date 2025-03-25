@@ -113,11 +113,16 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
 
-        self.action_selection = "mvc" # mvc or std
-        self.mvc_beta = 1.0
-
-
         self.max_time_minutes = None
+
+        # action selection
+        self.action_selection = "mvc" # mvc or std
+        self.PUCT_c = 1.0
+        self.PUCT_U = "std"
+        self.PUCT_Q = "mvc"
+        self.mvc_beta = 1.0
+        self.self_prob_type = "mvc" # visit or mvc
+
 
         # Local
         self.testing = False
@@ -137,7 +142,7 @@ class MuZeroConfig:
         self.start_pos = None #(3,1) #None #(0,1)
         self.start_dir = None # 0: right, 1: down, 2: left, 3: up
         self.random_map = False
-        self.pov = 'agent' # agent, god, 1_hot_god, 2_hot_god
+        self.pov = '1_hot_god' # agent, god, 1_hot_god, 2_hot_god
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
@@ -157,7 +162,7 @@ class MuZeroConfig:
 
         # More information is available here: https://github.com/werner-duvaud/muzero-general/wiki/Hyperparameter-Optimization
 
-        self.seed = 43  # Seed for numpy, torch and the game
+        self.seed = 42  # Seed for numpy, torch and the game
         self.max_num_gpus = None  # Fix the maximum number of GPUs to use. It's usually faster to use a single GPU (set it to 1) if it has enough memory. None will use every GPUs available
 
         ### Game

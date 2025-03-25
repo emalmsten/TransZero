@@ -10,6 +10,8 @@ import torch
 import models
 import networks.muzero_network as mz_net
 from value_utils.policies import MinimalVarianceConstraintPolicy
+from value_utils.utility_functions import policy_value
+
 
 @ray.remote
 class SelfPlay:
@@ -367,6 +369,8 @@ class MCTS:
 
     def __init__(self, config):
         self.config = config
+        if self.config.PUCT_Q == "mvc":
+            self.policy = MinimalVarianceConstraintPolicy(config=self.config)
 
     def run(
         self,
@@ -397,7 +401,7 @@ class MCTS:
             root = override_root_with
             root_predicted_value = None
         else:
-            if self.config.action_selection == "mvc":
+            if self.config.action_selection == "mvc" or self.config.PUCT_Q == "mvc":
                 root = MVCNode(0, use_reward=self.config.predict_reward, parent=None, action_space_size=len(self.config.action_space))
             else:
                 root = Node(0, use_reward=self.config.predict_reward)
@@ -471,7 +475,7 @@ class MCTS:
 
             while node.expanded():
                 current_tree_depth += 1
-                action, node = self.select_child(node, min_max_stats)
+                action, node = self.select_child(node, min_max_stats) # tree action selection
                 search_path.append(node)
                 actions.append(action)
 
@@ -555,31 +559,67 @@ class MCTS:
         )
         return action, node.children[action]
 
+
+    def calc_U(self, parent, child):
+        if self.config.PUCT_U == "std":
+            U = self.calc_U_std(parent, child)
+        else:
+            raise NotImplementedError("Action selection policy not implemented.")
+
+        return child.prior * U
+
+    def calc_U_std(self, parent, child):
+        pb_c_log = math.log(
+            (parent.visit_count + self.config.pb_c_base + 1) / self.config.pb_c_base
+        )
+        pb_c = pb_c_log + self.config.pb_c_init
+        pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
+        return pb_c
+
+
+
+    def calc_Q(self, child, min_max_stats):
+
+        if self.config.PUCT_Q == "std":
+            return self.calc_Q_std(child, min_max_stats)
+        elif self.config.PUCT_Q == "mvc":
+            return self.calc_Q_mvc(child, min_max_stats)
+        else:
+            raise NotImplementedError("Action selection policy not implemented.")
+
+
+    def calc_Q_mvc(self, child, min_max_stats):
+        return min_max_stats.normalize(policy_value(child, self.policy, self.config.discount))
+
+
+    def calc_Q_std(self, child, min_max_stats):
+        if child.visit_count < 1:
+            return 0
+
+        raw_value = child.reward + self.config.discount * (
+            child.value() if len(self.config.players) == 1 else -child.value()
+        )
+        return min_max_stats.normalize(raw_value) # TODO add to mvc implementation also
+
+
     def ucb_score(self, parent, child, min_max_stats):
         """
-        The score for a node is based on its value, plus an exploration bonus based on the prior.
+        Compute the PUCT (Predictor + UCT) score for a child node.
+        Score = Q + U
+        Where:
+            - Q is the normalized value estimate
+            - U is the exploration bonus
         """
-        pb_c = (
-            math.log(
-                (parent.visit_count + self.config.pb_c_base + 1) / self.config.pb_c_base
-            )
-            + self.config.pb_c_init
-        )
-        pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
 
-        prior_score = pb_c * child.prior
+        # --- 1. Calculate C (dynamic exploration constant) ---
+        U = self.calc_U(parent, child)
 
-        if child.visit_count > 0:
-            # Mean value Q
-            value_score = min_max_stats.normalize(
-                child.reward
-                + self.config.discount
-                * (child.value() if len(self.config.players) == 1 else -child.value())
-            )
-        else:
-            value_score = 0
+        # --- 3. Calculate Q (normalized value score) ---
+        Q = self.calc_Q(child, min_max_stats)
 
-        return prior_score + value_score
+        # --- 5. Combine to get final PUCT score: UCB = Q + U ---
+        return Q + U
+
 
     def backpropagate(self, search_path, value, to_play, min_max_stats):
         """

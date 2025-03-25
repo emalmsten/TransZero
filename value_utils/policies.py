@@ -61,10 +61,12 @@ class PolicyDistribution(Policy):
         self,
         temperature: float = None,
         value_transform: ValueTransform = IdentityValueTransform,
+        self_prob_type: str = "visit",
     ) -> None:
         super().__init__()
         self.temperature = temperature
         self.value_transform = value_transform
+        self.self_prob_type = self_prob_type
 
     def sample(self, node) -> int:
         """
@@ -73,7 +75,7 @@ class PolicyDistribution(Policy):
         return int(self.softmaxed_distribution(node).sample().item())
 
     @abstractmethod
-    def _probs(self, node) -> th.Tensor:
+    def _probs(self, node, include_self=False) -> th.Tensor:
         """
         Returns the relative probabilities of the actions (excluding the special action)
         """
@@ -83,7 +85,7 @@ class PolicyDistribution(Policy):
         """
         Returns the relative probability of selecting the node itself
         """
-        return probs.sum() / (node.visit_count - 1)
+        return probs.sum() / ((node.visit_count - 1) or 1)
 
     def add_self_to_probs(self, node, probs: th.Tensor) -> th.Tensor:
         """
@@ -108,10 +110,11 @@ class PolicyDistribution(Policy):
             probs[-1] = 1.0
             return th.distributions.Categorical(probs=probs)
 
-        probs = self._probs(node)
+        probs = self._probs(node, include_self and self.self_prob_type == 'mvc')
         # softmax the probs
         softmaxed_probs = custom_softmax(probs, self.temperature, None)
-        if include_self:
+
+        if include_self and self.self_prob_type == 'visit': # todo emil temporary solution of the self prob
             softmaxed_probs = self.add_self_to_probs(node, softmaxed_probs)
         return th.distributions.Categorical(probs=softmaxed_probs)
 
@@ -128,6 +131,9 @@ class MinimalVarianceConstraintPolicy(PolicyDistribution):
     Should return the same as the default tree evaluator
     """
     def __init__(self, config, *args, **kwargs):
+        # add the self prob arg from config to args
+        kwargs['self_prob_type'] = config.self_prob_type
+
         super().__init__(*args, **kwargs)
         self.beta = config.mvc_beta
         self.discount_factor = config.discount
@@ -135,45 +141,57 @@ class MinimalVarianceConstraintPolicy(PolicyDistribution):
     def get_beta(self):
         return self.beta
 
-    def _probs(self, node) -> th.Tensor:
-
-        normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(node, self, self.discount_factor, self.value_transform)
-        # for action in node.children:
-        #     probs[action] = th.exp(beta * (normalized_vals[action] - normalized_vals.max())) * inv_vars[action]
-        logits = self.beta * th.nan_to_num(normalized_vals)
-        # logits - logits.max() is to avoid numerical instability
-        probs = inv_vars * th.exp(logits - logits.max())
-        return probs
-
-    def self_prob(self, node: Node, probs: th.Tensor) -> float:
-        # todo emil, just a guess
-        return 0
-        """
-        Returns the relative probability of selecting the node itself,
-        under the same 'exp(beta * value) * inv_var' scheme used for children.
-        """
-        # 1) Get children + self values and inv_vars
+    def _probs(self, node, include_self=False) -> th.Tensor:
         normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
             parent=node,
             policy=self,
             discount_factor=self.discount_factor,
             transform=self.value_transform,
-            include_self=True
-        )
+            include_self=include_self)
 
-        # 2) Compute logits for *all* actions + self
-        beta = self.get_beta(node)
-        logits = beta * th.nan_to_num(normalized_vals)
+        # Build unnormalized probabilities (a typical mean-variance approach)
+        #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
+        logits = self.beta * th.nan_to_num(normalized_vals)
 
-        # 3) Avoid numerical instability by shifting by max(logits)
-        logits -= logits.max()
+        # logits - logits.max() is to avoid numerical instability
+        probs = inv_vars * th.exp(logits - logits.max())
 
-        # 4) Convert logits to unnormalized probabilities via exp, then multiply by inv_vars
-        unnormalized_probs = inv_vars * th.exp(logits)
+        return probs
 
-        # 5) The parent's "self" score is the last index, so normalize and extract
-        parent_score = unnormalized_probs[-1]
-        parent_prob = parent_score / unnormalized_probs.sum()
+    def self_prob(self, node, probs: th.Tensor) -> float:
+        softmax_probs = th.softmax(probs, dim=0)
+        # The self probability is the last element in the softmaxed distribution.
+        return softmax_probs[-1].item()
 
-        return float(parent_prob)
+    # def self_prob(self, node: Node, probs: th.Tensor) -> float:
+    #     # todo emil, just a guess
+    #     return 0
+    #     """
+    #     Returns the relative probability of selecting the node itself,
+    #     under the same 'exp(beta * value) * inv_var' scheme used for children.
+    #     """
+    #     # 1) Get children + self values and inv_vars
+    #     normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
+    #         parent=node,
+    #         policy=self,
+    #         discount_factor=self.discount_factor,
+    #         transform=self.value_transform,
+    #         include_self=True
+    #     )
+    #
+    #     # 2) Compute logits for *all* actions + self
+    #     beta = self.get_beta(node)
+    #     logits = beta * th.nan_to_num(normalized_vals)
+    #
+    #     # 3) Avoid numerical instability by shifting by max(logits)
+    #     logits -= logits.max()
+    #
+    #     # 4) Convert logits to unnormalized probabilities via exp, then multiply by inv_vars
+    #     unnormalized_probs = inv_vars * th.exp(logits)
+    #
+    #     # 5) The parent's "self" score is the last index, so normalize and extract
+    #     parent_score = unnormalized_probs[-1]
+    #     parent_prob = parent_score / unnormalized_probs.sum()
+    #
+    #     return float(parent_prob)
 
