@@ -609,6 +609,8 @@ class MCTS:
             U = self.calc_U_std(parent, child)
         elif self.config.PUCT_U == "mvc":
             U = self.calc_U_mvc(parent, child)
+        elif self.config.PUCT_U == "mvc_exp":
+            U = self.calc_U_mvc_experimental(parent, child)
         else:
             raise NotImplementedError("Action selection policy not implemented.")
 
