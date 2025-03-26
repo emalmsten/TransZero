@@ -117,8 +117,8 @@ class MuZeroConfig:
 
         # action selection
         self.action_selection = "mvc" # mvc or std
-        self.PUCT_c = 1.0
-        self.PUCT_U = "std"
+        self.PUCT_C = 2.0
+        self.PUCT_U = "mvc"
         self.PUCT_Q = "mvc"
         self.mvc_beta = 1.0
         self.self_prob_type = "mvc" # visit or mvc

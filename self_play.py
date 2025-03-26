@@ -10,7 +10,7 @@ import torch
 import models
 import networks.muzero_network as mz_net
 from value_utils.policies import MinimalVarianceConstraintPolicy
-from value_utils.utility_functions import policy_value
+from value_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
 
 
 @ray.remote
@@ -369,8 +369,16 @@ class MCTS:
 
     def __init__(self, config):
         self.config = config
-        if self.config.PUCT_Q == "mvc":
+        if 'mvc' in [self.config.PUCT_Q, self.config.PUCT_U, self.config.action_selection]:
             self.policy = MinimalVarianceConstraintPolicy(config=self.config)
+
+        self.test = False
+        self.file_path = "test_ucb_scores.csv"
+
+        if self.test:
+            with open(self.file_path, "w") as f:
+                f.write("parent,child,U_std,U_mvc,Q_std,Q_mvc\n")
+                f.flush
 
     def run(
         self,
@@ -401,7 +409,7 @@ class MCTS:
             root = override_root_with
             root_predicted_value = None
         else:
-            if self.config.action_selection == "mvc" or self.config.PUCT_Q == "mvc":
+            if 'mvc' in [self.config.action_selection, self.config.PUCT_Q, self.config.PUCT_U]:
                 root = MVCNode(0, use_reward=self.config.predict_reward, parent=None, action_space_size=len(self.config.action_space))
             else:
                 root = Node(0, use_reward=self.config.predict_reward)
@@ -445,7 +453,6 @@ class MCTS:
                 set(self.config.action_space)
             ), "Legal actions should be a subset of the action space."
 
-
             root.expand(
                 legal_actions,
                 to_play,
@@ -453,7 +460,6 @@ class MCTS:
                 reward,
                 policy_logits,
                 hidden_state,
-
             )
 
 
@@ -472,6 +478,9 @@ class MCTS:
             search_path = [node]
             actions = []
             current_tree_depth = 0
+
+            if self.config.PUCT_U == "mvc":
+                node.reset_var()
 
             while node.expanded():
                 current_tree_depth += 1
@@ -529,7 +538,6 @@ class MCTS:
                 hidden_state,
             )
 
-
             self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
@@ -542,27 +550,52 @@ class MCTS:
             extra_info["predictions"] = pred_dict
         return root, extra_info
 
+    def write_test_to_file(self, node, min_max_stats):
+        test_scores = [
+            (node.name, child.name, self.ucb_score_test(node, child, min_max_stats))
+            for action, child in node.children.items()
+        ]
+        # append to file
+        with open(self.file_path, "a") as f:
+            for test_score in test_scores:
+                f.write(f"{test_score[0]},{test_score[1]},"
+                        f"{test_score[2][0]},{test_score[2][1]},{test_score[2][2]},{test_score[2][3]}\n")
+            f.flush()
+
     def select_child(self, node, min_max_stats):
         """
-        Select the child with the highest UCB score.
+        Select the child with the highest UCB score without recalculating.
         """
-        max_ucb = max(
-            self.ucb_score(node, child, min_max_stats)
+        # Calculate scores once, store action-score pairs
+        # if self.config.PUCT_U == "mvc":
+        #     node.reset_var()
+
+        action_score_pairs = [
+            (action, self.ucb_score(node, child, min_max_stats))
             for action, child in node.children.items()
-        )
-        action = numpy.random.choice(
-            [
-                action
-                for action, child in node.children.items()
-                if self.ucb_score(node, child, min_max_stats) == max_ucb
-            ]
-        )
-        return action, node.children[action]
+        ]
+
+        if self.test:
+            self.write_test_to_file(node, min_max_stats)
+
+        # Find the maximum UCB score
+        max_ucb = max(score for action, score in action_score_pairs)
+
+        # Select actions that have the maximum UCB score
+        best_actions = [action for action, score in action_score_pairs if score == max_ucb]
+
+        # Randomly select among best actions
+        selected_action = numpy.random.choice(best_actions)
+
+        return selected_action, node.children[selected_action]
+
 
 
     def calc_U(self, parent, child):
         if self.config.PUCT_U == "std":
             U = self.calc_U_std(parent, child)
+        elif self.config.PUCT_U == "mvc":
+            U = self.calc_U_mvc(parent, child)
         else:
             raise NotImplementedError("Action selection policy not implemented.")
 
@@ -574,6 +607,25 @@ class MCTS:
         )
         pb_c = pb_c_log + self.config.pb_c_init
         pb_c *= math.sqrt(parent.visit_count) / (child.visit_count + 1)
+        return pb_c
+
+
+    def calc_U_mvc(self, parent, child):
+        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+
+        return self.config.PUCT_C * math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
+
+
+    def calc_U_mvc_test(self, parent, child):
+        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+
+        pb_c_log = math.log(
+            (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
+        )
+        pb_c = pb_c_log + self.config.pb_c_init
+        pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
         return pb_c
 
 
@@ -620,6 +672,11 @@ class MCTS:
         # --- 5. Combine to get final PUCT score: UCB = Q + U ---
         return Q + U
 
+    def ucb_score_test(self, parent, child, min_max_stats):
+        u_std, u_mvc = self.calc_U_std(parent, child), self.calc_U_mvc_test(parent, child)
+        q_std, q_mvc = self.calc_Q_std(child, min_max_stats), self.calc_Q_mvc(child, min_max_stats)
+        return u_std, u_mvc, q_std, q_mvc
+
 
     def backpropagate(self, search_path, value, to_play, min_max_stats):
         """
@@ -630,9 +687,13 @@ class MCTS:
             for node in reversed(search_path):
                 node.value_sum += value
                 node.visit_count += 1
-                min_max_stats.update(node.reward + self.config.discount * node.value())
-
-                value = node.reward + self.config.discount * value
+                if self.config.PUCT_Q == "std":
+                    min_max_stats.update(node.reward + self.config.discount * node.value())
+                    value = node.reward + self.config.discount * value
+                # todo Emil, seems, correct, verify
+                elif self.config.PUCT_Q == "mvc":
+                    value = policy_value(node, self.policy, self.config.discount)
+                    min_max_stats.update(value)
 
         elif len(self.config.players) == 2:
             for node in reversed(search_path):
@@ -750,6 +811,14 @@ class MVCNode(Node):
         self.policy_value = None
         for child in self.children.values():
             child.reset_var_val()
+
+    def reset_var(self):
+        """
+        Reset the variance attribute recursively.
+        """
+        self.variance = None
+        for child in self.children.values():
+            child.reset_var()
 
     def __repr__(self):
         return self.name
