@@ -372,12 +372,14 @@ class MCTS:
         if 'mvc' in [self.config.PUCT_Q, self.config.PUCT_U, self.config.action_selection]:
             self.policy = MinimalVarianceConstraintPolicy(config=self.config)
 
-        self.test = False
-        self.file_path = "test_ucb_scores.csv"
+        import time
+        timestamp = time.time()
+        self.file_path = f"test_scores/test_ucb_scores_{timestamp}.csv"
 
-        if self.test:
+        if self.config.test_ucb:
+            self.min_max_stats_std = MinMaxStats()
             with open(self.file_path, "w") as f:
-                f.write("parent,child,U_std,U_mvc,Q_std,Q_mvc\n")
+                f.write("P,C,UCB,UCB_mvc,U,U_mvc,Q,Q_mvc\n")
                 f.flush
 
     def run(
@@ -472,6 +474,7 @@ class MCTS:
         min_max_stats = MinMaxStats()
 
         max_tree_depth = 0
+
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
             node = root
@@ -558,8 +561,18 @@ class MCTS:
         # append to file
         with open(self.file_path, "a") as f:
             for test_score in test_scores:
-                f.write(f"{test_score[0]},{test_score[1]},"
-                        f"{test_score[2][0]},{test_score[2][1]},{test_score[2][2]},{test_score[2][3]}\n")
+                # round all test scores to 2 decimals
+                p_name, c_name, scores = test_score
+                # round the scores to 2 decimals, its tensors
+                # turn all tensors to floats, leave all floats as they are
+                scores = [score.item() if hasattr(score, "item") else score for score in scores]
+
+                scores = [round(score, 2) for score in scores]
+                U, U_mvc, Q, Q_mvc = scores
+                UCB = Q + U
+                UCB_mvc = Q_mvc + U_mvc
+
+                f.write(f"{p_name},{c_name},{UCB},{UCB_mvc},{U},{U_mvc},{Q},{Q_mvc}\n")
             f.flush()
 
     def select_child(self, node, min_max_stats):
@@ -575,7 +588,7 @@ class MCTS:
             for action, child in node.children.items()
         ]
 
-        if self.test:
+        if self.config.test_ucb:
             self.write_test_to_file(node, min_max_stats)
 
         # Find the maximum UCB score
@@ -617,7 +630,8 @@ class MCTS:
         return self.config.PUCT_C * math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
 
 
-    def calc_U_mvc_test(self, parent, child):
+    # todo try
+    def calc_U_mvc_experimental(self, parent, child):
         par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
         child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
 
@@ -673,8 +687,8 @@ class MCTS:
         return Q + U
 
     def ucb_score_test(self, parent, child, min_max_stats):
-        u_std, u_mvc = self.calc_U_std(parent, child), self.calc_U_mvc_test(parent, child)
-        q_std, q_mvc = self.calc_Q_std(child, min_max_stats), self.calc_Q_mvc(child, min_max_stats)
+        u_std, u_mvc = self.calc_U_std(parent, child), self.calc_U_mvc(parent, child)
+        q_std, q_mvc = self.calc_Q_std(child, self.min_max_stats_std), self.calc_Q_mvc(child, min_max_stats)
         return u_std, u_mvc, q_std, q_mvc
 
 
@@ -688,12 +702,15 @@ class MCTS:
                 node.value_sum += value
                 node.visit_count += 1
                 if self.config.PUCT_Q == "std":
-                    min_max_stats.update(node.reward + self.config.discount * node.value())
                     value = node.reward + self.config.discount * value
                 # todo Emil, seems, correct, verify
                 elif self.config.PUCT_Q == "mvc":
                     value = policy_value(node, self.policy, self.config.discount)
-                    min_max_stats.update(value)
+                min_max_stats.update(value)
+
+                # todo emil remove at some point when tested
+                if self.config.test_ucb:
+                    self.min_max_stats_std.update(node.reward + self.config.discount * value)
 
         elif len(self.config.players) == 2:
             for node in reversed(search_path):

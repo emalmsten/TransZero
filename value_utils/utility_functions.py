@@ -53,7 +53,7 @@ def reward_variance(node):
 def value_evaluation_variance(node):
     # if we want to duplicate the default tree evaluator, we can return 1 / visits
     # In reality, the variance should be lower for terminal nodes
-    if False: # todo emil, node.terminal does not exist for muzero:
+    if False: # if node.terminal # todo emil, node.terminal does not exist for muzero:
         return 1.0 / float(node.visits)
     else:
         return 1.0

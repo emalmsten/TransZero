@@ -1,6 +1,6 @@
 {
   "network": "resnet",
-  "batch_size": 64,
+  "batch_size": 128,
   "lr_init": 0.005,
   "lr_decay_rate": 0.99,
   "value_loss_weight": 1,

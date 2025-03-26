@@ -122,6 +122,7 @@ class MuZeroConfig:
         self.PUCT_Q = "mvc"
         self.mvc_beta = 1.0
         self.self_prob_type = "mvc" # visit or mvc
+        self.test_ucb = False
 
 
         # Local
@@ -574,7 +575,7 @@ class SimpleEnv(MiniGridEnv):
         #self.agent_start_dir = agent_start_dir
 
         self.testing = kwargs.pop("testing", False)
-        render_mode = "human" #if self.testing else None
+        render_mode = None #"human" #if self.testing else None
 
         self.custom_map_name = kwargs.pop("custom_map")
         self.random_map = kwargs.pop("random_map")

@@ -6,6 +6,5 @@
   "num_unroll_steps": 5,
   "training_steps": 1000000,
   "append": "_v2",
-  "num_simulations": 50,
-  "lr_decay_rate": 1
+  "num_simulations": 50
 }
