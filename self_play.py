@@ -753,7 +753,7 @@ class MCTS:
                     hidden_state,
                 )
 
-                self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
+                self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
 
                 search_path = org_search_path
                 node = org_node
