@@ -520,8 +520,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Concatenate the root hidden state with the positional encoding
         rhs = rhs + pos_encoding_state
 
-
-
         # Construct the input sequence by concatenating the state embedding and action embeddings
         state_action_sequence = torch.cat([rhs, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
 

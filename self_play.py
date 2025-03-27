@@ -168,14 +168,25 @@ class SelfPlay:
                 )
 
                 # Choose the action
-                if opponent == "self" or muzero_player == self.game.to_play(): # note to Emil, where you go when using frozen_lake
-                    root, mcts_info = MCTS(self.config).run(
-                        self.model,
-                        stacked_observations,
-                        self.game.legal_actions(),
-                        self.game.to_play(),
-                        temperature != 0
-                    )
+                if opponent == "self" or muzero_player == self.game.to_play():
+
+                    if self.config.expansion_strategy == 'deep':
+                        root, mcts_info = MCTS(self.config).pll_run(
+                            self.model,
+                            stacked_observations,
+                            self.game.legal_actions(),
+                            self.game.to_play(),
+                            temperature != 0
+                        )
+
+                    else:# note to Emil, where you go when using frozen_lake
+                        root, mcts_info = MCTS(self.config).run(
+                            self.model,
+                            stacked_observations,
+                            self.game.legal_actions(),
+                            self.game.to_play(),
+                            temperature != 0
+                        )
 
                     if self.config.action_selection == "mvc":
                         root.reset_var_val()
@@ -383,6 +394,39 @@ class MCTS:
                 f.write("P_var,C_var,P_vis,C_vis\n")
                 f.flush
 
+    @staticmethod
+    def bfs_actions(budget, action_space):
+        """
+        Generate sequences of actions in a breadth-first search manner.
+
+        Parameters:
+            budget (int): Total number of sequences to generate.
+            action_space (list): List of actions available.
+
+        Returns:
+            list: A list of lists, where each inner list is a sequence of actions.
+        """
+        from collections import deque
+
+        results = []
+        # Start with just the prev action.
+        queue = deque([[action] for action in action_space])
+
+        # start with
+
+        while queue and len(results) < budget:
+            sequence = queue.popleft()
+            results.append(sequence)
+            if len(results) >= budget:
+                break
+            # Generate children by appending each possible action
+            for action in action_space:
+                new_sequence = sequence + [action]
+                queue.append(new_sequence)
+
+        return results
+
+
     def run(
         self,
         model,
@@ -498,6 +542,7 @@ class MCTS:
                 else:
                     virtual_to_play = self.config.players[0]
 
+
             # Inside the search tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             parent = search_path[-2]
@@ -552,6 +597,178 @@ class MCTS:
         }
         if self.config.show_preds:
             extra_info["predictions"] = pred_dict
+        return root, extra_info
+
+    @staticmethod
+    def pad_action_sequences(action_sequences, pad_value=0):
+        # Get the length of the longest sequence, assumed to be the last one.
+        max_length = len(action_sequences[-1])
+
+        padded_sequences = []
+        pad_masks = []
+
+        for seq in action_sequences:
+            # Calculate the number of pad tokens needed for the current sequence.
+            padding_needed = max_length - len(seq)
+
+            # Pad the sequence.
+            padded_seq = seq + [pad_value] * padding_needed
+            padded_sequences.append(padded_seq)
+
+            # Create a mask: False for original entries, True for padded ones.
+            # todo the + 1 is for the state, should be more if state is more tokens
+            mask = [False] * (len(seq) + 1) + [True] * padding_needed
+            pad_masks.append(mask)
+
+        return padded_sequences, pad_masks
+
+
+
+    def pll_run(
+            self,
+            model,
+            observation,
+            legal_actions,
+            to_play,
+            add_exploration_noise,
+            override_root_with=None,
+    ):
+
+        # print(f"is trans net: {is_trans_net}")
+        if override_root_with:
+            root = override_root_with
+            root_predicted_value = None
+        else:
+            if 'mvc' in [self.config.action_selection, self.config.PUCT_Q, self.config.PUCT_U]:
+                root = MVCNode(0, use_reward=self.config.predict_reward, parent=None,
+                               action_space_size=len(self.config.action_space))
+            else:
+                root = Node(0, use_reward=self.config.predict_reward)
+            # Observation in right shape
+            observation = (
+                torch.tensor(observation)
+                .float()
+                .unsqueeze(0)
+                .to(next(model.parameters()).device)
+            )
+
+            # Initial step
+            (
+                root_predicted_value,
+                reward,
+                policy_logits,
+                hidden_state,
+            ) = model.initial_inference(observation)
+
+            # Make the root predicted value and reward a scalar
+            root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
+            reward = models.support_to_scalar(reward, self.config.support_size).item()
+
+            assert (
+                legal_actions
+            ), f"Legal actions should not be an empty array. Got {legal_actions}."
+            assert set(legal_actions).issubset(
+                set(self.config.action_space)
+            ), "Legal actions should be a subset of the action space."
+
+            root.expand(
+                legal_actions,
+                to_play,
+                root_predicted_value,
+                reward,
+                policy_logits,
+                hidden_state,
+            )
+
+        if add_exploration_noise:
+            root.add_exploration_noise(
+                dirichlet_alpha=self.config.root_dirichlet_alpha,
+                exploration_fraction=self.config.root_exploration_fraction,
+            )
+
+        min_max_stats = MinMaxStats()
+
+        max_tree_depth = 0
+
+        root_hidden_state = root.hidden_state
+        root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+
+        for _ in range(self.config.num_simulations):
+            virtual_to_play = to_play
+            node = root
+            search_path = [node]
+            actions = []
+            current_tree_depth = 0
+
+            if self.config.PUCT_U == "mvc":
+                node.reset_var()
+
+            while node.expanded():
+                current_tree_depth += 1
+                action, node = self.select_child(node, min_max_stats)  # tree action selection
+                search_path.append(node)
+                actions.append(action)
+
+                # Players play turn by turn
+                if virtual_to_play + 1 < len(self.config.players):
+                    virtual_to_play = self.config.players[virtual_to_play + 1]
+                else:
+                    virtual_to_play = self.config.players[0]
+
+            action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
+            # prepend actions to each
+            action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
+            # make into torch tensor
+            padded_as, pad_masks = self.pad_action_sequences(action_sequences)
+            padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
+            # add singleton dimension as last
+            pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
+
+            # copy root hidden state into size of action sequences in dim 0
+
+            value, reward, policy_logits, hidden_state = model.recurrent_inference_fast(
+                root_hidden_state=root_hidden_state,
+                action_sequence=padded_as,
+                mask=pad_masks
+            )
+
+            org_search_path = search_path
+            org_node = node
+            for i, action_sequence in enumerate(action_sequences_from_node):
+                # just take the last ones
+                # ":" is to keep dimension
+                value_i = value[i][-1:]
+                reward_i = reward[i][-1:]
+                policy_logits_i = policy_logits[i][-1:] # todo emil idea check unceratnity based on several values?
+
+                value_i = models.support_to_scalar(value_i, self.config.support_size).item()
+                reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
+
+                node.expand(
+                    legal_actions,
+                    virtual_to_play,
+                    value_i,
+                    reward_i,
+                    policy_logits_i,
+                    hidden_state,
+                )
+
+                self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
+
+                search_path = org_search_path
+                node = org_node
+
+                for action in action_sequence:
+                    node = node.children[action]
+                    search_path.append(node)
+
+            max_tree_depth = max(max_tree_depth, current_tree_depth)
+
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": root_predicted_value,
+        }
+
         return root, extra_info
 
 
@@ -777,6 +994,8 @@ class Node:
         self.value_evaluation = 0
         self.use_reward = use_reward
 
+        self.ucb_score = None
+
         # for debugging
         self.name = name
 
@@ -822,6 +1041,13 @@ class Node:
         frac = exploration_fraction
         for a, n in zip(actions, noise):
             self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
+
+
+    def reset_ucb(self):
+        self.ucb_score = None
+        for child in self.children.values():
+            child.reset_ucb()
+
 
     def __repr__(self):
         return self.name

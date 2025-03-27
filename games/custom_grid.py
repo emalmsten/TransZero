@@ -115,9 +115,12 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
 
+        self.expansion_strategy = "deep"
+        self.expansion_budget = 12
+
         # action selection
         self.action_selection = "mvc" # mvc or std
-        self.PUCT_C = 2.0
+        self.PUCT_C = 1.5
         self.PUCT_U = "mvc"
         self.PUCT_Q = "mvc"
         self.mvc_beta = 1.0
@@ -221,7 +224,7 @@ class MuZeroConfig:
         self.transformer_layers = 4
         self.transformer_heads = 8
         self.transformer_hidden_size = 32
-        self.max_seq_length = 25
+        self.max_seq_length = 100 # todo reconsider length
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
