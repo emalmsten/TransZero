@@ -379,7 +379,8 @@ class MCTS:
         if self.config.test_ucb:
             self.min_max_stats_std = MinMaxStats()
             with open(self.file_path, "w") as f:
-                f.write("P,C,UCB,UCB_mvc,U,U_mvc,Q,Q_mvc\n")
+                #f.write("P,C,UCB,UCB_mvc,U,U_mvc,Q,Q_mvc\n")
+                f.write("P_var,C_var,P_vis,C_vis\n")
                 f.flush
 
     def run(
@@ -553,6 +554,8 @@ class MCTS:
             extra_info["predictions"] = pred_dict
         return root, extra_info
 
+
+
     def write_test_to_file(self, node, min_max_stats):
         test_scores = [
             (node.name, child.name, self.ucb_score_test(node, child, min_max_stats))
@@ -575,6 +578,15 @@ class MCTS:
                 f.write(f"{p_name},{c_name},{UCB},{UCB_mvc},{U},{U_mvc},{Q},{Q_mvc}\n")
             f.flush()
 
+    def write_test2_to_file(self, test_scores):
+        # append to file
+        with open(self.file_path, "a") as f:
+            for test_score in test_scores:
+                # round all test scores to 2 decimals
+                par_inv_q_var, child_inv_q_var, par_visit, child_visit = test_score
+                f.write(f"{par_inv_q_var},{child_inv_q_var},{par_visit},{child_visit}\n")
+            f.flush()
+
     def select_child(self, node, min_max_stats):
         """
         Select the child with the highest UCB score without recalculating.
@@ -589,7 +601,10 @@ class MCTS:
         ]
 
         if self.config.test_ucb:
-            self.write_test_to_file(node, min_max_stats)
+            res_U = [self.U_comparator(node, child) for action, child in node.children.items()]
+            self.write_test2_to_file(res_U)
+
+            #self.write_test_to_file(node, min_max_stats)
 
         # Find the maximum UCB score
         max_ucb = max(score for action, score in action_score_pairs)
@@ -601,7 +616,6 @@ class MCTS:
         selected_action = numpy.random.choice(best_actions)
 
         return selected_action, node.children[selected_action]
-
 
 
     def calc_U(self, parent, child):
@@ -637,6 +651,9 @@ class MCTS:
         par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
         child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
 
+        par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
+        child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
+
         pb_c_log = math.log(
             (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
         )
@@ -644,7 +661,13 @@ class MCTS:
         pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
         return pb_c
 
+    def U_comparator(self, parent, child):
+        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
 
+        par_visit = parent.visit_count
+        child_visit = child.visit_count
+        return par_inv_q_var, child_inv_q_var, par_visit, child_visit
 
     def calc_Q(self, child, min_max_stats):
 
