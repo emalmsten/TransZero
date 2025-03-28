@@ -116,11 +116,11 @@ class MuZeroConfig:
         self.max_time_minutes = None
 
         self.expansion_strategy = "deep"
-        self.expansion_budget = 12
+        self.expansion_budget = 4 # atleast 1 node needs to be expanded
 
         # action selection
         self.action_selection = "mvc" # mvc or std
-        self.PUCT_C = 1.5
+        self.PUCT_C = 2.0
         self.PUCT_U = "mvc"
         self.PUCT_Q = "mvc"
         self.mvc_beta = 1.0

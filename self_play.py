@@ -410,7 +410,7 @@ class MCTS:
 
         results = []
         # Start with just the prev action.
-        queue = deque([[action] for action in action_space])
+        queue = deque([[]] + [[action] for action in action_space])
 
         # start with
 
@@ -691,7 +691,7 @@ class MCTS:
         max_tree_depth = 0
 
         root_hidden_state = root.hidden_state
-        root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        #root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
 
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
@@ -719,27 +719,42 @@ class MCTS:
             # prepend actions to each
             action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
             # make into torch tensor
-            padded_as, pad_masks = self.pad_action_sequences(action_sequences)
-            padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
-            # add singleton dimension as last
-            pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
+
+            # padded_as, pad_masks = self.pad_action_sequences(action_sequences)
+            # padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
+            # # add singleton dimension as last
+            # pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
 
             # copy root hidden state into size of action sequences in dim 0
 
-            value, reward, policy_logits, hidden_state = model.recurrent_inference_fast(
-                root_hidden_state=root_hidden_state,
-                action_sequence=padded_as,
-                mask=pad_masks
-            )
+            # todo emil try with classic rec inf first
+            # value, reward, policy_logits, hidden_state = model.recurrent_inference_fast(
+            #     root_hidden_state=root_hidden_state,
+            #     action_sequence=padded_as,
+            #     mask=pad_masks,
+            #     use_causal_mask = False
+            # )
 
             org_search_path = search_path
             org_node = node
             for i, action_sequence in enumerate(action_sequences_from_node):
+                for action in action_sequence:
+                    node = node.children[action]
+                    search_path.append(node)
+
+                full_ac_seq = actions + action_sequence
+                value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
+                    None, None,
+                    root_hidden_state = root_hidden_state,
+                    action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(root_hidden_state.device),
+                )
+
+                #last_action_idx = len(action_sequence) - 1
                 # just take the last ones
                 # ":" is to keep dimension
-                value_i = value[i][-1:]
-                reward_i = reward[i][-1:]
-                policy_logits_i = policy_logits[i][-1:] # todo emil idea check unceratnity based on several values?
+                # value_i = value[i][[last_action_idx]]
+                # reward_i = reward[i][[last_action_idx]]
+                # policy_logits_i = policy_logits[i][[last_action_idx]] # todo emil idea check unceratnity based on several values?
 
                 value_i = models.support_to_scalar(value_i, self.config.support_size).item()
                 reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
@@ -757,10 +772,6 @@ class MCTS:
 
                 search_path = org_search_path
                 node = org_node
-
-                for action in action_sequence:
-                    node = node.children[action]
-                    search_path.append(node)
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 

@@ -273,23 +273,28 @@ class MuZeroTransformerNetwork(AbstractNetwork):
     def create_causal_mask(self, seq_length):
         return torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
 
+    def stable_transformer_forward(self, input_sequence, mask):
+        input_sequence = input_sequence.transpose(0, 1)
 
-    def prediction_fast(self, root_hidden_state, action_sequence, action_mask):
+        result = self.transformer_encoder(input_sequence, src_key_padding_mask=mask)
+        transformer_output = result["logits"]
+        return transformer_output.transpose(0, 1)
+
+    def prediction_fast(self, root_hidden_state, action_sequence, action_mask, use_causal_mask=True):
         if self.state_size is not None:
             flat_size = self.state_size[1] * self.state_size[2]
             # append false to action mask beginning
             action_mask = torch.cat([torch.zeros(action_mask.size(0), (flat_size-1), dtype=torch.bool, device=action_mask.device), action_mask], dim=1)
 
         input_sequence = self.create_input_sequence(root_hidden_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
-        causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
+        if use_causal_mask:
+            causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
+        else:
+            causal_mask = None
 
         # Pass through the transformer encoder
         if self.stable_transformer:
-            input_sequence = input_sequence.transpose(0, 1)
-
-            result = self.transformer_encoder(input_sequence, src_key_padding_mask=action_mask)
-            transformer_output = result["logits"]
-            transformer_output = transformer_output.transpose(0, 1)
+            transformer_output = self.stable_transformer_forward(input_sequence, causal_mask)
         else:
             transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
 
@@ -484,8 +489,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Get positional encoding
         pos_encoding_ac = self.get_positional_encoding(sequence_length_ac,
                                                     embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
-
-
         embedded_actions = embedded_actions + pos_encoding_ac
 
 
@@ -527,8 +530,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return state_action_sequence
 
 
-    def recurrent_inference_fast(self, root_hidden_state, action_sequence, mask):
-        policy_logits, value, reward, transformer_output = self.prediction_fast(root_hidden_state, action_sequence, mask)
+    def recurrent_inference_fast(self, root_hidden_state, action_sequence, mask, use_causal_mask=True):
+        policy_logits, value, reward, transformer_output = self.prediction_fast(root_hidden_state, action_sequence, mask, use_causal_mask=use_causal_mask)
         return value, reward, policy_logits, transformer_output
 
 
