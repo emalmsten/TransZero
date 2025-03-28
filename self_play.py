@@ -397,7 +397,7 @@ class MCTS:
     @staticmethod
     def bfs_actions(budget, action_space):
         """
-        Generate sequences of actions in a breadth-first search manner.
+        Generate sequences of actions in a breadth-first search manner, starting from an empty sequence.
 
         Parameters:
             budget (int): Total number of sequences to generate.
@@ -409,10 +409,7 @@ class MCTS:
         from collections import deque
 
         results = []
-        # Start with just the prev action.
-        queue = deque([[]] + [[action] for action in action_space])
-
-        # start with
+        queue = deque([[]])  # Start with the empty sequence
 
         while queue and len(results) < budget:
             sequence = queue.popleft()
@@ -691,7 +688,7 @@ class MCTS:
         max_tree_depth = 0
 
         root_hidden_state = root.hidden_state
-        #root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
 
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
@@ -720,20 +717,19 @@ class MCTS:
             action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
             # make into torch tensor
 
-            # padded_as, pad_masks = self.pad_action_sequences(action_sequences)
-            # padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
+            padded_as, pad_masks = self.pad_action_sequences(action_sequences)
+            padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
             # # add singleton dimension as last
-            # pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
+            pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
 
             # copy root hidden state into size of action sequences in dim 0
 
-            # todo emil try with classic rec inf first
-            # value, reward, policy_logits, hidden_state = model.recurrent_inference_fast(
-            #     root_hidden_state=root_hidden_state,
-            #     action_sequence=padded_as,
-            #     mask=pad_masks,
-            #     use_causal_mask = False
-            # )
+            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference_fast(
+                root_hidden_state=root_hidden_state,
+                action_sequence=padded_as,
+                mask=pad_masks,
+                use_causal_mask = True
+            )
 
             org_search_path = search_path
             org_node = node
@@ -742,20 +738,28 @@ class MCTS:
                     node = node.children[action]
                     search_path.append(node)
 
-                full_ac_seq = actions + action_sequence
-                value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
-                    None, None,
-                    root_hidden_state = root_hidden_state,
-                    action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(root_hidden_state.device),
-                )
+                #full_ac_seq = actions + action_sequence
+                # todo try recurrent inf fast
+                # value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
+                #     None, None,
+                #     root_hidden_state = root_hidden_state,
+                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(root_hidden_state.device),
+                # )
 
-                #last_action_idx = len(action_sequence) - 1
+                last_action_idx = len(actions) + len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
+
                 # just take the last ones
                 # ":" is to keep dimension
-                # value_i = value[i][[last_action_idx]]
-                # reward_i = reward[i][[last_action_idx]]
-                # policy_logits_i = policy_logits[i][[last_action_idx]] # todo emil idea check unceratnity based on several values?
+                value_i = all_values[i][[last_action_idx]]
+                reward_i = all_rewards[i][[last_action_idx]]
+                policy_logits_i = all_policy_logits[i][[last_action_idx]]
 
+                # todo emil idea check unceratnity based on several values?
+                # todo alternative emil, instead of expanding bottom up, expand all at once.
+                # for example if having a budget of 6 you could expand A, B, C, AA, AB, AC, or instead do
+                # AA, BA, CA, AB, BB, CB and just fill in the values for A, B and C (given they are already predicted)
+
+                # todo also try longer runs and not capping after terminal state
                 value_i = models.support_to_scalar(value_i, self.config.support_size).item()
                 reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
 
@@ -765,7 +769,7 @@ class MCTS:
                     value_i,
                     reward_i,
                     policy_logits_i,
-                    hidden_state,
+                    root_hidden_state, # todo, make optional
                 )
 
                 self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
