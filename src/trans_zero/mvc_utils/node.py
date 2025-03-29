@@ -4,6 +4,7 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 
+# todo remove unnecessary fiels methods etc
 
 ObservationType = TypeVar("ObservationType")
 

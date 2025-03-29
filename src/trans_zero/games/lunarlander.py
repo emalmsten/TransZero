@@ -35,7 +35,7 @@ class MuZeroConfig:
         self.project = "TransZeroV3"
 
         self.append = "_local_" + "lun_test"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.network
+        path = self.root / "data/results" / self.game_name / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.network}_{self.name}"
         self.results_path = path / self.name
@@ -200,7 +200,7 @@ class Game(AbstractGame):
 
         self.save_gif = config.render_mode == "rgb_array"
         if self.save_gif:
-            self.gifs_path = "gifs"
+            self.gifs_path = "data/gifs"
             self.gif_name = "lunarlander_trans4"
             self.gif_path = f"{self.gifs_path}/{self.gif_name}"
             self.rgb_arr = []
@@ -682,7 +682,7 @@ class DeterministicLunarLander(gym.Env, EzPickle):
         return np.array(state, dtype=np.float32), reward, done, {}
 
     def render(self, mode="rgb_array"):
-        from Rendering import Viewer, Transform
+        from trans_zero.utils.Rendering import Viewer, Transform
 
         # Create the viewer if it doesn't exist.
         if self.viewer is None:

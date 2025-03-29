@@ -6,8 +6,8 @@ import numpy
 import ray
 import torch
 
-import models
-import networks.muzero_network as mz_net
+from trans_zero.utils import models
+import trans_zero.networks.muzero_network as mz_net
 
 
 @ray.remote

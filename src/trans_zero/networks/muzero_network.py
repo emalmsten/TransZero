@@ -1,8 +1,8 @@
-from networks.fully_connected import MuZeroFullyConnectedNetwork
-from networks.resnet import MuZeroResidualNetwork
-from networks.transformer import MuZeroTransformerNetwork
-from networks.mixed_network import MuZeroMixedNetwork
-from networks.double_network import MuZeroDoubleNetwork
+from trans_zero.networks.fully_connected import MuZeroFullyConnectedNetwork
+from trans_zero.networks.resnet import MuZeroResidualNetwork
+from trans_zero.networks.transformer import MuZeroTransformerNetwork
+from trans_zero.networks.mixed_network import MuZeroMixedNetwork
+from trans_zero.networks.double_network import MuZeroDoubleNetwork
 
 
 class MuZeroNetwork:

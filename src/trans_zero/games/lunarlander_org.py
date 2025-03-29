@@ -1,5 +1,4 @@
 import gymnasium as gym
-import numpy
 
 import datetime
 import pathlib
@@ -43,7 +42,7 @@ class MuZeroConfig:
         self.project = "TransZeroV3"
 
         self.append = "_local_" + "lun_test"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.network
+        path = self.root / "data/results" / self.game_name / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.network}_{self.name}"
         self.results_path = path / self.name
@@ -204,7 +203,7 @@ class Game(AbstractGame):
             self.env.reset(seed=seed)
 
         if self.save_gif:
-            self.gif_path = f"gifs/lunarlander_org/{config.gif_name}.gif"
+            self.gif_path = f"data/gifs/lunarlander_org/{config.gif_name}.gif"
             self.rgb_arr = []
 
         self.done = False

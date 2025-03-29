@@ -1,12 +1,12 @@
 import torch
 
-import models
-from networks.abstract_network import AbstractNetwork
-from models import mlp
+from trans_zero.utils import models
+from trans_zero.networks.abstract_network import AbstractNetwork
+from trans_zero.utils.models import mlp
 import torch.nn as nn
 import math
-from networks.resnet import DownSample, DownsampleCNN, conv3x3, ResidualBlock, DownSampleTrans
-from networks.stable_transformer import StableTransformerXL
+from trans_zero.networks.resnet import DownSample, DownsampleCNN, conv3x3, ResidualBlock, DownSampleTrans
+from trans_zero.networks.stable_transformer import StableTransformerXL
 
 
 class MuZeroTransformerNetwork(AbstractNetwork):

@@ -4,10 +4,9 @@ import time
 import numpy
 import ray
 import torch
-from torch.nn.init import uniform_
 
-import models
-import networks.muzero_network as mz_net
+from trans_zero.utils import models
+import trans_zero.networks.muzero_network as mz_net
 
 @ray.remote
 class ReplayBuffer:

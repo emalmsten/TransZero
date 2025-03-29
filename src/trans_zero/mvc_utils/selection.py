@@ -1,9 +1,8 @@
-import numpy as np
 import torch as th
 
-from value_utils.node import Node
-from value_utils.policies import PolicyDistribution
-from value_utils.utility_functions import get_children_policy_values, get_children_visits, get_transformed_default_values, policy_value
+from .node import Node
+from .policies import PolicyDistribution
+from .utility_functions import get_children_visits, get_transformed_default_values, policy_value
 
 
 # use distributional selection policies instead of OptionalPolicy

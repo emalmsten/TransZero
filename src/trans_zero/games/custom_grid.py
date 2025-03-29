@@ -6,12 +6,9 @@ import gymnasium as gym
 import numpy as np
 import torch
 
-from optimal_path_finder import calculate_steps_and_turns_to_goal
-# todo test this
-try:
-    from .abstract_game import AbstractGame
-except ImportError:
-    from abstract_game import AbstractGame
+from trans_zero.utils.optimal_path_finder import calculate_steps_and_turns_to_goal
+from .abstract_game import AbstractGame
+
 
 maps = {
     "2x2_0h_0d": [
@@ -131,7 +128,7 @@ class MuZeroConfig:
         # Local
         self.testing = False
         self.show_preds = False and self.testing
-        self.preds_file = "predictions/4x4_preds/transformer/test.json"
+        self.preds_file = "data/predictions/4x4_preds/transformer/test.json"
         self.debug_mode = False or self.testing
 
         self.logger = "wandb" if not self.debug_mode else None
@@ -150,7 +147,7 @@ class MuZeroConfig:
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
-        path = self.root / "results" / self.game_name / self.custom_map / self.network
+        path = self.root / "data/results" / self.game_name / self.custom_map / self.network
         self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         self.log_name = f"{self.game_name}_{self.custom_map}_{'random' if self.random_map else'fixed'}_{self.pov}_{self.network}_{self.name}"
         self.results_path = path / self.name
@@ -685,7 +682,7 @@ class SimpleEnv(MiniGridEnv):
 
         if False: # todo
             import json
-            file_path = f"custom_maps/{walkable_size}x{walkable_size}.json"
+            file_path = f"data/custom_maps/{walkable_size}x{walkable_size}.json"
             with open(file_path, "a") as f:
                 game_dict = {
                     "map": custom_map.tolist(),

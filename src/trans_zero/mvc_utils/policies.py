@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
 import torch as th
-import numpy as np
-from value_utils.node import Node
-from value_utils.value_transforms import IdentityValueTransform, ValueTransform
-from value_utils.utility_functions import get_children_policy_values_and_inverse_variance
+
+from .value_transforms import IdentityValueTransform, ValueTransform
+from .utility_functions import get_children_policy_values_and_inverse_variance
 
 
 def custom_softmax(

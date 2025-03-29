@@ -1,8 +1,6 @@
 import torch
-from networks.abstract_network import AbstractNetwork
-from models import mlp
-import torch.nn as nn
-import math
+from trans_zero.networks.abstract_network import AbstractNetwork
+
 
 class MuZeroDoubleNetwork(AbstractNetwork):
     def __init__(

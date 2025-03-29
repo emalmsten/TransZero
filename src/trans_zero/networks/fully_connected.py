@@ -1,6 +1,6 @@
 import torch
-from networks.abstract_network import AbstractNetwork
-from models import mlp
+from trans_zero.networks.abstract_network import AbstractNetwork
+from trans_zero.utils.models import mlp
 
 class MuZeroFullyConnectedNetwork(AbstractNetwork):
     def __init__(

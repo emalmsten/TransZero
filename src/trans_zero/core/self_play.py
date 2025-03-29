@@ -1,5 +1,4 @@
 import math
-import os
 import time
 import json
 
@@ -7,10 +6,10 @@ import numpy
 import ray
 import torch
 
-import models
-import networks.muzero_network as mz_net
-from value_utils.policies import MinimalVarianceConstraintPolicy
-from value_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
+from trans_zero.utils import models
+import trans_zero.networks.muzero_network as mz_net
+from trans_zero.mvc_utils.policies import MinimalVarianceConstraintPolicy
+from trans_zero.mvc_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
 
 
 @ray.remote
@@ -385,7 +384,7 @@ class MCTS:
 
         import time
         timestamp = time.time()
-        self.file_path = f"test_scores/test_ucb_scores_{timestamp}.csv"
+        self.file_path = f"data/test_scores/test_ucb_scores_{timestamp}.csv"
 
         if self.config.test_ucb:
             self.min_max_stats_std = MinMaxStats()

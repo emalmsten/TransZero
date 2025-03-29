@@ -1,8 +1,6 @@
 import torch as th
 
-from value_utils.value_transforms import IdentityValueTransform, ValueTransform
-
-
+from .value_transforms import IdentityValueTransform, ValueTransform
 
 
 # TODO: can improve this implementation

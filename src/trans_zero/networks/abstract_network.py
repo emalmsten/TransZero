@@ -1,6 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
-from models import dict_to_cpu
+from trans_zero.utils.models import dict_to_cpu
 
 
 class AbstractNetwork(ABC, torch.nn.Module):

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trans_zero"
+version = "0.0.1"
+description = "TODO, write a description"
+authors = [{ name = "Emil Malmsten", email = "emil.malmsten@outlook.com" }]
+dependencies = [
+#    "gym[atari]",
+#    "opencv-python",
+#    "torch",
+    # todo add more dependencies here
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
