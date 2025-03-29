@@ -1,4 +1,4 @@
-from trans_zero.core.muzero import MuZero, setup_testing, cmd_line_init
+from trans_zero.core.muzero import MuZero
 import argparse
 import json
 import os
@@ -7,69 +7,196 @@ import sys
 import wandb
 import ray
 
+import nevergrad
 
 
-def setup(test=False):
-    parser = argparse.ArgumentParser(description="Process config file.")
-    parser.add_argument('-c', '--config', type=str, default=None, help='(part of) config as dict')
-    parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test') # seq or other
-    parser.add_argument('-sf', '--seq_file', type=str, default=None, help='If seq testing, load from this file')
-    parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='From which cluster to run, none if local')
-    parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
-    parser.add_argument('-mp', '--model_path', type=str, default=None, help='Path to model.checkpoint')
-    parser.add_argument('-rbp', '--replay_buffer_path', type=str, default=None, help='Path to replay_buffer.pkl')
-    parser.add_argument('-wid', '--wandb_run_id', type=str, default=None, help='Wandb id')
-    parser.add_argument('-wmn', '--wandb_model_number', type=bool, default=None, help='Model number from wandb id')
-    args = parser.parse_args()
+from trans_zero.analysis.hyperparameter_search import hyperparameter_search
+from trans_zero.analysis.testing import setup_testing
 
-    if args.run_from_cluster == "db" or args.run_from_cluster == "rp":
-        wandb_key = os.getenv("WANDB_API_KEY")
-        wandb.login(key=wandb_key, relogin=True)
-    elif args.run_from_cluster is None:
-        # manual override
-        args.game_name = "custom_grid" #"lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" # #
-        args.config = {
-            "debug_mode": False or (sys.gettrace() is not None),
-        }
-        if test or args.config["debug_mode"]:
-            args.config["logger"] = None
-            args.config["num_workers"] = 1
-        # todo cleanup
 
-        #args.wandb_run_id = "6k4ghx4k"
-        #args.wandb_model_number = 320000
-        #args.model_path = "models/trans/trans_lunar_320k.checkpoint"
+def load_model_menu(muzero, game_name):
+    # Configure running options
+    options = ["Specify paths manually"] + sorted(
+        (pathlib.Path("results") / game_name).glob("*/")
+    ) # todo consider if this is the right path
+    options.reverse()
+    print()
+    for i in range(len(options)):
+        print(f"{i}. {options[i]}")
 
-        if test:
-            args.test_mode = "n_maps!!" #
-            args.config={"testing": True}
+    choice = input("Enter a number to choose a model to load: ")
+    valid_inputs = [str(i) for i in range(len(options))]
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
+    choice = int(choice)
 
-        logger = "wandb"
+    if choice == (len(options) - 1):
+        # manual path option
+        checkpoint_path = input(
+            "Enter a path to the model.checkpoint, or ENTER if none: "
+        )
+        while checkpoint_path and not pathlib.Path(checkpoint_path).is_file():
+            checkpoint_path = input("Invalid checkpoint path. Try again: ")
+        replay_buffer_path = input(
+            "Enter a path to the replay_buffer.pkl, or ENTER if none: "
+        )
+        while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
+            replay_buffer_path = input("Invalid replay buffer path. Try again: ")
+    else:
+        checkpoint_path = options[choice] / "model.checkpoint"
+        replay_buffer_path = options[choice] / "replay_buffer.pkl"
 
-        if logger == "tensorboard":
-            from tensorboard import program
-            log_dir = "./results"  # Your log directory path
-            port = 6006
+    muzero.load_model(
+        checkpoint_path=checkpoint_path,
+        replay_buffer_path=replay_buffer_path,
+    )
 
-            # Initialize TensorBoard programmatically
-            tb = program.TensorBoard()
-            tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
-            url = tb.launch()
-        elif logger == "wandb":
+
+def cmd_line_init():
+    games = [
+        filename.stem
+        for filename in sorted(list((pathlib.Path.cwd() / "games").glob("*.py")))
+        if filename.name != "abstract_game.py"
+    ]
+    for i in range(len(games)):
+        print(f"{i + 1}. {games[i]}")
+    choice = input("Enter a number to choose the game: ")
+    valid_inputs = [str(i + 1) for i in range(len(games))]
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
+
+    # Initialize MuZero
+    choice = int(choice)
+    game_name = games[choice]
+    print(f"Selected game: {game_name}")
+    muzero = MuZero(game_name)
+
+    while True:
+        # Configure running options
+        options = [
+            "Train",
+            "Load pretrained model",
+            "Diagnose model",
+            "Render some self play games",
+            "Play against MuZero",
+            "Test the game manually",
+            "Hyperparameter search",
+            "Debug",
+            "Exit",
+        ]
+        print()
+        for i in range(len(options)):
+            print(f"{i}. {options[i]}")
+
+        valid_inputs = [str(i) for i in range(len(options))]
+        choice = input("Choose how to run")
+
+        while choice not in valid_inputs:
+            choice = input("Invalid input, enter a number listed above: ")
+        choice = int(choice)
+        if choice == 0:
+            muzero.train()
+        elif choice == 1:
+            load_model_menu(muzero, game_name)
+        elif choice == 2:
+            muzero.diagnose_model(30)
+        elif choice == 3:
+            muzero.test(render=True, opponent="self", muzero_player=None)
+        elif choice == 4:
+            muzero.test(render=True, opponent="human", muzero_player=0)
+        elif choice == 5:
+            env = muzero.Game()
+            env.reset()
+            env.render()
+
+            done = False
+            while not done:
+                action = env.human_to_action()
+                observation, reward, done = env.step(action)
+                print(f"\nAction: {env.action_to_string(action)}\nReward: {reward}")
+                env.render()
+        elif choice == 6:
+            # Define here the parameters to tune
+            # Parametrization documentation: https://facebookresearch.github.io/nevergrad/parametrization.html
+            muzero.terminate_workers()
+            del muzero
+            budget = 20
+            parallel_experiments = 2
+            lr_init = nevergrad.p.Log(lower=0.0001, upper=0.1)
+            discount = nevergrad.p.Log(lower=0.95, upper=0.9999)
+            parametrization = nevergrad.p.Dict(lr_init=lr_init, discount=discount)
+            best_hyperparameters = hyperparameter_search(
+                game_name, parametrization, budget, parallel_experiments, 20
+            )
+            muzero = MuZero(game_name, best_hyperparameters)
+        elif choice == 7:
+            print("TODO implement debug") # TODO
             pass
-            #wandb_key = os.getenv("WANDB_API_KEY")
-            #print(wandb_key)
-            #wandb.login(key=wandb_key, relogin=True)
+        else:
+            break
+        print("\nDone")
 
-    if args.config is not None and type(args.config) is str and args.config.endswith(".json"):
-        print("Getting config from file")
-        with open(args.config) as f:
-            args.config = json.load(f)
-        # if it has observation shape
-        if "observation_shape" in args.config:
-            args.config["observation_shape"] = tuple(args.config["observation_shape"]) # todo clean up
 
-    print(args)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Process config file.")
+    parser.add_argument('-c', '--config', type=str, default=None, help='Config as dict or JSON file')
+    parser.add_argument('-tm', '--test_mode', type=str, default=None, help='How to test (e.g., seq, n_maps)')
+    parser.add_argument('-sf', '--seq_file', type=str, default=None, help='Sequence file for seq testing')
+    parser.add_argument('-rfc', '--run_from_cluster', type=str, default=None, help='Cluster identifier')
+    parser.add_argument('-game', '--game_name', type=str, default=None, help='Name of the game module')
+    parser.add_argument('-mp', '--model_path', type=str, default=None, help='Path to model checkpoint')
+    parser.add_argument('-rbp', '--replay_buffer_path', type=str, default=None, help='Path to replay buffer')
+    parser.add_argument('-wid', '--wandb_run_id', type=str, default=None, help='Wandb run ID')
+    parser.add_argument('-wmn', '--wandb_model_number', type=int, default=None, help='Model number from Wandb')
+    return parser.parse_args()
+
+
+def load_config(config):
+    if isinstance(config, str) and config.endswith('.json'):
+        with open(config) as f:
+            config = json.load(f)
+
+    if 'observation_shape' in config: # todo consider better method
+        config['observation_shape'] = tuple(config['observation_shape'])
+
+    return config
+
+
+def setup_local_args(cmd_args, test):
+    cmd_args.game_name = "custom_grid"  # "lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" #
+    # args.wandb_run_id = "6k4ghx4k"
+    # args.wandb_model_number = 320000
+    # args.model_path = "models/trans/trans_lunar_320k.checkpoint"
+
+    if test:
+        cmd_args.test_mode = "n_maps!!"  #
+        cmd_args.config = {"testing": True}
+
+    cmd_args.config = {
+        "debug_mode": False or (sys.gettrace() is not None),
+    }
+
+    # remove logger and use only 1 worker if in debug mode
+    if test or cmd_args.config["debug_mode"]:
+        cmd_args.config["logger"] = None
+        cmd_args.config["num_workers"] = 1
+
+
+    return cmd_args
+
+
+def setup(args, test=False):
+    if args.run_from_cluster in ("db", "rp"):
+        wandb.login(key=os.getenv("WANDB_API_KEY"), relogin=True)
+    elif args.run_from_cluster is not None:
+        raise ValueError(f"Unknown cluster: {args.run_from_cluster}")
+    else:
+        args = setup_local_args(args, test)
+
+    if args.config:
+        args.config = load_config(args.config)
+
+    print(f"Final args: {args}")
     return args
 
 
@@ -78,37 +205,50 @@ def main(args):
         cmd_line_init()
         return
 
-    test_mode = args.test_mode
-
     print(f"Selected game: {args.game_name}")
-    muzero = MuZero(args.game_name, args.config, restart_wandb_id=args.wandb_run_id, test=test_mode is not None)
-    logger = muzero.config.logger
+    muzero = MuZero(args.game_name, args.config, restart_wandb_id=args.wandb_run_id, test=args.test_mode is not None)
 
-    if logger:
-        if muzero.config.save_model:
-            if type(muzero.config.results_path) is str:
-                muzero.config.results_path = pathlib.Path(muzero.config.results_path)
-            muzero.config.results_path.mkdir(parents=True, exist_ok=True)
+    if muzero.config.logger == "wandb":
+        muzero.init_wandb(args)
 
-        if logger == "wandb":
-            muzero.init_wandb(args)
-
-    if args.wandb_run_id is not None: # if wandb id in args
-        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(args.wandb_run_id, args.wandb_model_number, download_replay_buffer=test_mode is not None)
+    checkpoint_path, replay_buffer_path = None, None
+    if args.wandb_run_id:
+        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(
+            args.wandb_run_id, args.wandb_model_number, download_replay_buffer=args.test_mode is not None
+        )
     else:
-        checkpoint_path = args.model_path
-        replay_buffer_path = args.replay_buffer_path
+        checkpoint_path, replay_buffer_path = args.model_path, args.replay_buffer_path
 
-    if checkpoint_path is not None:
+    if checkpoint_path:
         muzero.load_model(checkpoint_path, replay_buffer_path)
 
-    if args.test_mode is not None:
-        return setup_testing(muzero, args)
+    if args.test_mode:
+        setup_testing(muzero, args)
     else:
         muzero.train()
 
+
 if __name__ == "__main__":
-    args = setup(test=False)
-    main(args)
-    wandb.finish()
-    ray.shutdown()
+    args = parse_args()
+    args = setup(args, test=False)
+
+    try:
+        main(args)
+    finally:
+        wandb.finish()
+        ray.shutdown()
+
+
+
+
+# todo consider if tensorboard is necessary
+# if logger == "tensorboard":
+#     from tensorboard import program
+#
+#     log_dir = "./results"  # Your log directory path
+#     port = 6006
+#
+#     # Initialize TensorBoard programmatically
+#     tb = program.TensorBoard()
+#     tb.configure(argv=[None, "--logdir", log_dir, "--port", str(port)])
+#     url = tb.launch()

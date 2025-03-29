@@ -8,6 +8,7 @@ import torch
 
 from trans_zero.utils.optimal_path_finder import calculate_steps_and_turns_to_goal
 from .abstract_game import AbstractGame
+from trans_zero.paths import PROJECT_ROOT
 
 
 maps = {
@@ -107,7 +108,7 @@ except ModuleNotFoundError:
 
 class MuZeroConfig:
     def __init__(self, root=None):
-        self.root = root or pathlib.Path(__file__).resolve().parents[1]
+        self.root = PROJECT_ROOT if root is None else root
         cuda = torch.cuda.is_available()
 
         self.max_time_minutes = None
@@ -128,7 +129,7 @@ class MuZeroConfig:
         # Local
         self.testing = False
         self.show_preds = False and self.testing
-        self.preds_file = "data/predictions/4x4_preds/transformer/test.json"
+        self.preds_file = f"{self.root}/data/predictions/4x4_preds/transformer/test.json"
         self.debug_mode = False or self.testing
 
         self.logger = "wandb" if not self.debug_mode else None

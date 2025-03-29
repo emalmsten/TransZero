@@ -1,6 +1,8 @@
 
 import datetime
 from pathlib import Path
+# todo refactor this to not introduce strange bugs
+
 
 def reset_names(cfg):
     game_name = Path(cfg.game_name)
@@ -12,7 +14,7 @@ def reset_names(cfg):
         game_name = game_name / cfg.custom_map
         game_str += f"_{cfg.custom_map}_{'random' if cfg.random_map else 'fixed'}_{cfg.pov}"
 
-    path = Path(cfg.root) / "results" / game_name / cfg.network
+    path = Path(cfg.root) / "data/results" / game_name / cfg.network
     cfg.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{cfg.append}'
     cfg.log_name = f"{game_str}_{cfg.network}_{cfg.name}"
     cfg.results_path = path / cfg.name

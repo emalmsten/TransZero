@@ -20,6 +20,19 @@ keys = [
     "num_reanalysed_games",
 ]
 
+def get_wandb_config(entity, project, run_id):
+    config = wandb.Api().run(f"{entity}/{project}/{run_id}").config
+    # remove "project" attribute
+    del config["project"]
+    del config["results_path"]
+    del config["testing"]
+    if "max_time_minutes" in config:
+        del config["max_time_minutes"]
+    if "observation_shape" in config:
+        config["observation_shape"] = tuple(config["observation_shape"])
+
+    return config
+
 def tensorboard_logging(info, counter, writer):
     writer.add_scalar(
         "1.Total_reward/1.Total_reward",
