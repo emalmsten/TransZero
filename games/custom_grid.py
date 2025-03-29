@@ -115,7 +115,7 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
 
-        self.expansion_strategy = "deep"
+        self.expansion_strategy = None
         self.expansion_budget = 4 # atleast 1 node needs to be expanded
 
         # action selection
@@ -183,7 +183,7 @@ class MuZeroConfig:
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
         ### Self-Play
-        self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.num_workers = 4 # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
         self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
@@ -224,7 +224,7 @@ class MuZeroConfig:
         self.transformer_layers = 4
         self.transformer_heads = 8
         self.transformer_hidden_size = 32
-        self.max_seq_length = 100 # todo reconsider length
+        self.max_seq_length = 50 # todo reconsider length
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
