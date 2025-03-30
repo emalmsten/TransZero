@@ -82,7 +82,6 @@ class ReplayBuffer:
         weight_batch = [] if self.config.PER else None
         forward_obs_batch = [] if self.config.encoding_loss_weight else None
 
-
         for game_id, game_history, game_prob in self.sample_n_games(
             self.config.batch_size
         ):

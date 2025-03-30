@@ -1,11 +1,14 @@
 import copy
 import time
+
+from rsa.key import calculate_keys_custom_exponent
 from torch.optim.lr_scheduler import LambdaLR
 
 import numpy
 import ray
 import torch
 
+from snippets.inference import prediction
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 
@@ -60,6 +63,60 @@ class Trainer:
                 copy.deepcopy(initial_checkpoint["optimizer_state"])
             )
 
+    def save_to_shared_storage(self, shared_storage, losses, replay_buffer):
+        (
+            _,
+            total_loss,
+            value_loss,
+            reward_loss,
+            policy_loss,
+            enc_state_loss
+        ) = losses
+
+        # Save to the shared storage
+        if self.training_step % self.config.checkpoint_interval == 0:
+            shared_storage.set_info.remote(
+                {
+                    "weights": copy.deepcopy(self.model.get_weights()),
+                    "optimizer_state": copy.deepcopy(
+                        models.dict_to_cpu(self.optimizer.state_dict())
+                    ),
+                }
+            )
+
+        # Save to the shared storage
+        if self.config.save_model and self.training_step % self.config.save_interval == 0:
+            shared_storage.save_checkpoint.remote(self.training_step)
+            shared_storage.save_buffer.remote(replay_buffer, self.training_step,
+                                              shared_storage.get_info.remote("num_played_games"),
+                                              shared_storage.get_info.remote("num_reanalysed_games"))
+
+        if self.config.network == "double":
+            value_loss, trans_value_loss = value_loss
+            reward_loss, trans_reward_loss = reward_loss
+            policy_loss, trans_policy_loss = policy_loss
+
+            shared_storage.set_info.remote(
+                {
+                    "training_step": self.training_step,
+                    "trans_value_loss": trans_value_loss,
+                    "trans_reward_loss": trans_reward_loss,
+                    "trans_policy_loss": trans_policy_loss
+                })
+
+        shared_storage.set_info.remote(
+            {
+                "training_step": self.training_step,
+                "lr": self.optimizer.param_groups[0]["lr"],
+                "total_loss": total_loss,
+                "value_loss": value_loss,
+                "reward_loss": reward_loss,
+                "policy_loss": policy_loss,
+                "enc_state_loss": enc_state_loss if enc_state_loss is not None else 0.0
+            }
+        )
+
+
     def continuous_update_weights(self, replay_buffer, shared_storage):
         # Wait for the replay buffer to be filled
         while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
@@ -67,68 +124,21 @@ class Trainer:
 
         next_batch = replay_buffer.get_batch.remote()
         # Training loop
+
         while self.training_step < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
             self.update_lr()
-            (
-                priorities,
-                total_loss,
-                value_loss,
-                reward_loss,
-                policy_loss,
-                enc_state_loss
-            ) = self.update_weights(batch)
+            losses = self.update_weights(batch)
+            priorities = losses[0]
 
             if self.config.PER:
                 # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
                 replay_buffer.update_priorities.remote(priorities, index_batch)
 
-            # Save to the shared storage
-            if self.training_step % self.config.checkpoint_interval == 0:
-                shared_storage.set_info.remote(
-                    {
-                        "weights": copy.deepcopy(self.model.get_weights()),
-                        "optimizer_state": copy.deepcopy(
-                            models.dict_to_cpu(self.optimizer.state_dict())
-                        ),
-                    }
-                )
-
-            if self.config.save_model and self.training_step % self.config.save_interval == 0:
-                shared_storage.save_checkpoint.remote(self.training_step)
-                shared_storage.save_buffer.remote(replay_buffer, self.training_step,
-                    shared_storage.get_info.remote("num_played_games"),
-                    shared_storage.get_info.remote("num_reanalysed_games"))
-
-
-            if self.config.network == "double":
-                value_loss, trans_value_loss = value_loss
-                reward_loss, trans_reward_loss = reward_loss
-                policy_loss, trans_policy_loss = policy_loss
-
-                shared_storage.set_info.remote(
-                    {
-                        "training_step": self.training_step,
-                        "trans_value_loss": trans_value_loss,
-                        "trans_reward_loss": trans_reward_loss,
-                        "trans_policy_loss": trans_policy_loss
-                    })
-
-
-            shared_storage.set_info.remote(
-                {
-                    "training_step": self.training_step,
-                    "lr": self.optimizer.param_groups[0]["lr"],
-                    "total_loss": total_loss,
-                    "value_loss": value_loss,
-                    "reward_loss": reward_loss,
-                    "policy_loss": policy_loss,
-                    "enc_state_loss": enc_state_loss if enc_state_loss is not None else 0.0
-                }
-            )
+            self.save_to_shared_storage(shared_storage, losses, replay_buffer)
 
             # Managing the self-play / training ratio
             if self.config.training_delay:
@@ -145,7 +155,222 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
-    def loss_loop_trans(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch, action_mask, trans_output = None, rep_enc_states = None):
+    def format_batch(self, batch, device):
+        (
+            observation_batch,
+            action_batch,
+            target_value,
+            target_reward,
+            target_policy,
+            weight_batch,
+            gradient_scale_batch,
+            mask_batch,
+            forward_obs_batch
+        ) = batch
+
+        # Keep values as scalars for calculating the priorities for the prioritized replay
+        if self.config.PER:
+            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
+
+        observation_batch = torch.tensor(numpy.array(observation_batch)).float().to(device)
+        action_batch = torch.tensor(action_batch).long().to(device).unsqueeze(-1)
+        target_value = torch.tensor(target_value).float().to(device)
+        target_reward = torch.tensor(target_reward).float().to(device)
+        target_policy = torch.tensor(target_policy).float().to(device)
+        gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
+        mask_batch = torch.tensor(mask_batch).to(device)  # bool
+        if forward_obs_batch is not None:
+            forward_obs_batch = torch.stack(forward_obs_batch).float().to(device)
+
+        return observation_batch, action_batch, target_value, target_reward, target_policy, weight_batch, gradient_scale_batch, mask_batch, forward_obs_batch
+
+
+    # todo consider if this should be used, then explain and test
+    def calc_rep_enc_states(self, forward_obs_batch):
+        B, Seq, C, H, W = forward_obs_batch.shape
+        forward_obs_batch = forward_obs_batch.reshape(B * Seq, C, H, W)
+        rep_enc_states = self.model.representation(forward_obs_batch)
+        rep_enc_states = self.model.create_input_sequence(rep_enc_states, None)
+        rep_enc_states = self.model.transformer_encoder(rep_enc_states)
+        rep_enc_states = rep_enc_states.reshape(B, Seq, -1)
+        return rep_enc_states
+
+
+    def calc_rep_enc_state_loss(self, trans_output, rep_enc_states, weighting_factors, non_padding_mask, scaling_factors):
+        enc_state_losses = self.loss_function_states(trans_output, rep_enc_states.detach())
+        if self.config.loss_weight_decay is not None:
+            enc_state_losses *= weighting_factors
+        enc_state_losses = enc_state_losses * non_padding_mask
+        enc_state_losses = enc_state_losses[:, 1:] / scaling_factors[:, 1:]
+        enc_state_loss = enc_state_losses.sum(dim=1)
+        return enc_state_loss
+
+
+
+    def get_predictions_fast_trans(self, init_predictions, root_hidden_state, action_batch, mask_batch):
+        value, reward, policy_logits = init_predictions
+
+        # start the action batch from 1 since the first action is not used
+        trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
+            root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
+        )
+        # todo, only really reward necessary
+        # set the 0th value from the inital inference
+        trans_value[:, 0] = value
+        trans_reward[:, 0] = reward
+        trans_policy_logits[:, 0] = policy_logits
+        predictions = (trans_value, trans_reward, trans_policy_logits)
+
+        return predictions, transformer_output
+
+
+    def get_predictions(self, init_predictions, root_hidden_state, action_batch, transformer_net):
+        init_value, init_reward, init_policy_logits = init_predictions
+        values, rewards, policy_logits = [init_value], [init_reward], [init_policy_logits]
+        hidden_state = root_hidden_state
+
+        for i in range(1, action_batch.shape[1]):
+            # Instead of an action, we send the whole action sequence from start to the current action
+            if transformer_net:
+                action_sequence = action_batch[:, 1:i].squeeze(-1)
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    None, None, action_sequence=action_sequence,
+                    root_hidden_state=root_hidden_state
+                )
+            else:
+                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+                    hidden_state, action_batch[:, i]
+                )
+
+            # Scale the gradient at the start of the dynamics function (See paper appendix Training)
+            if hidden_state is not None:
+                hidden_state.register_hook(lambda grad: grad * 0.5)
+
+            values.append(value)
+            rewards.append(reward)
+            policy_logits.append(policy_logits)
+
+        return values, rewards, policy_logits
+
+
+    def calc_weighting_factors(self, device):
+        weighting_factors = torch.tensor(
+            [self.config.loss_weight_decay ** i for i in range(self.config.num_unroll_steps + 1)],
+            device=device
+        ).unsqueeze(0)
+
+        # 2. Normalize
+        weighting_sum = weighting_factors.sum()
+        weighting_factors = weighting_factors / weighting_sum
+
+        # 3. Scale to match the total sum of (num_unroll_steps + 1)
+        n_steps = self.config.num_unroll_steps + 1
+        weighting_factors = weighting_factors * n_steps
+        return weighting_factors
+
+
+    def weigh_losses(self, losses, weighting_factors):
+        value_losses, reward_losses, policy_losses = losses
+
+        value_losses *= weighting_factors
+        reward_losses *= weighting_factors
+        policy_losses *= weighting_factors
+
+        return value_losses, reward_losses, policy_losses
+
+
+    def update_weights(self, batch):
+        """
+        Perform one training step.
+        """
+
+        device = next(self.model.parameters()).device
+
+        transformer_net = self.config.network == "transformer"
+        standard_net = self.config.network == "fully_connected" or self.config.network == "resnet"
+
+        # format batch to torch tensors
+        (
+            observation_batch, action_batch,
+            target_value, target_reward, target_policy,
+            weight_batch, gradient_scale_batch,
+            mask_batch, forward_obs_batch
+        ) = self.format_batch(batch, device)
+
+        #
+        target_value_scalar = numpy.array(target_value.cpu(), dtype="float32")
+        priorities = numpy.zeros_like(target_value_scalar)
+
+        target_value = models.scalar_to_support(target_value, self.config.support_size)
+        target_reward = models.scalar_to_support(target_reward, self.config.support_size)
+
+        targets = (target_value, target_reward, target_policy)
+
+        value, reward, policy_logits, hidden_state = self.model.initial_inference(observation_batch)
+        init_predictions = (value, reward, policy_logits)
+        root_hidden_state = hidden_state
+
+
+        transformer_output, rep_enc_states, enc_state_loss = None, None, None
+        if self.config.encoding_loss_weight:
+            rep_enc_states = self.calc_rep_enc_states(forward_obs_batch)
+
+        # only used when doing rep enc state loss
+        if transformer_net and self.config.get_predictions_fast:
+            predictions, transformer_output = self.get_predictions_fast_trans(init_predictions, root_hidden_state, action_batch, mask_batch)
+        else:
+            predictions = self.get_predictions(init_predictions, hidden_state, action_batch, mask_batch)
+
+
+        if transformer_net:
+            value_loss, reward_loss, policy_loss, enc_state_loss = self.loss_loop_trans(
+                predictions, targets, gradient_scale_batch, mask_batch, transformer_output, rep_enc_states)
+        else:
+            value_loss, reward_loss, policy_loss = self.loss_loop_fast(predictions, targets, gradient_scale_batch)
+
+
+        if priorities is not None:
+            # merge the first two dimensions, later split them up
+            values = predictions[0]
+            B, T, D = values.shape
+            merged_values = values.reshape(B * T, D)
+
+            pred_value_scalars = models.support_to_scalar(merged_values, self.config.support_size).detach().cpu().numpy()
+            pred_value_scalars = pred_value_scalars.reshape(B, T)
+            priorities = (
+                    numpy.abs(pred_value_scalars - target_value_scalar)
+                    ** self.config.PER_alpha
+            )
+
+        # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
+        reward_loss_weight = 1 if self.config.predict_reward else 0
+        loss = value_loss * self.config.value_loss_weight + reward_loss * reward_loss_weight + policy_loss
+
+        if enc_state_loss is not None:
+            loss += (enc_state_loss * self.config.encoding_loss_weight)
+            # for plotting
+            enc_state_loss = enc_state_loss.mean().item()
+
+        if self.config.PER:
+            # Correct PER bias by using importance-sampling (IS) weights
+            loss *= weight_batch
+        # Mean over batch dimension (pseudocode do a sum)
+        loss = loss.mean()
+
+        # Optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        self.training_step += 1
+
+        loss, value_loss, reward_loss, policy_loss = (
+            loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
+        )
+
+        return priorities, loss, value_loss, reward_loss, policy_loss, enc_state_loss
+
+
+    def loss_loop_trans(self, predictions, targets, gradient_scale_batch, action_mask, trans_output = None, rep_enc_states = None):
         (values, rewards, policy_logits) = predictions
         (target_value, target_reward, target_policy) = targets
 
@@ -155,35 +380,18 @@ class Trainer:
         )
 
         # Generate exponentially decreasing weights
+        weighting_factors = None
         if self.config.loss_weight_decay is not None:
-
-            def calc_weighting_factors():
-                weighting_factors = torch.tensor(
-                    [self.config.loss_weight_decay ** i for i in range(self.config.num_unroll_steps + 1)],
-                    device=values.device
-                ).unsqueeze(0)
-
-                # 2. Normalize
-                weighting_sum = weighting_factors.sum()
-                weighting_factors = weighting_factors / weighting_sum
-
-                # 3. Scale to match the total sum of (num_unroll_steps + 1)
-                n_steps = self.config.num_unroll_steps + 1
-                weighting_factors = weighting_factors * n_steps
-                return weighting_factors
-
-            weighting_factors = calc_weighting_factors()
-
-            value_losses *= weighting_factors
-            reward_losses *= weighting_factors
-            policy_losses *= weighting_factors
-
+            weighting_factors = self.calc_weighting_factors(values.device)
+            value_losses, reward_losses, policy_losses = self.weigh_losses(
+                (value_losses, reward_losses, policy_losses), weighting_factors
+            )
 
         reward_losses[:,0] = 0.0
-        # todo also no losses for the steps after the game concluded
 
         non_padding_mask = ~action_mask
         # Apply mask to losses
+        # todo consider if you should really remove losses after game ended
         value_losses = value_losses * non_padding_mask
         reward_losses = reward_losses * non_padding_mask
         policy_losses = policy_losses * non_padding_mask
@@ -200,45 +408,17 @@ class Trainer:
         reward_loss = reward_losses.sum(dim=1)
         policy_loss = policy_losses.sum(dim=1)
 
+        enc_state_loss = None
         if rep_enc_states is not None:
-            enc_state_losses = self.loss_function_states(trans_output, rep_enc_states.detach())
-            if self.config.loss_weight_decay is not None:
-                enc_state_losses *= weighting_factors
-            enc_state_losses = enc_state_losses * non_padding_mask
-            enc_state_losses = enc_state_losses[:, 1:] / scaling_factors[:, 1:]
-            enc_state_loss = enc_state_losses.sum(dim=1)
-        else:
-            enc_state_loss = None
+            enc_state_loss = self.calc_rep_enc_state_loss(trans_output, rep_enc_states, weighting_factors, non_padding_mask, scaling_factors)
 
-        if priorities is not None:
-            B, T, D = values.shape
-            merged_values = values.reshape(B * T, D)
-
-            # todo consider going away from CPU
-            pred_value_scalars = models.support_to_scalar(
-                merged_values, self.config.support_size
-            ).detach().cpu().numpy()
-            pred_value_scalars = pred_value_scalars.reshape(B, T)
-            priorities = (
-                    numpy.abs(pred_value_scalars - target_value_scalar) ** self.config.PER_alpha
-            )
-
-        return value_loss, reward_loss, policy_loss, priorities, enc_state_loss
+        return value_loss, reward_loss, policy_loss, enc_state_loss
 
 
-
-
-    def loss_loop_fast(self, predictions, targets, target_value_scalar, priorities, gradient_scale_batch):
+    def loss_loop_fast(self, predictions, targets, gradient_scale_batch):
 
         (target_value, target_reward, target_policy) = targets
-
-        if self.config.network == "transformer":
-            (values, rewards, policy_logits) = predictions
-        else:
-            values, rewards, policy_logits = zip(*predictions)  # Unpack predictions
-            values = torch.stack(values, dim=1) #.squeeze(-1)  # Shape: (time_steps, batch_size)
-            rewards = torch.stack(rewards, dim=1)#.squeeze(-1)  # Shape: (time_steps, batch_size)
-            policy_logits = torch.stack(policy_logits, dim=1)  # Shape: (time_steps, batch_size, policy_size)
+        (values, rewards, policy_logits) = predictions
 
         # Compute losses
         value_losses, reward_losses, policy_losses = self.loss_function(
@@ -261,192 +441,8 @@ class Trainer:
         reward_loss = reward_losses.sum(dim=-1)
         policy_loss = policy_losses.sum(dim=-1)
 
-        if priorities is not None:
-            # merge the first two dimensions, later split them up
-            B, T, D = values.shape
-            merged_values = values.reshape(B * T, D)
+        return value_loss, reward_loss, policy_loss
 
-            pred_value_scalars = models.support_to_scalar(merged_values, self.config.support_size).detach().cpu().numpy()
-            pred_value_scalars = pred_value_scalars.reshape(B, T)
-            priorities = (
-                    numpy.abs(pred_value_scalars - target_value_scalar)
-                    ** self.config.PER_alpha
-            )
-
-        return value_loss, reward_loss, policy_loss, priorities
-
-
-    def update_weights(self, batch):
-        """
-        Perform one training step.
-        """
-
-        double_net = self.config.network == "double"
-        trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
-        full_transformer = self.config.network == "transformer"
-
-        (
-            observation_batch,
-            action_batch,
-            target_value,
-            target_reward,
-            target_policy,
-            weight_batch,
-            gradient_scale_batch,
-            mask_batch,
-            forward_obs_batch
-        ) = batch
-
-        # Keep values as scalars for calculating the priorities for the prioritized replay
-        target_value_scalar = numpy.array(target_value, dtype="float32")
-        priorities = numpy.zeros_like(target_value_scalar)
-
-        device = next(self.model.parameters()).device
-        if self.config.PER:
-            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
-        observation_batch = torch.tensor(numpy.array(observation_batch)).float().to(device)
-
-        action_batch = torch.tensor(action_batch).long().to(device).unsqueeze(-1)
-        target_value = torch.tensor(target_value).float().to(device)
-        target_reward = torch.tensor(target_reward).float().to(device)
-        target_policy = torch.tensor(target_policy).float().to(device)
-        gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
-        mask_batch = torch.tensor(mask_batch).to(device) # bool
-        if forward_obs_batch is not None:
-            forward_obs_batch = torch.stack(forward_obs_batch).float().to(device)
-
-        # observation_batch: batch, channels, height, width
-        # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
-        # target_value: batch, num_unroll_steps+1
-        # target_reward: batch, num_unroll_steps+1
-        # target_policy: batch, num_unroll_steps+1, len(action_space)
-        # gradient_scale_batch: batch, num_unroll_steps+1
-
-        target_value = models.scalar_to_support(target_value, self.config.support_size)
-        target_reward = models.scalar_to_support(target_reward, self.config.support_size)
-        # target_value: batch, num_unroll_steps+1, 2*support_size+1
-        # target_reward: batch, num_unroll_steps+1, 2*support_size+1
-        targets = (target_value, target_reward, target_policy)
-
-        value, reward, policy_logits, hidden_state = self.model.initial_inference(
-            observation_batch
-        )
-        root_hidden_state = hidden_state
-
-        if double_net:
-            value, trans_value = torch.chunk(value, 2, dim=0)
-            reward, trans_reward = torch.chunk(reward, 2, dim=0)
-            policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
-            hidden_state, root_hidden_state = torch.chunk(hidden_state, 2, dim=0)
-            trans_predictions = [(trans_value, trans_reward, trans_policy_logits)]
-
-        predictions = [(value, reward, policy_logits)]
-
-        if full_transformer:
-            # start the action batch from 1 since the first action is not used
-            trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
-                root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
-            )
-            # todo, only really reward necessary
-            trans_value[:, 0] = value
-            trans_reward[:, 0] = reward
-            trans_policy_logits[:, 0] = policy_logits
-            predictions = (trans_value, trans_reward, trans_policy_logits)
-
-            if self.config.encoding_loss_weight:
-                B, Seq, C, H, W = forward_obs_batch.shape
-                forward_obs_batch = forward_obs_batch.reshape(B*Seq, C, H, W)
-                rep_enc_states = self.model.representation(forward_obs_batch)
-                rep_enc_states = self.model.create_input_sequence(rep_enc_states, None)
-                rep_enc_states = self.model.transformer_encoder(rep_enc_states)
-
-                rep_enc_states = rep_enc_states.reshape(B, Seq, -1)
-            else:
-                rep_enc_states = None
-
-
-
-        loop_length = action_batch.shape[1] if not full_transformer else 0
-        for i in range(1, loop_length):
-            # Instead of an action, we send the whole action sequence from start to the current action
-            if trans_net:
-                action_sequence = action_batch[:, 1:i].squeeze(-1)
-                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
-                )
-            else:
-                value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-                    hidden_state, action_batch[:, i]
-                )
-
-            # Scale the gradient at the start of the dynamics function (See paper appendix Training)
-            if hidden_state is not None:
-                hidden_state.register_hook(lambda grad: grad * 0.5)
-
-            if double_net:
-                # todo trans_pred.app(values[second_half, etc etc,
-                value, trans_value = torch.chunk(value, 2, dim=0)
-                reward, trans_reward = torch.chunk(reward, 2, dim=0)
-                policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
-                trans_predictions.append((trans_value, trans_reward, trans_policy_logits))
-
-            predictions.append((value, reward, policy_logits))
-
-        # value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
-        #     predictions, target_value, target_reward, target_policy,
-        #     target_value_scalar, priorities, gradient_scale_batch)
-        # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
-        enc_state_loss = None
-        if full_transformer:
-            value_loss, reward_loss, policy_loss, priorities, enc_state_loss = self.loss_loop_trans(
-                predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch,
-                transformer_output, rep_enc_states)
-
-        else:
-            value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
-                predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
-
-        if double_net:
-            trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop_fast(
-                trans_predictions, targets, target_value_scalar, None, gradient_scale_batch)
-
-
-        # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
-        reward_loss_weight = 1 if self.config.predict_reward else 0
-        loss = value_loss * self.config.value_loss_weight + reward_loss * reward_loss_weight + policy_loss
-
-        if double_net:
-            loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss * reward_loss_weight + trans_policy_loss
-
-        if enc_state_loss is not None:
-            loss += (enc_state_loss * self.config.encoding_loss_weight)
-            # for plotting
-            enc_state_loss = enc_state_loss.mean().item()
-
-        if self.config.PER:
-            # Correct PER bias by using importance-sampling (IS) weights
-            loss *= weight_batch
-        # Mean over batch dimension (pseudocode do a sum)
-        loss = loss.mean()
-
-        # Optimize
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        self.training_step += 1
-
-        loss, value_loss, reward_loss, policy_loss = (
-            loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
-        )
-        if double_net:
-            trans_value_loss, trans_reward_loss, trans_policy_loss = (
-                trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item()
-            )
-            value_loss = (value_loss, trans_value_loss)
-            reward_loss = (reward_loss, trans_reward_loss)
-            policy_loss = (policy_loss, trans_policy_loss)
-
-        return priorities, loss, value_loss, reward_loss, policy_loss, enc_state_loss
 
     def warmup_lr_scheduler(self, optimizer, warmup_steps, total_steps):
         def lr_lambda(current_step):
@@ -498,3 +494,176 @@ class Trainer:
         # Compute the MSE loss by summing squared differences over the last dimension
         state_loss = ((enc_state - target_enc_state) ** 2).sum(-1)
         return state_loss
+
+    # todo consider if relevant to fix later
+    # def update_weights_with_double_net(self, batch):
+    #     """
+    #     Perform one training step.
+    #     """
+    #
+    #     double_net = self.config.network == "double"
+    #     trans_net = self.config.network != "fully_connected" and self.config.network != "resnet"
+    #     full_transformer = self.config.network == "transformer"
+    #
+    #     (
+    #         observation_batch,
+    #         action_batch,
+    #         target_value,
+    #         target_reward,
+    #         target_policy,
+    #         weight_batch,
+    #         gradient_scale_batch,
+    #         mask_batch,
+    #         forward_obs_batch
+    #     ) = batch
+    #
+    #     # Keep values as scalars for calculating the priorities for the prioritized replay
+    #     target_value_scalar = numpy.array(target_value, dtype="float32")
+    #     priorities = numpy.zeros_like(target_value_scalar)
+    #
+    #     device = next(self.model.parameters()).device
+    #     if self.config.PER:
+    #         weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
+    #     observation_batch = torch.tensor(numpy.array(observation_batch)).float().to(device)
+    #
+    #     action_batch = torch.tensor(action_batch).long().to(device).unsqueeze(-1)
+    #     target_value = torch.tensor(target_value).float().to(device)
+    #     target_reward = torch.tensor(target_reward).float().to(device)
+    #     target_policy = torch.tensor(target_policy).float().to(device)
+    #     gradient_scale_batch = torch.tensor(gradient_scale_batch).float().to(device)
+    #     mask_batch = torch.tensor(mask_batch).to(device) # bool
+    #     if forward_obs_batch is not None:
+    #         forward_obs_batch = torch.stack(forward_obs_batch).float().to(device)
+    #
+    #     # observation_batch: batch, channels, height, width
+    #     # action_batch: batch, num_unroll_steps+1, 1 (unsqueeze)
+    #     # target_value: batch, num_unroll_steps+1
+    #     # target_reward: batch, num_unroll_steps+1
+    #     # target_policy: batch, num_unroll_steps+1, len(action_space)
+    #     # gradient_scale_batch: batch, num_unroll_steps+1
+    #
+    #     target_value = models.scalar_to_support(target_value, self.config.support_size)
+    #     target_reward = models.scalar_to_support(target_reward, self.config.support_size)
+    #     # target_value: batch, num_unroll_steps+1, 2*support_size+1
+    #     # target_reward: batch, num_unroll_steps+1, 2*support_size+1
+    #     targets = (target_value, target_reward, target_policy)
+    #
+    #     value, reward, policy_logits, hidden_state = self.model.initial_inference(
+    #         observation_batch
+    #     )
+    #     root_hidden_state = hidden_state
+    #
+    #     if double_net:
+    #         value, trans_value = torch.chunk(value, 2, dim=0)
+    #         reward, trans_reward = torch.chunk(reward, 2, dim=0)
+    #         policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
+    #         hidden_state, root_hidden_state = torch.chunk(hidden_state, 2, dim=0)
+    #         trans_predictions = [(trans_value, trans_reward, trans_policy_logits)]
+    #
+    #     predictions = [(value, reward, policy_logits)]
+    #
+    #     if full_transformer:
+    #         # start the action batch from 1 since the first action is not used
+    #         trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
+    #             root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
+    #         )
+    #         # todo, only really reward necessary
+    #         trans_value[:, 0] = value
+    #         trans_reward[:, 0] = reward
+    #         trans_policy_logits[:, 0] = policy_logits
+    #         predictions = (trans_value, trans_reward, trans_policy_logits)
+    #
+    #         if self.config.encoding_loss_weight:
+    #             B, Seq, C, H, W = forward_obs_batch.shape
+    #             forward_obs_batch = forward_obs_batch.reshape(B*Seq, C, H, W)
+    #             rep_enc_states = self.model.representation(forward_obs_batch)
+    #             rep_enc_states = self.model.create_input_sequence(rep_enc_states, None)
+    #             rep_enc_states = self.model.transformer_encoder(rep_enc_states)
+    #
+    #             rep_enc_states = rep_enc_states.reshape(B, Seq, -1)
+    #         else:
+    #             rep_enc_states = None
+    #
+    #
+    #
+    #     loop_length = action_batch.shape[1] if not full_transformer else 0
+    #     for i in range(1, loop_length):
+    #         # Instead of an action, we send the whole action sequence from start to the current action
+    #         if trans_net:
+    #             action_sequence = action_batch[:, 1:i].squeeze(-1)
+    #             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+    #                 hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
+    #             )
+    #         else:
+    #             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
+    #                 hidden_state, action_batch[:, i]
+    #             )
+    #
+    #         # Scale the gradient at the start of the dynamics function (See paper appendix Training)
+    #         if hidden_state is not None:
+    #             hidden_state.register_hook(lambda grad: grad * 0.5)
+    #
+    #         if double_net:
+    #             # todo trans_pred.app(values[second_half, etc etc,
+    #             value, trans_value = torch.chunk(value, 2, dim=0)
+    #             reward, trans_reward = torch.chunk(reward, 2, dim=0)
+    #             policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
+    #             trans_predictions.append((trans_value, trans_reward, trans_policy_logits))
+    #
+    #         predictions.append((value, reward, policy_logits))
+    #
+    #     # value_loss, reward_loss, policy_loss, priorities = self.loss_loop(
+    #     #     predictions, target_value, target_reward, target_policy,
+    #     #     target_value_scalar, priorities, gradient_scale_batch)
+    #     # predictions: num_unroll_steps+1, 3, batch, 2*support_size+1 | 2*support_size+1 | 9 (according to the 2nd dim)
+    #     enc_state_loss = None
+    #     if full_transformer:
+    #         value_loss, reward_loss, policy_loss, priorities, enc_state_loss = self.loss_loop_trans(
+    #             predictions, targets, target_value_scalar, priorities, gradient_scale_batch, mask_batch,
+    #             transformer_output, rep_enc_states)
+    #
+    #     else:
+    #         value_loss, reward_loss, policy_loss, priorities = self.loss_loop_fast(
+    #             predictions, targets, target_value_scalar, priorities, gradient_scale_batch)
+    #
+    #     if double_net:
+    #         trans_value_loss, trans_reward_loss, trans_policy_loss, _ = self.loss_loop_fast(
+    #             trans_predictions, targets, target_value_scalar, None, gradient_scale_batch)
+    #
+    #
+    #     # Scale the value loss, paper recommends by 0.25 (See paper appendix Reanalyze)
+    #     reward_loss_weight = 1 if self.config.predict_reward else 0
+    #     loss = value_loss * self.config.value_loss_weight + reward_loss * reward_loss_weight + policy_loss
+    #
+    #     if double_net:
+    #         loss += trans_value_loss * self.config.value_loss_weight + trans_reward_loss * reward_loss_weight + trans_policy_loss
+    #
+    #     if enc_state_loss is not None:
+    #         loss += (enc_state_loss * self.config.encoding_loss_weight)
+    #         # for plotting
+    #         enc_state_loss = enc_state_loss.mean().item()
+    #
+    #     if self.config.PER:
+    #         # Correct PER bias by using importance-sampling (IS) weights
+    #         loss *= weight_batch
+    #     # Mean over batch dimension (pseudocode do a sum)
+    #     loss = loss.mean()
+    #
+    #     # Optimize
+    #     self.optimizer.zero_grad()
+    #     loss.backward()
+    #     self.optimizer.step()
+    #     self.training_step += 1
+    #
+    #     loss, value_loss, reward_loss, policy_loss = (
+    #         loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
+    #     )
+    #     if double_net:
+    #         trans_value_loss, trans_reward_loss, trans_policy_loss = (
+    #             trans_value_loss.mean().item(), trans_reward_loss.mean().item(), trans_policy_loss.mean().item()
+    #         )
+    #         value_loss = (value_loss, trans_value_loss)
+    #         reward_loss = (reward_loss, trans_reward_loss)
+    #         policy_loss = (policy_loss, trans_policy_loss)
+    #
+    #     return priorities, loss, value_loss, reward_loss, policy_loss, enc_state_loss

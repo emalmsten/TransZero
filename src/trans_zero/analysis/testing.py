@@ -7,6 +7,7 @@ import trans_zero.networks.muzero_network as mz_net
 
 import json
 
+# todo consider cleaning up this file
 
 def seq_testing(muzero, file, results_file):
     from trans_zero.core.self_play import update_pred_dict
@@ -14,7 +15,7 @@ def seq_testing(muzero, file, results_file):
     model = mz_net.MuZeroNetwork(muzero.config)
     try:
         model.set_weights(muzero.checkpoint["weights"])
-    except Exception as e:
+    except Exception as e: # todo be more specific
         #print(f"Error: {e}")
         print(f"\ntrying new weights\n")
         model.set_weights(SelfPlay.remove_module_prefix(muzero.checkpoint["weights"]))
@@ -117,6 +118,8 @@ def visualize_model(muzero):
 
     dot_representation = make_dot((value, reward, policy_logits, hidden_state), params=dict(model.named_parameters()))
     dot_representation.render(f"graphs/representation_graph_{network}_shared", format="png")
+
+
 
 def setup_testing(muzero, args):
     if args.model_path is not None:
