@@ -11,6 +11,22 @@ import trans_zero.networks.muzero_network as mz_net
 from trans_zero.core.self_play import MCTS, Node, SelfPlay
 
 
+def diagnose_model(muzero, horizon):
+    """
+    Play a game only with the learned model then play the same trajectory in the real
+    environment and display information.
+
+    Args:
+        horizon (int): Number of timesteps for which we collect information.
+    """
+    game = muzero.Game(muzero.config.seed)
+    obs = game.reset()
+    dm = DiagnoseModel(muzero.checkpoint, muzero.config)
+    dm.compare_virtual_with_real_trajectories(obs, game, horizon)
+    input("Press enter to close all plots")
+    dm.close_all()
+
+
 class DiagnoseModel:
     """
     Tools to understand the learned model.

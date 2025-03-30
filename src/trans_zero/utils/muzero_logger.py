@@ -97,6 +97,41 @@ def get_wandb_config(entity, project, run_id):
 
     return config
 
+
+
+def get_wandb_artifacts(config, run_id, wandb_model_number = None, download_replay_buffer = False):
+
+    # Initialize W&B API
+    api = wandb.Api()
+
+    # Define the entity, project, and run ID
+    entity = config.wandb_entity
+    project = config.wandb_project_name
+
+    # Fetch the run
+    run = api.run(f"{entity}/{project}/{run_id}")
+    artifacts = run.logged_artifacts()
+
+    latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-3:]
+
+    if wandb_model_number is not None:
+        model_artifact = next(a for a in artifacts if str(wandb_model_number) in a.name)
+    else:
+        model_artifact = next(a for a in latest_artifacts if a.type == 'model')
+
+    # Filter for the model artifact and the data artifact
+    data_artifact = next(a for a in latest_artifacts if a.type == 'data')
+
+    model_path = model_artifact.download() + "/model.checkpoint"
+    buffer_path = None
+    if download_replay_buffer:
+        buffer_path = data_artifact.download() + "/replay_buffer.pkl"
+
+
+    return model_path, buffer_path
+
+
+
 def tensorboard_logging(info, counter, writer):
     writer.add_scalar(
         "1.Total_reward/1.Total_reward",

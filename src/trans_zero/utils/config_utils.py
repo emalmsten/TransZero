@@ -28,6 +28,8 @@ def init_config(config, new_config, restart_wandb_id):
     # refresh the config, this is necessary to update values that depend on other values
     config = refresh(config)
 
+    print_config(config)
+
     return config
 
 

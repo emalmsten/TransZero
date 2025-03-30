@@ -16,12 +16,13 @@ import torch
 from trans_zero.analysis.diagnose_model import DiagnoseModel
 from . import replay_buffer, self_play, shared_storage, trainer
 import wandb
-from trans_zero.utils.config_utils import refresh, print_config, init_config
+from trans_zero.utils.config_utils import print_config, init_config
 
 from trans_zero.utils.muzero_logger import logging_loop, get_initial_checkpoint
 from trans_zero.utils.ray_utils import calc_num_gpus, CPUActor, calc_num_gpus_per_worker
 
 
+# todo consider if muzero should have some less/different responsibilities (and name)
 class MuZero:
     """
     Main class to manage MuZero.
@@ -54,7 +55,6 @@ class MuZero:
             raise err
 
         self.config = init_config(self.config, config, restart_wandb_id)
-        print(f"Config: {print_config(self.config)}")
 
         # Fix random generator seed
         # todo make sure the seeds are used everywhere
@@ -67,7 +67,6 @@ class MuZero:
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = get_initial_checkpoint(self.config)
-
 
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
@@ -192,6 +191,7 @@ class MuZero:
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
 
+
     def test(
         self, render=True, opponent=None, muzero_player=None, num_tests=1, num_gpus=0
     ):
@@ -292,51 +292,7 @@ class MuZero:
             self.checkpoint["num_played_games"] = 0
             self.checkpoint["num_reanalysed_games"] = 0
 
-    def diagnose_model(self, horizon):
-        """
-        Play a game only with the learned model then play the same trajectory in the real
-        environment and display information.
-
-        Args:
-            horizon (int): Number of timesteps for which we collect information.
-        """
-        game = self.Game(self.config.seed)
-        obs = game.reset()
-        dm = DiagnoseModel(self.checkpoint, self.config)
-        dm.compare_virtual_with_real_trajectories(obs, game, horizon)
-        input("Press enter to close all plots")
-        dm.close_all()
 
 
-    def get_wandb_artifacts(self, run_id, wandb_model_number = None, download_replay_buffer = False):
-
-        # Initialize W&B API
-        api = wandb.Api()
-
-        # Define the entity, project, and run ID
-        entity = self.config.wandb_entity
-        project = self.config.wandb_project_name
-
-        # Fetch the run
-        run = api.run(f"{entity}/{project}/{run_id}")
-        artifacts = run.logged_artifacts()
-
-        latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-3:]
-
-        if wandb_model_number is not None:
-            model_artifact = next(a for a in artifacts if str(wandb_model_number) in a.name)
-        else:
-            model_artifact = next(a for a in latest_artifacts if a.type == 'model')
-
-        # Filter for the model artifact and the data artifact
-        data_artifact = next(a for a in latest_artifacts if a.type == 'data')
-
-        model_path = model_artifact.download() + "/model.checkpoint"
-        buffer_path = None
-        if download_replay_buffer:
-            buffer_path = data_artifact.download() + "/replay_buffer.pkl"
-
-
-        return model_path, buffer_path
 
 

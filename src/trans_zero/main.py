@@ -1,3 +1,4 @@
+from trans_zero.analysis.diagnose_model import diagnose_model
 from trans_zero.core.muzero import MuZero
 import argparse
 import json
@@ -12,7 +13,7 @@ import nevergrad
 
 from trans_zero.analysis.hyperparameter_search import hyperparameter_search
 from trans_zero.analysis.testing import setup_testing
-from trans_zero.utils.muzero_logger import init_wandb
+from trans_zero.utils.muzero_logger import init_wandb, get_wandb_artifacts
 
 
 def load_model_menu(muzero, game_name):
@@ -100,7 +101,7 @@ def cmd_line_init():
         elif choice == 1:
             load_model_menu(muzero, game_name)
         elif choice == 2:
-            muzero.diagnose_model(30)
+            diagnose_model(muzero, horizon=30)
         elif choice == 3:
             muzero.test(render=True, opponent="self", muzero_player=None)
         elif choice == 4:
@@ -213,8 +214,8 @@ def main(args):
         muzero.wandb_run = init_wandb(muzero.config, args)
 
     if args.wandb_run_id:
-        checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(
-            args.wandb_run_id, args.wandb_model_number, download_replay_buffer=args.test_mode is not None
+        checkpoint_path, replay_buffer_path = get_wandb_artifacts(
+            muzero.config, args.wandb_run_id, args.wandb_model_number, download_replay_buffer=args.test_mode is not None
         )
     else:
         checkpoint_path, replay_buffer_path = args.model_path, args.replay_buffer_path
