@@ -16,7 +16,7 @@ import torch
 from trans_zero.analysis.diagnose_model import DiagnoseModel
 from . import replay_buffer, self_play, shared_storage, trainer
 import wandb
-from trans_zero.utils.config_utils import refresh, print_config
+from trans_zero.utils.config_utils import refresh, print_config, init_config
 
 from trans_zero.utils.muzero_logger import logging_loop, get_wandb_config
 import trans_zero.networks.muzero_network as mz_net
@@ -66,19 +66,11 @@ class MuZero:
             )
             raise err
 
-        # Overwrite the config
-        if restart_wandb_id is not None:
-            print(f"Using config from: {restart_wandb_id}")
-            wandb_config = get_wandb_config(self.config.wandb_entity, self.config.wandb_project_name, restart_wandb_id)
-            self.overwrite_config(wandb_config)
-
-        if config:
-            self.overwrite_config(config)
-
-        refresh(self.config)
+        self.config = init_config(self.config, config, restart_wandb_id)
         print(f"Config: {print_config(self.config)}")
 
         # Fix random generator seed
+        # todo make sure the seeds are used everywhere
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
@@ -151,19 +143,8 @@ class MuZero:
         self.shared_storage_worker = None
 
 
-    def overwrite_config(self, config):
 
-        if type(config) is str:
-            print(f"Config is string")
-            config = json.loads(config)
-        if type(config) is dict:
-            for param, value in config.items():
-                if hasattr(self.config, param):
-                    setattr(self.config, param, value)
-                else:
-                    raise AttributeError(
-                        f"Config has no attribute '{param}'. Check the config file for the complete list of parameters."
-                    )
+
 
 
     def init_wandb(self, args):

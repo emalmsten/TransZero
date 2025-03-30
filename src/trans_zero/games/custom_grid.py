@@ -125,10 +125,9 @@ class MuZeroConfig:
         self.self_prob_type = "mvc" # visit or mvc
         self.test_ucb = False
 
-
         # Local
         self.testing = False
-        self.show_preds = False and self.testing
+        self.show_preds = False and self.testing     # can only be done in testing
         self.preds_file = f"{self.root}/data/predictions/4x4_preds/transformer/test.json"
         self.debug_mode = False or self.testing
 
@@ -148,10 +147,8 @@ class MuZeroConfig:
 
         # Naming
         self.append = "_local_" + "grid_test"  # Turn this to True to run a test
-        path = self.root / "data/results" / self.game_name / self.custom_map / self.network
-        self.name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
-        self.log_name = f"{self.game_name}_{self.custom_map}_{'random' if self.random_map else'fixed'}_{self.pov}_{self.network}_{self.name}"
-        self.results_path = path / self.name
+
+        self.name, self.log_name, self.results_path = self.set_names_and_paths()
 
         # Saving
         self.save_model = True
@@ -277,6 +274,7 @@ class MuZeroConfig:
         self.softmax_limits = [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
         self.softmax_temps =  [1, 0.5, 0.25, 0.1] # res 1, 0.5, 0.25
 
+
     def visit_softmax_temperature_fn(self, trained_steps):
         """
         Parameter to alter the visit count distribution to ensure that the action selection becomes greedier as training progresses.
@@ -307,8 +305,17 @@ class MuZeroConfig:
         else:
             raise ValueError('POV must be either "agent" or "god"')
 
+
     def get_max_moves(self, custom_map):
         return max_moves[custom_map]
+
+
+    def set_names_and_paths(self):
+        path = self.root / "data/results" / self.game_name / self.custom_map / self.network
+        name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        log_name = f"{self.game_name}_{self.custom_map}_{'random' if self.random_map else'fixed'}_{self.pov}_{self.network}_{name}"
+        results_path = path / name
+        return name, log_name, results_path
 
 
 class Game(AbstractGame):

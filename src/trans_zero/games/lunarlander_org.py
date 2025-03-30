@@ -187,6 +187,8 @@ class MuZeroConfig:
             if trained_steps < limit * self.training_steps:
                 return self.softmax_temps[i]
 
+    # todo implement set names and paths
+
 class Game(AbstractGame):
     """
     Game wrapper for LunarLander-v3.

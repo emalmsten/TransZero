@@ -211,7 +211,6 @@ def main(args):
     if muzero.config.logger == "wandb":
         muzero.init_wandb(args)
 
-    checkpoint_path, replay_buffer_path = None, None
     if args.wandb_run_id:
         checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(
             args.wandb_run_id, args.wandb_model_number, download_replay_buffer=args.test_mode is not None
