@@ -20,6 +20,37 @@ keys = [
     "num_reanalysed_games",
 ]
 
+# todo, consider less duplication
+def get_initial_checkpoint(config):
+    init_checkpoint = {
+        "weights": None,
+        "optimizer_state": None,
+        "total_reward": 0,
+        "muzero_reward": 0,
+        "opponent_reward": 0,
+        "episode_length": 0,
+        "mean_value": 0,
+        "training_step": 0,
+        "lr": 0,
+        "total_loss": 0,
+        "value_loss": 0,
+        "reward_loss": 0,
+        "policy_loss": 0,
+        "enc_state_loss": 0,
+        "num_played_games": 0,
+        "num_played_steps": 0,
+        "num_reanalysed_games": 0,
+        "terminate": False,
+    }
+    if config.network == "double":
+        init_checkpoint["trans_value_loss"] = 0
+        init_checkpoint["trans_reward_loss"] = 0
+        init_checkpoint["trans_policy_loss"] = 0
+
+    return init_checkpoint
+
+
+
 def get_wandb_config(entity, project, run_id):
     config = wandb.Api().run(f"{entity}/{project}/{run_id}").config
     # remove "project" attribute

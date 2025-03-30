@@ -18,21 +18,9 @@ from . import replay_buffer, self_play, shared_storage, trainer
 import wandb
 from trans_zero.utils.config_utils import refresh, print_config, init_config
 
-from trans_zero.utils.muzero_logger import logging_loop, get_wandb_config
-import trans_zero.networks.muzero_network as mz_net
+from trans_zero.utils.muzero_logger import logging_loop, get_initial_checkpoint
+from trans_zero.utils.ray_utils import calc_num_gpus, CPUActor
 
-
-@ray.remote(num_cpus=0, num_gpus=0)
-class CPUActor:
-    # Trick to force DataParallel to stay on CPU to get weights on CPU even if there is a GPU
-    def __init__(self):
-        pass
-
-    def get_initial_weights(self, config):
-        model = mz_net.MuZeroNetwork(config)
-        weigths = model.get_weights()
-        summary = str(model).replace("\n", " \n\n")
-        return weigths, summary
 
 
 class MuZero:
@@ -74,65 +62,19 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Manage GPUs
-        if self.config.max_num_gpus == 0 and (
-            self.config.selfplay_on_gpu
-            or self.config.train_on_gpu
-            or self.config.reanalyse_on_gpu
-        ):
-            raise ValueError(
-                "Inconsistent MuZeroConfig: max_num_gpus = 0 but GPU requested by selfplay_on_gpu or train_on_gpu or reanalyse_on_gpu."
-            )
-        if (
-            self.config.selfplay_on_gpu
-            or self.config.train_on_gpu
-            or self.config.reanalyse_on_gpu
-        ):
-            total_gpus = (
-                self.config.max_num_gpus
-                    if self.config.max_num_gpus is not None
-                    else torch.cuda.device_count()
-            )
-        else:
-            total_gpus = 0
-        self.num_gpus = total_gpus / split_resources_in
-        if 1 < self.num_gpus:
-            self.num_gpus = math.floor(self.num_gpus)
+        self.num_gpus, total_gpus = calc_num_gpus(self.config, split_resources_in)
 
         ray.init(num_gpus=total_gpus, ignore_reinit_error=True, local_mode=self.config.debug_mode, include_dashboard=False)
 
         # Checkpoint and replay buffer used to initialize workers
-        self.checkpoint = {
-            "weights": None,
-            "optimizer_state": None,
-            "total_reward": 0,
-            "muzero_reward": 0,
-            "opponent_reward": 0,
-            "episode_length": 0,
-            "mean_value": 0,
-            "training_step": 0,
-            "lr": 0,
-            "total_loss": 0,
-            "value_loss": 0,
-            "reward_loss": 0,
-            "policy_loss": 0,
-            "enc_state_loss": 0,
-            "num_played_games": 0,
-            "num_played_steps": 0,
-            "num_reanalysed_games": 0,
-            "terminate": False,
-        }
-        if self.config.network == "double":
-            self.checkpoint["trans_value_loss"] = 0
-            self.checkpoint["trans_reward_loss"] = 0
-            self.checkpoint["trans_policy_loss"] = 0
+        self.checkpoint = get_initial_checkpoint(self.config)
 
-
-        self.replay_buffer = {}
 
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
+
+        self.replay_buffer = {}
 
         # Workers
         self.self_play_workers = None
@@ -141,10 +83,6 @@ class MuZero:
         self.reanalyse_worker = None
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
-
-
-
-
 
 
     def init_wandb(self, args):
