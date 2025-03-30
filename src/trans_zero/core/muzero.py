@@ -19,8 +19,7 @@ import wandb
 from trans_zero.utils.config_utils import refresh, print_config, init_config
 
 from trans_zero.utils.muzero_logger import logging_loop, get_initial_checkpoint
-from trans_zero.utils.ray_utils import calc_num_gpus, CPUActor
-
+from trans_zero.utils.ray_utils import calc_num_gpus, CPUActor, calc_num_gpus_per_worker
 
 
 class MuZero:
@@ -85,36 +84,6 @@ class MuZero:
         self.shared_storage_worker = None
 
 
-    def init_wandb(self, args):
-        path = self.config.results_path
-        os.makedirs(path, exist_ok=True)
-
-        if args.wandb_run_id is not None: # restart wandb run
-            self.wandb_run = wandb.init(
-                entity=self.config.wandb_entity,
-                project=self.config.wandb_project_name,
-                resume="must",
-                dir=str(self.config.results_path),
-                id=args.wandb_run_id
-            )
-
-        else:
-            self.wandb_run = wandb.init(
-                entity=self.config.wandb_entity,
-                project=self.config.wandb_project_name,
-                name=str(self.config.log_name),  # to string:
-                config=self.config.__dict__,
-                dir=str(self.config.results_path),
-                resume="allow",
-            )
-            import yaml
-            fp = f"{str(self.config.results_path)}/config.yaml"
-            with open(fp, "w") as f:
-                yaml.dump(self.config, f)
-            wandb.save(fp)
-
-
-
     def train(self):
         """
         Spawn ray workers and launch the training.
@@ -125,17 +94,7 @@ class MuZero:
         logger = self.config.logger
 
         # Manage GPUs
-        if 0 < self.num_gpus:
-            num_gpus_per_worker = self.num_gpus / (
-                self.config.train_on_gpu
-                + self.config.num_workers * self.config.selfplay_on_gpu
-                + (logger is not None) * self.config.selfplay_on_gpu
-                + self.config.use_last_model_value * self.config.reanalyse_on_gpu
-            )
-            if 1 < num_gpus_per_worker:
-                num_gpus_per_worker = math.floor(num_gpus_per_worker)
-        else:
-            num_gpus_per_worker = 0
+        num_gpus_per_worker = calc_num_gpus_per_worker(self.num_gpus, self.config, logger)
 
         # Initialize workers
         self.training_worker = trainer.Trainer.options(
@@ -163,6 +122,7 @@ class MuZero:
         print("num_gpus", self.num_gpus)
         print("num_workers", self.config.num_workers)
         print("num_gpus_per_worker", num_gpus_per_worker)
+
         self.self_play_workers = [
             self_play.SelfPlay.options(
                 num_cpus=0,
@@ -275,6 +235,7 @@ class MuZero:
             )
         self_play_worker.close_game.remote()
 
+        # todo consider what to do with result
         if len(self.config.players) == 1:
             result = numpy.mean([sum(history.reward_history) for history in results])
         else:
@@ -289,6 +250,7 @@ class MuZero:
                 ]
             )
         return [history.reward_history for history in results]
+
 
     def load_model(self, checkpoint_path=None, replay_buffer_path=None):
         """

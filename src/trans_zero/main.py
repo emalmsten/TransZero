@@ -12,6 +12,7 @@ import nevergrad
 
 from trans_zero.analysis.hyperparameter_search import hyperparameter_search
 from trans_zero.analysis.testing import setup_testing
+from trans_zero.utils.muzero_logger import init_wandb
 
 
 def load_model_menu(muzero, game_name):
@@ -209,7 +210,7 @@ def main(args):
     muzero = MuZero(args.game_name, args.config, restart_wandb_id=args.wandb_run_id, test=args.test_mode is not None)
 
     if muzero.config.logger == "wandb":
-        muzero.init_wandb(args)
+        muzero.wandb_run = init_wandb(muzero.config, args)
 
     if args.wandb_run_id:
         checkpoint_path, replay_buffer_path = muzero.get_wandb_artifacts(

@@ -1,6 +1,7 @@
 import time
 import wandb
 import ray
+import os
 
 keys = [
     "total_reward",
@@ -49,6 +50,38 @@ def get_initial_checkpoint(config):
 
     return init_checkpoint
 
+
+def init_wandb(config, args):
+    print("Training...\nGo to https://wandb.ai/ to see real-time training performance.\n")
+
+    path = config.results_path
+    os.makedirs(path, exist_ok=True)
+
+    if args.wandb_run_id is not None: # restart wandb run
+        wandb_run = wandb.init(
+            entity=config.wandb_entity,
+            project=config.wandb_project_name,
+            resume="must",
+            dir=str(config.results_path),
+            id=args.wandb_run_id
+        )
+
+    else:
+        wandb_run = wandb.init(
+            entity=config.wandb_entity,
+            project=config.wandb_project_name,
+            name=str(config.log_name),  # to string:
+            config=config.__dict__,
+            dir=str(config.results_path),
+            resume="allow",
+        )
+        import yaml
+        fp = f"{str(config.results_path)}/config.yaml"
+        with open(fp, "w") as f:
+            yaml.dump(config, f)
+        wandb.save(fp)
+
+    return wandb_run
 
 
 def get_wandb_config(entity, project, run_id):
@@ -166,7 +199,6 @@ def logging_loop(muzero, logger):
     if logger == "tensorboard":
         writer = init_tensorboard(muzero)
     elif logger == "wandb":
-        init_wandb(muzero)
         writer = None
 
     is_double_network = muzero.config.network == "double"
@@ -249,7 +281,3 @@ def init_tensorboard(muzero):
     print("Training...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n")
     return writer
 
-
-def init_wandb(muzero):
-
-    print("Training...\nGo to https://wandb.ai/ to see real-time training performance.\n")

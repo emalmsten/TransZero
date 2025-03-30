@@ -15,6 +15,7 @@ class CPUActor:
         summary = str(model).replace("\n", " \n\n")
         return weigths, summary
 
+
 def calc_num_gpus(config, split_resources_in):
     total_gpus = calc_total_gpus(config)
     num_gpus = total_gpus / split_resources_in
@@ -49,3 +50,18 @@ def calc_total_gpus(config):
         total_gpus = 0
 
     return total_gpus
+
+def calc_num_gpus_per_worker(num_gpus, config, logger=None):
+    if 0 < num_gpus:
+        num_gpus_per_worker = num_gpus / (
+                config.train_on_gpu
+                + config.num_workers * config.selfplay_on_gpu
+                + (logger is not None) * config.selfplay_on_gpu
+                + config.use_last_model_value * config.reanalyse_on_gpu
+        )
+        if 1 < num_gpus_per_worker:
+            num_gpus_per_worker = math.floor(num_gpus_per_worker)
+    else:
+        num_gpus_per_worker = 0
+
+    return num_gpus_per_worker
