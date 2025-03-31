@@ -951,7 +951,7 @@ class MCTS:
     def backpropagate(self, search_path, value, to_play, min_max_stats):
         """
         At the end of a simulation, we propagate the evaluation all the way up the tree
-        to the root.
+        to the root
         """
         if len(self.config.players) == 1:
             for node in reversed(search_path):
