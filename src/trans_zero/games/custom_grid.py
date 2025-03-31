@@ -236,7 +236,7 @@ class MuZeroConfig:
         self.cum_reward = False
         self.state_size = None #(16, 4, 4) # same as
         self.stable_transformer = False
-        self.get_fast_predictions = True
+        self.get_fast_predictions = True # todo rename
 
 
         ### Training

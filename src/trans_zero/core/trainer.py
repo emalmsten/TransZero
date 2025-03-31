@@ -310,13 +310,12 @@ class Trainer:
         init_predictions = (value, reward, policy_logits)
         root_hidden_state = hidden_state
 
-
         transformer_output, rep_enc_states, enc_state_loss = None, None, None
         if self.config.encoding_loss_weight:
             rep_enc_states = self.calc_rep_enc_states(forward_obs_batch)
 
         # only used when doing rep enc state loss
-        if transformer_net and self.config.get_predictions_fast:
+        if transformer_net and self.config.get_fast_predictions:
             predictions, transformer_output = self.get_predictions_fast_trans(init_predictions, root_hidden_state, action_batch, mask_batch)
         else:
             predictions = self.get_predictions(init_predictions, hidden_state, action_batch, mask_batch)
