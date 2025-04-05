@@ -162,35 +162,4 @@ class MinimalVarianceConstraintPolicy(PolicyDistribution):
         # The self probability is the last element in the softmaxed distribution.
         return softmax_probs[-1].item()
 
-    # def self_prob(self, node: Node, probs: th.Tensor) -> float:
-    #     # todo emil, just a guess
-    #     return 0
-    #     """
-    #     Returns the relative probability of selecting the node itself,
-    #     under the same 'exp(beta * value) * inv_var' scheme used for children.
-    #     """
-    #     # 1) Get children + self values and inv_vars
-    #     normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
-    #         parent=node,
-    #         policy=self,
-    #         discount_factor=self.discount_factor,
-    #         transform=self.value_transform,
-    #         include_self=True
-    #     )
-    #
-    #     # 2) Compute logits for *all* actions + self
-    #     beta = self.get_beta(node)
-    #     logits = beta * th.nan_to_num(normalized_vals)
-    #
-    #     # 3) Avoid numerical instability by shifting by max(logits)
-    #     logits -= logits.max()
-    #
-    #     # 4) Convert logits to unnormalized probabilities via exp, then multiply by inv_vars
-    #     unnormalized_probs = inv_vars * th.exp(logits)
-    #
-    #     # 5) The parent's "self" score is the last index, so normalize and extract
-    #     parent_score = unnormalized_probs[-1]
-    #     parent_prob = parent_score / unnormalized_probs.sum()
-    #
-    #     return float(parent_prob)
 

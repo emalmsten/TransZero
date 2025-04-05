@@ -14,10 +14,10 @@ def policy_value(
     # with the defualt tree evaluator, this should return the same as the default value
 
     # added false since it cant happen in muzero // Emil
-    if False and node.terminal:
-        val = th.tensor(node.reward, dtype=th.float32)
-        node.policy_value = val
-        return val
+    # if False and node.terminal:
+    #     val = th.tensor(node.reward, dtype=th.float32)
+    #     node.policy_value = val
+    #     return val
 
     if node.policy_value:
         return node.policy_value
@@ -29,9 +29,11 @@ def policy_value(
 
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
+
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
     child_values = th.zeros_like(child_propabilities, dtype=th.float32)
+
     for action, child in node.children.items():
         child_values[action] = policy_value(child, policy, discount_factor)
 
@@ -51,10 +53,10 @@ def reward_variance(node):
 def value_evaluation_variance(node):
     # if we want to duplicate the default tree evaluator, we can return 1 / visits
     # In reality, the variance should be lower for terminal nodes
-    if False: # if node.terminal # todo emil, node.terminal does not exist for muzero:
-        return 1.0 / float(node.visits)
-    else:
-        return 1.0
+    # if False: # if node.terminal # todo emil, node.terminal does not exist for muzero:
+    #     return 1.0 / float(node.visits)
+    # else:
+    return 1.0
 
 
 def independent_policy_value_variance(
@@ -144,10 +146,12 @@ def get_children_policy_values_and_inverse_variance(
     normalized_vals = transform.normalize(vals)
     return normalized_vals, inv_vars
 
+
 def expanded_mask(node) -> th.Tensor:
     mask = th.zeros(int(node.action_space.n), dtype=th.float32)
     mask[node.children] = 1.0
     return mask
+
 
 def get_children_visits(node) -> th.Tensor:
 
@@ -157,6 +161,7 @@ def get_children_visits(node) -> th.Tensor:
 
     return visits
 
+
 def get_transformed_default_values(node, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
     vals = th.ones(int(node.action_space.n), dtype=th.float32) * -th.inf
     for action, child in node.children.items():
@@ -164,19 +169,4 @@ def get_transformed_default_values(node, transform: ValueTransform = IdentityVal
 
     return transform.normalize(vals)
 
-def puct_multiplier(c: float, node):
-    """
-    lambda_N from the mcts as policy optimisation paper.
-    """
-    return c * (node.visits**0.5) / (node.visits + int(node.action_space.n))
 
-
-def Q_theta_tensor(node, discount: float, transform: ValueTransform = IdentityValueTransform) -> th.Tensor:
-    """
-    Returns a vector with the Q_theta values. Zero for unvisited nodes, for visited nodes it is return + the discoutned value evaluation of the node
-    """
-    vals = th.zeros(int(node.action_space.n), dtype=th.float32)
-    for action, child in node.children.items():
-        val = .0 if child.is_terminal() else child.value_evaluation
-        vals[action] = child.reward + discount * val
-    return transform.normalize(vals)

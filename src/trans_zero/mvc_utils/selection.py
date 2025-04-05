@@ -1,6 +1,5 @@
 import torch as th
 
-from .node import Node
 from .policies import PolicyDistribution
 from .utility_functions import get_children_visits, get_transformed_default_values, policy_value
 
@@ -17,10 +16,10 @@ class UCT(SelectionPolicy):
         super().__init__(*args, **kwargs)
         self.c = c
 
-    def Q(self, node: Node) -> th.Tensor:
+    def Q(self, node) -> th.Tensor:
         return get_transformed_default_values(node, self.value_transform)
 
-    def _probs(self, node: Node) -> th.Tensor:
+    def _probs(self, node) -> th.Tensor:
         child_visits = get_children_visits(node)
         # if any child_visit is 0
         if th.any(child_visits == 0):
@@ -32,7 +31,7 @@ class UCT(SelectionPolicy):
 
 
 class PUCT(UCT):
-    def _probs(self, node: Node) -> th.Tensor:
+    def _probs(self, node) -> th.Tensor:
         child_visits = get_children_visits(node)
         # if any child_visit is 0
         unvisited = child_visits == 0

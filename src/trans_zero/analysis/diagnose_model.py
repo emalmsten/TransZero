@@ -8,7 +8,8 @@ import torch
 
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
-from trans_zero.core.self_play import MCTS, Node, SelfPlay
+from trans_zero.core.self_play import MCTS, SelfPlay
+from trans_zero.core.node import Node
 
 
 def diagnose_model(muzero, horizon):
@@ -56,9 +57,8 @@ class DiagnoseModel:
         We still do an MCTS at each step.
         """
         trajectory_info = Trajectoryinfo("Virtual trajectory", self.config)
-        root, mcts_info = MCTS(self.config).run(
-            self.model, observation, self.config.action_space, to_play, True
-        )
+        self.run = MCTS(self.config).run(self.model, observation, self.config.action_space, to_play, True)
+        root, mcts_info = self.run
         trajectory_info.store_info(root, mcts_info, None, numpy.NaN)
 
         virtual_to_play = to_play

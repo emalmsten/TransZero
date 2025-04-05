@@ -1,14 +1,12 @@
 import copy
 import time
 
-from rsa.key import calculate_keys_custom_exponent
 from torch.optim.lr_scheduler import LambdaLR
 
 import numpy
 import ray
 import torch
 
-from snippets.inference import prediction
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 
@@ -155,6 +153,7 @@ class Trainer:
                 ):
                     time.sleep(0.5)
 
+    # todo should probably not be in this file and should probably happen as it is made
     def format_batch(self, batch, device):
         (
             observation_batch,
