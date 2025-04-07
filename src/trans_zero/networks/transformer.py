@@ -228,9 +228,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return pe
 
 
-    def prediction(self, root_hidden_state, action_sequence=None):
+    def prediction(self, latent_root_state, action_sequence=None):
 
-        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
+        input_sequence = self.create_input_sequence(latent_root_state, action_sequence)
 
         # Pass through the transformer encoder
         #print(input_sequence.size())
@@ -280,13 +280,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         transformer_output = result["logits"]
         return transformer_output.transpose(0, 1)
 
-    def prediction_fast(self, root_hidden_state, action_sequence, action_mask, use_causal_mask=True):
+    def prediction_fast(self, latent_root_state, action_sequence, action_mask, use_causal_mask=True):
         if self.state_size is not None:
             flat_size = self.state_size[1] * self.state_size[2]
             # append false to action mask beginning
             action_mask = torch.cat([torch.zeros(action_mask.size(0), (flat_size-1), dtype=torch.bool, device=action_mask.device), action_mask], dim=1)
 
-        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
+        input_sequence = self.create_input_sequence(latent_root_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
         if use_causal_mask:
             causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device) # Shape: (sequence_length, sequence_length)
         else:
@@ -452,7 +452,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             # Learned positional encoding
             row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).reshape(-1)  # [H*W]
             col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).reshape(-1)  # [H*W]
-            # both_indices = torch.arange(H*W, device=rhs.device) # [H*W, 2]
+            # both_indices = torch.arange(H*W, device=lrs.device) # [H*W, 2]
 
             # Get embeddings and sum them
             pe = self.positional_encoding_state_row(row_indices) + self.positional_encoding_state_col(
@@ -470,15 +470,15 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
 
-    def create_input_sequence(self, rhs, action_sequence):
+    def create_input_sequence(self, lrs, action_sequence):
         # root hidden state: (B, x)
         # action sequence: (B, y)
-        B = rhs.size(0)
+        B = lrs.size(0)
 
         # Embed the action sequence
         if action_sequence is None:
             # Create an empty embedded_actions tensor
-            embedded_actions = torch.empty(B, 0, self.transformer_hidden_size, device=rhs.device)
+            embedded_actions = torch.empty(B, 0, self.transformer_hidden_size, device=lrs.device)
         else:
             # Embed the action sequence
             embedded_actions = self.action_embedding(action_sequence)  # Shape: (B, y, transformer_hidden_size)
@@ -494,52 +494,52 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         if self.state_size is not None:
             C, H, W = self.state_size
-            assert (rhs.size(2)) == H and (rhs.size(3) == W)
+            assert (lrs.size(2)) == H and (lrs.size(3) == W)
 
             # Get positional encoding for the states
-            pos_encoding_state = self.get_positional_encoding_2d(H, W, embedded_actions, rhs.device)
+            pos_encoding_state = self.get_positional_encoding_2d(H, W, embedded_actions, lrs.device)
 
             # flatten out dim 1 and dim 2
-            rhs = rhs.permute(0, 2, 3, 1).reshape(B, H * W, C)
+            lrs = lrs.permute(0, 2, 3, 1).reshape(B, H * W, C)
 
             # if rep net hasn't made an encoding
             if self.representation_network_type == "none":
                 # if state values are discrete, embed them
                 if self.num_state_values:
-                    rhs = rhs.int()
-                rhs = self.state_embedding(rhs)
-                rhs = rhs.view(B, H * W, self.transformer_hidden_size)
+                    lrs = lrs.int()
+                lrs = self.state_embedding(lrs)
+                lrs = lrs.view(B, H * W, self.transformer_hidden_size)
 
             if self.use_proj:
-                rhs = self.hidden_state_proj(rhs)
+                lrs = self.hidden_state_proj(lrs)
         else:
-            rhs = rhs.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
-            pos_encoding_state = torch.zeros(B, 1, self.transformer_hidden_size, device=rhs.device)
+            lrs = lrs.unsqueeze(1)  # Shape: (B, 1, transformer_hidden_size)
+            pos_encoding_state = torch.zeros(B, 1, self.transformer_hidden_size, device=lrs.device)
 
         # Project the root hidden state to the transformer hidden size
         if self.use_proj:
-            rhs = self.hidden_state_proj(rhs)
+            lrs = self.hidden_state_proj(lrs)
 
         # Concatenate the root hidden state with the positional encoding
-        rhs = rhs + pos_encoding_state
+        lrs = lrs + pos_encoding_state
 
         # Construct the input sequence by concatenating the state embedding and action embeddings
-        state_action_sequence = torch.cat([rhs, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
+        state_action_sequence = torch.cat([lrs, embedded_actions], dim=1)  # Shape: (B, y+1, transformer_hidden_size)
 
         # Add positional encodings
         return state_action_sequence
 
 
-    def recurrent_inference_fast(self, root_hidden_state, action_sequence, mask, use_causal_mask=True):
-        policy_logits, value, reward, transformer_output = self.prediction_fast(root_hidden_state, action_sequence, mask, use_causal_mask=use_causal_mask)
+    def recurrent_inference_fast(self, latent_root_state, action_sequence, mask, use_causal_mask=True):
+        policy_logits, value, reward, transformer_output = self.prediction_fast(latent_root_state, action_sequence, mask, use_causal_mask=use_causal_mask)
         return value, reward, policy_logits, transformer_output
 
 
-    def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):
+    def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None):
         assert action_sequence is not None, "Transformer needs an action sequence"
-        assert root_hidden_state is not None, "Transformer needs a hidden state"
+        assert latent_root_state is not None, "Transformer needs a hidden state"
 
-        policy_logits, value, reward = self.prediction(root_hidden_state, action_sequence)
+        policy_logits, value, reward = self.prediction(latent_root_state, action_sequence)
 
         return value, reward, policy_logits, None # next encoded state
 

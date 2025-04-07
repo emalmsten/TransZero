@@ -132,11 +132,11 @@ class MuZeroMixedNetwork(AbstractNetwork):
         return pe
 
 
-    def prediction(self, encoded_state, action_sequence=None, root_hidden_state=None):
-        root_hidden_state = root_hidden_state if root_hidden_state is not None else encoded_state
+    def prediction(self, encoded_state, action_sequence=None, latent_root_state=None):
+        latent_root_state = latent_root_state if latent_root_state is not None else encoded_state
 
-        rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = root_hidden_state.device)
-        trans_policy_logits, trans_value, trans_reward = self.transformer_prediction(root_hidden_state, action_sequence)
+        rand_policy_logits, rand_value, rand_reward = self.random_prediction(device = latent_root_state.device)
+        trans_policy_logits, trans_value, trans_reward = self.transformer_prediction(latent_root_state, action_sequence)
         fully_connected_policy_logits, fully_connected_value, fully_connected_reward = self.fully_connected_prediction(encoded_state)
 
         policy_dict = {"random": rand_policy_logits, "transformer": trans_policy_logits, "fully_connected": fully_connected_policy_logits}
@@ -158,8 +158,8 @@ class MuZeroMixedNetwork(AbstractNetwork):
         return policy_logits, value, reward
 
 
-    def transformer_prediction(self, root_hidden_state, action_sequence=None):
-        input_sequence = self.create_input_sequence(root_hidden_state, action_sequence)
+    def transformer_prediction(self, latent_root_state, action_sequence=None):
+        input_sequence = self.create_input_sequence(latent_root_state, action_sequence)
 
         # Pass through the transformer encoder
         transformer_output = self.transformer_encoder(input_sequence)  # Shape: (batch_size, sequence_length, transformer_hidden_size)
@@ -259,21 +259,21 @@ class MuZeroMixedNetwork(AbstractNetwork):
         return pos_encoding
 
 
-    def create_input_sequence(self, root_hidden_state, action_sequence):
+    def create_input_sequence(self, latent_root_state, action_sequence):
         # root hidden state: (batch_size, x)
         # action sequence: (batch_size, y)
 
         # Embed the action sequence
         if action_sequence is None:
-            batch_size = root_hidden_state.size(0)
+            batch_size = latent_root_state.size(0)
             # Create an empty embedded_actions tensor
-            embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=root_hidden_state.device)
+            embedded_actions = torch.empty(batch_size, 0, self.transformer_hidden_size, device=latent_root_state.device)
         else:
             # Embed the action sequence
             embedded_actions = self.action_embedding(action_sequence)  # Shape: (batch_size, y, transformer_hidden_size)
 
         # Project the root hidden state to the transformer hidden size
-        state_embedding = self.hidden_state_proj(root_hidden_state)  # Shape: (batch_size, transformer_hidden_size)
+        state_embedding = self.hidden_state_proj(latent_root_state)  # Shape: (batch_size, transformer_hidden_size)
         state_embedding = state_embedding.unsqueeze(1)  # Shape: (batch_size, 1, transformer_hidden_size)
 
         # Total sequence length (including the root hidden state)
@@ -291,14 +291,14 @@ class MuZeroMixedNetwork(AbstractNetwork):
 
 
 
-    def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):
+    def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None):
         assert action_sequence is not None, "Transformer needs an action sequence"
-        assert root_hidden_state is not None, "Transformer needs a hidden state"
+        assert latent_root_state is not None, "Transformer needs a hidden state"
 
         next_encoded_state = None
         if not self.full_transformer:
             next_encoded_state = self.dynamics(encoded_state, action)
 
-        policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, root_hidden_state)
+        policy_logits, value, reward = self.prediction(next_encoded_state, action_sequence, latent_root_state)
 
         return value, reward, policy_logits, next_encoded_state

@@ -42,10 +42,10 @@ class MuZeroDoubleNetwork(AbstractNetwork):
         )
 
 
-    def recurrent_inference(self, encoded_state, action, root_hidden_state=None, action_sequence=None):
+    def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None):
 
         value, reward, policy_logits, next_encoded_state = self.fulcon_network.recurrent_inference(encoded_state, action)
-        trans_value, trans_reward, trans_policy_logits, _ = self.trans_network.recurrent_inference(None, None, root_hidden_state, action_sequence)
+        trans_value, trans_reward, trans_policy_logits, _ = self.trans_network.recurrent_inference(None, None, latent_root_state, action_sequence)
 
         return (
                 torch.cat([value, trans_value], dim=0),

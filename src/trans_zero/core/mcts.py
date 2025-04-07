@@ -142,13 +142,13 @@ class MCTS:
             # Inside the search tree we use the dynamics function to obtain the next hidden
             # state given an action and the previous hidden state
             if transformer_net:
-                root_hidden_state = root.hidden_state
+                latent_root_state = root.hidden_state
 
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     None,
                     None,
-                    root_hidden_state = root_hidden_state,
-                    action_sequence= torch.tensor([actions]).to(root_hidden_state.device),
+                    latent_root_state = latent_root_state,
+                    action_sequence= torch.tensor([actions]).to(latent_root_state.device),
                 )
 
             else:
@@ -400,8 +400,8 @@ class MCTS_PLL(MCTS_MVC):
 
         max_tree_depth = 0
 
-        root_hidden_state = root.hidden_state
-        root_hidden_state = root_hidden_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        latent_root_state = root.hidden_state
+        latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
 
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
@@ -431,14 +431,14 @@ class MCTS_PLL(MCTS_MVC):
             # make into torch tensor
 
             padded_as, pad_masks = self.pad_action_sequences(action_sequences)
-            padded_as = torch.tensor(padded_as).to(root_hidden_state.device)
+            padded_as = torch.tensor(padded_as).to(latent_root_state.device)
             # # add singleton dimension as last
-            pad_masks = torch.tensor(pad_masks).to(root_hidden_state.device)
+            pad_masks = torch.tensor(pad_masks).to(latent_root_state.device)
 
             # copy root hidden state into size of action sequences in dim 0
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference_fast(
-                root_hidden_state=root_hidden_state,
+                latent_root_state=latent_root_state,
                 action_sequence=padded_as,
                 mask=pad_masks,
                 use_causal_mask = True
@@ -455,8 +455,8 @@ class MCTS_PLL(MCTS_MVC):
                 # todo try recurrent inf fast
                 # value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
                 #     None, None,
-                #     root_hidden_state = root_hidden_state,
-                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(root_hidden_state.device),
+                #     latent_root_state = latent_root_state,
+                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(latent_root_state.device),
                 # )
 
                 last_action_idx = len(actions) + len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
@@ -482,7 +482,7 @@ class MCTS_PLL(MCTS_MVC):
                     value_i,
                     reward_i,
                     policy_logits_i,
-                    root_hidden_state, # todo, make optional
+                    latent_root_state, # todo, make optional
                 )
 
                 self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)

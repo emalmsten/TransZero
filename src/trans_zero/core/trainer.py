@@ -206,12 +206,12 @@ class Trainer:
 
 
 
-    def get_predictions_fast_trans(self, init_predictions, root_hidden_state, action_batch, mask_batch):
+    def get_predictions_fast_trans(self, init_predictions, latent_root_state, action_batch, mask_batch):
         value, reward, policy_logits = init_predictions
 
         # start the action batch from 1 since the first action is not used
         trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
-            root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
+            latent_root_state, action_batch[:, 1:].squeeze(-1), mask_batch
         )
         # todo, only really reward necessary
         # set the 0th value from the inital inference
@@ -223,10 +223,10 @@ class Trainer:
         return predictions, transformer_output
 
 
-    def get_predictions(self, init_predictions, root_hidden_state, action_batch, transformer_net):
+    def get_predictions(self, init_predictions, latent_root_state, action_batch, transformer_net):
         init_value, init_reward, init_policy_logits = init_predictions
         values, rewards, policy_logits = [init_value], [init_reward], [init_policy_logits]
-        hidden_state = root_hidden_state
+        hidden_state = latent_root_state
 
         for i in range(1, action_batch.shape[1]):
             # Instead of an action, we send the whole action sequence from start to the current action
@@ -234,7 +234,7 @@ class Trainer:
                 action_sequence = action_batch[:, 1:i].squeeze(-1)
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
                     None, None, action_sequence=action_sequence,
-                    root_hidden_state=root_hidden_state
+                    latent_root_state=latent_root_state
                 )
             else:
                 value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
@@ -307,7 +307,7 @@ class Trainer:
 
         value, reward, policy_logits, hidden_state = self.model.initial_inference(observation_batch)
         init_predictions = (value, reward, policy_logits)
-        root_hidden_state = hidden_state
+        latent_root_state = hidden_state
 
         transformer_output, rep_enc_states, enc_state_loss = None, None, None
         if self.config.encoding_loss_weight:
@@ -315,7 +315,7 @@ class Trainer:
 
         # only used when doing rep enc state loss
         if transformer_net and self.config.get_fast_predictions:
-            predictions, transformer_output = self.get_predictions_fast_trans(init_predictions, root_hidden_state, action_batch, mask_batch)
+            predictions, transformer_output = self.get_predictions_fast_trans(init_predictions, latent_root_state, action_batch, mask_batch)
         else:
             predictions = self.get_predictions(init_predictions, hidden_state, action_batch, mask_batch)
 
@@ -549,13 +549,13 @@ class Trainer:
     #     value, reward, policy_logits, hidden_state = self.model.initial_inference(
     #         observation_batch
     #     )
-    #     root_hidden_state = hidden_state
+    #     latent_root_state = hidden_state
     #
     #     if double_net:
     #         value, trans_value = torch.chunk(value, 2, dim=0)
     #         reward, trans_reward = torch.chunk(reward, 2, dim=0)
     #         policy_logits, trans_policy_logits = torch.chunk(policy_logits, 2, dim=0)
-    #         hidden_state, root_hidden_state = torch.chunk(hidden_state, 2, dim=0)
+    #         hidden_state, latent_root_state = torch.chunk(hidden_state, 2, dim=0)
     #         trans_predictions = [(trans_value, trans_reward, trans_policy_logits)]
     #
     #     predictions = [(value, reward, policy_logits)]
@@ -563,7 +563,7 @@ class Trainer:
     #     if full_transformer:
     #         # start the action batch from 1 since the first action is not used
     #         trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
-    #             root_hidden_state, action_batch[:, 1:].squeeze(-1), mask_batch
+    #             latent_root_state, action_batch[:, 1:].squeeze(-1), mask_batch
     #         )
     #         # todo, only really reward necessary
     #         trans_value[:, 0] = value
@@ -590,7 +590,7 @@ class Trainer:
     #         if trans_net:
     #             action_sequence = action_batch[:, 1:i].squeeze(-1)
     #             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
-    #                 hidden_state, action_batch[:, i], action_sequence=action_sequence, root_hidden_state=root_hidden_state
+    #                 hidden_state, action_batch[:, i], action_sequence=action_sequence, latent_root_state=latent_root_state
     #             )
     #         else:
     #             value, reward, policy_logits, hidden_state = self.model.recurrent_inference(
