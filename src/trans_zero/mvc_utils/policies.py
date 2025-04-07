@@ -4,6 +4,7 @@ import torch as th
 from .value_transforms import IdentityValueTransform, ValueTransform
 from .utility_functions import get_children_policy_values_and_inverse_variance
 
+# todo maybe get some more order of mvc utils
 
 def custom_softmax(
     probs: th.Tensor,
@@ -124,7 +125,7 @@ class RandomPolicy(Policy):
 
 
 
-class MinimalVarianceConstraintPolicy(PolicyDistribution):
+class MeanVarianceConstraintPolicy(PolicyDistribution):
     """
     Selects the action with the highest inverse variance of the q value.
     Should return the same as the default tree evaluator

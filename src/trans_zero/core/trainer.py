@@ -367,7 +367,7 @@ class Trainer:
 
         return priorities, loss, value_loss, reward_loss, policy_loss, enc_state_loss
 
-
+# todo, consider loss class
     def loss_loop_trans(self, predictions, targets, gradient_scale_batch, action_mask, trans_output = None, rep_enc_states = None):
         (values, rewards, policy_logits) = predictions
         (target_value, target_reward, target_policy) = targets

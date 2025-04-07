@@ -47,6 +47,11 @@ class ReplayBuffer:
                     )
                     priorities.append(priority)
 
+                # if any priority is NaN, throw an error
+                if numpy.isnan(priorities).any():
+                    raise ValueError(
+                        "NaN priority in replay buffer. Check your model and training code."
+                    )
                 game_history.priorities = numpy.array(priorities, dtype="float32")
                 game_history.game_priority = numpy.max(game_history.priorities)
 
@@ -177,10 +182,20 @@ class ReplayBuffer:
                 game_id_list.append(game_id)
                 game_probs.append(game_history.game_priority)
             game_probs = numpy.array(game_probs, dtype="float32")
+            if numpy.isnan(game_probs).any():
+                raise ValueError(
+                    "NaN !game priority! in replay buffer. Check your model and training code. "
+                )
+
             game_probs /= numpy.sum(game_probs)
             game_prob_dict = dict(
                 [(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)]
             )
+            # # if any game probs is nan, throw an error
+            # if numpy.isnan(game_probs).any():
+            #     raise ValueError(
+            #         "NaN !game priority! in replay buffer. Check your model and training code. "
+            #     )
             selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs)
         else:
             selected_games = numpy.random.choice(list(self.buffer.keys()), n_games)
@@ -275,7 +290,14 @@ class ReplayBuffer:
         Generate targets for every unroll steps.
         """
         target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
-        uniform_policy = [1 / len(game_history.child_visits[0]) for _ in range(len(game_history.child_visits[0]))]
+        try:
+            n = len(game_history.child_visits[0])
+            print("NNNN", n)
+        except: # todo fix
+            n = 11
+
+        uniform_policy = [1 / n for _ in range(n)]
+
         indices = range(state_index, state_index + self.config.num_unroll_steps + 1)
         masks = [idx > len(game_history.root_values) for idx in indices]
 
@@ -283,7 +305,7 @@ class ReplayBuffer:
             if current_index < len(game_history.root_values):
                 value = self.compute_target_value(game_history, current_index)
                 reward = game_history.reward_history[current_index]
-                policy = game_history.child_visits[current_index]
+                policy = game_history.child_visits[current_index] # todo update this
                 action = game_history.action_history[current_index]
             elif current_index == len(game_history.root_values):
                 value = 0

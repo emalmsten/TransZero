@@ -89,6 +89,14 @@ class MVCNode(Node):
         self.policy_value = None
         self.action_space_size = action_space_size
 
+    def value(self):
+        """
+        Override the value method to return the policy value.
+        """
+        if self.policy_value is None:
+            return 0
+        return self.policy_value
+
     def get_visit_count(self):
         raise NotImplementedError("MVCNode does not use visit count")
 

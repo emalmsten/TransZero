@@ -8,8 +8,10 @@ import torch
 
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
-from trans_zero.mvc_utils.policies import MinimalVarianceConstraintPolicy
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
 from .mcts import MCTS, MCTS_PLL, MCTS_MVC
+from .node import MVCNode
+
 
 @ray.remote
 class SelfPlay:
@@ -38,7 +40,7 @@ class SelfPlay:
         self.model.eval()
 
         if self.config.action_selection == "mvc": # todo
-            self.mvc = MinimalVarianceConstraintPolicy(config=self.config)
+            self.mvc = MeanVarianceConstraintPolicy(config=self.config)
 
 
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
@@ -281,6 +283,7 @@ class SelfPlay:
             )
 
 
+# todo, put this in classes or smth
     @staticmethod
     def std_action_selection(node, temperature):
         """
@@ -393,20 +396,25 @@ class GameHistory:
         self.priorities = None
         self.game_priority = None
 
+    # todo important, update policy targets
     def store_search_statistics(self, root, action_space):
         # Turn visit count from root into a policy
         if root is not None:
-            sum_visits = sum(child.get_visit_count() for child in root.children.values())
-            self.child_visits.append(
-                [
-                    root.children[a].get_visit_count() / sum_visits
-                    if a in root.children
-                    else 0
-                    for a in action_space
-                ]
-            )
+
+            if not isinstance(root, MVCNode):  # todo
+                sum_visits = sum(child.get_visit_count() for child in root.children.values())
+                self.child_visits.append(
+                    [
+                        root.children[a].get_visit_count() / sum_visits
+                        if a in root.children
+                        else 0
+                        for a in action_space
+                    ]
+                )
 
             self.root_values.append(root.value())
+
+
         else:
             self.root_values.append(None)
 

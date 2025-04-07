@@ -103,8 +103,6 @@ def get_children_policy_values(
     return vals
 
 
-
-# todo emil, test validitiy of this
 def compute_inverse_q_variance(node, policy, discount_factor: float):
     return 1.0 / independent_policy_value_variance(node, policy, discount_factor)
 
