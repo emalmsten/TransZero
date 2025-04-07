@@ -4,7 +4,7 @@ import numpy
 import torch
 
 from trans_zero.utils import models
-from trans_zero.mvc_utils.policies import MinimalVarianceConstraintPolicy
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
 from trans_zero.mvc_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
 from .node import Node, MVCNode
 
@@ -335,8 +335,8 @@ class MCTS:
 class MCTS_MVC(MCTS):
     def __init__(self, config):
         super().__init__(config)
-        self.policy = MinimalVarianceConstraintPolicy(config=self.config)
-        self.root = MVCNode(0, use_reward=self.config.predict_reward, parent=None,
+        self.policy = MeanVarianceConstraintPolicy(config=self.config)
+        self.unexpanded_root = MVCNode(0, use_reward=self.config.predict_reward, parent=None,
                        action_space_size=len(self.config.action_space))
 
 
@@ -372,7 +372,7 @@ class MCTS_MVC(MCTS):
         if len(self.config.players) == 1:
             for node in reversed(search_path):
                 node.value_sum += value
-                value = policy_value(node, self.policy, self.config.discount)
+                value = policy_value(node, self.policy, self.config.discount) # put in node probalby
                 min_max_stats.update(value)
                 # todo add variance and policy reset here? or recalc?
         else:
