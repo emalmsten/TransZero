@@ -138,7 +138,6 @@ class MCTS:
         max_tree_depth = 0
 
         for _ in range(self.config.num_simulations):
-            root.reset_var_val()  # todo needed
 
             (
                 node,
@@ -339,7 +338,7 @@ class MCTS_PLL(MCTS):
             current_tree_depth = 0
 
             # todo reconsider where this should be
-            node.reset_var()
+            #node.reset_var()
 
             while node.expanded():
                 current_tree_depth += 1

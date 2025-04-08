@@ -399,6 +399,8 @@ class GameHistory:
                         for a in action_space
                     ]
                 )
+            else:
+                pass # todo get policy target from mvc runner.run_episode from jalde
 
             self.root_values.append(root.value())
 
