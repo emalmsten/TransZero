@@ -182,20 +182,10 @@ class ReplayBuffer:
                 game_id_list.append(game_id)
                 game_probs.append(game_history.game_priority)
             game_probs = numpy.array(game_probs, dtype="float32")
-            if numpy.isnan(game_probs).any():
-                raise ValueError(
-                    "NaN !game priority! in replay buffer. Check your model and training code. "
-                )
-
             game_probs /= numpy.sum(game_probs)
             game_prob_dict = dict(
                 [(game_id, prob) for game_id, prob in zip(game_id_list, game_probs)]
             )
-            # # if any game probs is nan, throw an error
-            # if numpy.isnan(game_probs).any():
-            #     raise ValueError(
-            #         "NaN !game priority! in replay buffer. Check your model and training code. "
-            #     )
             selected_games = numpy.random.choice(game_id_list, n_games, p=game_probs)
         else:
             selected_games = numpy.random.choice(list(self.buffer.keys()), n_games)
@@ -292,9 +282,8 @@ class ReplayBuffer:
         target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
         try:
             n = len(game_history.child_visits[0])
-            print("NNNN", n)
         except: # todo fix
-            n = 11
+            n = 3
 
         uniform_policy = [1 / n for _ in range(n)]
 

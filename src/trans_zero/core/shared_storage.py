@@ -59,7 +59,10 @@ class SharedStorage:
             print("Saving buffer to wandb")
             rb_artifact = wandb.Artifact(name=f'buffer-{self.config.name}', type="data")
             rb_artifact.add_file(str(path))
-            self.wandb_run.log_artifact(rb_artifact, aliases=["latest"])
+            try:
+                self.wandb_run.log_artifact(rb_artifact, aliases=["latest"])
+            except Exception as e:
+                print(f"Could not log artifact due to: {e}")
 
     def get_checkpoint(self):
         return copy.deepcopy(self.current_checkpoint)

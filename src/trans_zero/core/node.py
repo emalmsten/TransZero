@@ -1,11 +1,18 @@
 import numpy
 import torch
 
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
+from trans_zero.mvc_utils.utility_functions import policy_value
+
 
 class Node:
 
-    def __init__(self, prior, name="root", use_reward=True):
-        self.visit_count_ = 0
+    def __init__(self, prior, config, name="root"):
+        self.config = config
+        self.action_space_size = len(self.config.action_space)
+        self.use_reward = config.predict_reward
+
+        self.visit_count = 0
         self.to_play = -1
         self.prior = prior
         self.value_sum = 0
@@ -13,7 +20,6 @@ class Node:
         self.hidden_state = None
         self.reward = 0
         self.value_evaluation = 0
-        self.use_reward = use_reward
 
         self.ucb_score = None
 
@@ -25,13 +31,13 @@ class Node:
 
     def make_child(self, prior, child_name):
         """Factory method to create a child node."""
-        return Node(prior, name=child_name, use_reward=self.use_reward)
+        return Node(prior, self.config, name=child_name)
 
     def get_visit_count(self):
-        return self.visit_count_
+        return self.visit_count
 
     def increment_visit_count(self):
-        self.visit_count_ += 1
+        self.visit_count += 1
 
     def value(self): # todo make in mvc format
         if self.get_visit_count() == 0:
@@ -82,33 +88,31 @@ class Node:
 
 
 class MVCNode(Node):
-    def __init__(self, prior, action_space_size, parent=None, name="root", use_reward=True):
-        super().__init__(prior, name, use_reward)
+    def __init__(self, prior, config, parent=None, name="root"):
+        super().__init__(prior, config, name)
+        self.config = config
         self.parent = parent
         self.variance = None
         self.policy_value = None
-        self.action_space_size = action_space_size
+        self.policy = MeanVarianceConstraintPolicy(config)
 
     def value(self):
         """
         Override the value method to return the policy value.
         """
         if self.policy_value is None:
-            return 0
+            return policy_value(self, self.policy, self.policy.discount_factor)
         return self.policy_value
 
     def get_visit_count(self):
-        raise NotImplementedError("MVCNode does not use visit count")
+        return self.visit_count
+        #todo raise NotImplementedError("MVCNode does not use visit count")
 
     def make_child(self, prior, child_name):
         """
         Override the factory method to create a MVCNode child.
         """
-        return MVCNode(prior,
-                       action_space_size=self.action_space_size,
-                       name=child_name,
-                       use_reward=self.use_reward,
-                       parent=self)
+        return MVCNode(prior, self.config, name=child_name, parent=self)
 
     def reset_var_val(self):
         """

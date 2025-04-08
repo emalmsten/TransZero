@@ -8,6 +8,8 @@ from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
 from trans_zero.mvc_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
 from .node import Node, MVCNode
 
+from abc import ABC, abstractmethod
+import time
 
 
 # Game independent
@@ -22,13 +24,20 @@ class MCTS:
     def __init__(self, config):
         self.config = config
 
-        import time
-        timestamp = time.time()
-        self.file_path = f"data/test_scores/test_ucb_scores_{timestamp}.csv"
+        # todo, could be cleaned up
+        if self.config.PUCT_variant == "visit":
+            self.puct = PUCT_visit(config)
+            self.unexpanded_root = Node(0, self.config)
+        elif self.config.PUCT_variant == "mvc":
+            self.puct = PUCT_MVC(config)
+            self.unexpanded_root = MVCNode(0, self.config) # todo, stop sending the config around, keep it central
+        else:
+            raise NotImplementedError(f"PUCT variant {self.config.PUCT_variant} not implemented.")
 
-        self.unexpanded_root = Node(0, use_reward=self.config.predict_reward)
+        if self.config.test_ucb: # todo clean
+            timestamp = time.time()
+            self.file_path = f"data/test_scores/test_ucb_scores_{timestamp}.csv"
 
-        if self.config.test_ucb:
             self.min_max_stats_std = MinMaxStats()
             with open(self.file_path, "w") as f:
                 #f.write("P,C,UCB,UCB_mvc,U,U_mvc,Q,Q_mvc\n")
@@ -129,6 +138,7 @@ class MCTS:
         max_tree_depth = 0
 
         for _ in range(self.config.num_simulations):
+            root.reset_var_val()  # todo needed
 
             (
                 node,
@@ -193,7 +203,7 @@ class MCTS:
         #     node.reset_var()
 
         action_score_pairs = [
-            (action, self.ucb_score(node, child, min_max_stats))
+            (action, self.puct.ucb_score(node, child, min_max_stats))
             for action, child in node.children.items()
         ]
 
@@ -215,46 +225,6 @@ class MCTS:
         return selected_action, node.children[selected_action]
 
 
-    def U(self, parent, child):
-        pb_c_log = math.log(
-            (parent.get_visit_count() + self.config.pb_c_base + 1) / self.config.pb_c_base
-        )
-        pb_c = pb_c_log + self.config.pb_c_init
-        pb_c *= math.sqrt(parent.get_visit_count()) / (child.get_visit_count() + 1)
-        return pb_c
-
-
-
-    def Q(self, child):
-        if child.get_visit_count() < 1:
-            return 0
-
-        raw_value = child.reward + self.config.discount * (
-            child.value() if len(self.config.players) == 1 else -child.value()
-        )
-        return raw_value
-
-
-    def ucb_score(self, parent, child, min_max_stats):
-        """
-        Compute the PUCT (Predictor + UCT) score for a child node.
-        Score = Q + U
-        Where:
-            - Q is the normalized value estimate
-            - U is the exploration bonus
-        """
-
-        # --- 1. Calculate C (dynamic exploration constant) ---
-        U = child.prior * self.U(parent, child)
-
-        # --- 3. Calculate Q (normalized value score) ---
-        Q = self.Q(child)
-        Q = min_max_stats.normalize(Q)
-
-        # --- 5. Combine to get final PUCT score: UCB = Q + U ---
-        return Q + U
-
-
     def backpropagate(self, search_path, value, to_play, min_max_stats):
         """
         At the end of a simulation, we propagate the evaluation all the way up the tree
@@ -266,6 +236,10 @@ class MCTS:
                 node.increment_visit_count()
                 value = node.reward + self.config.discount * value
                 min_max_stats.update(value)
+
+                # resetting in the backprop, NEW, todo remove other
+                node.variance = None
+                node.policy_value = None
 
         elif len(self.config.players) == 2:
             for node in reversed(search_path):
@@ -332,54 +306,8 @@ class MCTS:
             f.flush()
 
 
-class MCTS_MVC(MCTS):
-    def __init__(self, config):
-        super().__init__(config)
-        self.policy = MeanVarianceConstraintPolicy(config=self.config)
-        self.unexpanded_root = MVCNode(0, use_reward=self.config.predict_reward, parent=None,
-                       action_space_size=len(self.config.action_space))
-
-
-    def Q(self, child):
-        return policy_value(child, self.policy, self.config.discount)
-
-    def U(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
-
-        return self.config.PUCT_C * (math.sqrt(par_inv_q_var) / (child_inv_q_var + 1))
-
-    # todo try, seems not to work
-    def calc_U_mvc_experimental(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
-
-        par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
-        child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
-
-        pb_c_log = math.log(
-            (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
-        )
-        pb_c = pb_c_log + self.config.pb_c_init
-        pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
-        return pb_c
-
-    def backpropagate(self, search_path, value, to_play, min_max_stats):
-        """
-        At the end of a simulation, we propagate the evaluation all the way up the tree
-        to the root
-        """
-        if len(self.config.players) == 1:
-            for node in reversed(search_path):
-                node.value_sum += value
-                value = policy_value(node, self.policy, self.config.discount) # put in node probalby
-                min_max_stats.update(value)
-                # todo add variance and policy reset here? or recalc?
-        else:
-            raise NotImplementedError("More than two player mode not implemented.")
-
 # todo, doesn't really make sense that MCTS PLL only can inherit from MCTS MVC
-class MCTS_PLL(MCTS_MVC):
+class MCTS_PLL(MCTS):
     def __init__(self, config):
         super().__init__(config)
 
@@ -565,6 +493,101 @@ class MCTS_PLL(MCTS_MVC):
         #                 ) + self.config.discount * value
         #
         #
+
+class PUCT(ABC):
+    """
+    PUCT (Predictor + UCT) is a Monte Carlo Tree Search algorithm that uses a
+    predictor to guide the search.
+    """
+
+    def __init__(self, config):
+        self.config = config
+
+    @abstractmethod
+    def U(self, parent, child):
+        """
+        Compute the exploration bonus for a child node.
+        Must be implemented by subclasses.
+        """
+        pass
+
+    @abstractmethod
+    def Q(self, child):
+        """
+        Compute the value estimate for a child node.
+        Must be implemented by subclasses.
+        """
+        pass
+
+    def ucb_score(self, parent, child, min_max_stats):
+        """
+        Compute the PUCT (Predictor + UCT) score for a child node.
+        Score = Q + U
+        """
+        U = child.prior * self.U(parent, child)
+        Q = self.Q(child)
+        Q = min_max_stats.normalize(Q)
+        return Q + U
+
+
+class PUCT_visit(PUCT):
+    """
+    PUCT (Predictor + UCT) is a Monte Carlo Tree Search algorithm that uses a
+    predictor to guide the search.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+
+
+    def U(self, parent, child):
+        pb_c_log = math.log(
+            (parent.get_visit_count() + self.config.pb_c_base + 1) / self.config.pb_c_base
+        )
+        pb_c = pb_c_log + self.config.pb_c_init
+        pb_c *= math.sqrt(parent.get_visit_count()) / (child.get_visit_count() + 1)
+        return pb_c
+
+
+    def Q(self, child):
+        if child.get_visit_count() < 1:
+            return 0
+
+        raw_value = child.reward + self.config.discount * (
+            child.value() if len(self.config.players) == 1 else -child.value()
+        )
+        return raw_value
+
+
+class PUCT_MVC(PUCT):
+    def __init__(self, config):
+        super().__init__(config)
+        self.policy = MeanVarianceConstraintPolicy(config=self.config)
+
+
+    def Q(self, child):
+        return policy_value(child, self.policy, self.config.discount)
+
+    def U(self, parent, child):
+        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+
+        return self.config.PUCT_C * (math.sqrt(par_inv_q_var) / (child_inv_q_var + 1))
+
+    # todo try, seems not to work
+    def calc_U_mvc_experimental(self, parent, child):
+        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+
+        par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
+        child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
+
+        pb_c_log = math.log(
+            (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
+        )
+        pb_c = pb_c_log + self.config.pb_c_init
+        pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
+        return pb_c
 
 
 class MinMaxStats:

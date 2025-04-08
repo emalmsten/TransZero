@@ -9,7 +9,7 @@ import torch
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from .mcts import MCTS, MCTS_PLL, MCTS_MVC
+from .mcts import MCTS, MCTS_PLL
 from .node import MVCNode
 
 
@@ -178,26 +178,14 @@ class SelfPlay:
                             temperature != 0
                         )
 
-                    else:# note to Emil, where you go when using frozen_lake
-                        if self.config.PUCT_variant == "mvc":
-                            root, mcts_info = MCTS_MVC(self.config).run(
-                                self.model,
-                                stacked_observations,
-                                self.game.legal_actions(),
-                                self.game.to_play(),
-                                temperature != 0
-                            )
-                        else:
-                            root, mcts_info = MCTS(self.config).run(
-                                self.model,
-                                stacked_observations,
-                                self.game.legal_actions(),
-                                self.game.to_play(),
-                                temperature != 0
-                            )
-
-                    if self.config.action_selection == "mvc":
-                        root.reset_var_val()
+                    else:
+                        root, mcts_info = MCTS(self.config).run(
+                            self.model,
+                            stacked_observations,
+                            self.game.legal_actions(),
+                            self.game.to_play(),
+                            temperature != 0
+                        )
 
                     action = self.select_action(
                         root,
@@ -227,7 +215,7 @@ class SelfPlay:
                     print(f"Obtained reward: {reward}")
                     self.game.render()
 
-                game_history.store_search_statistics(root, self.config.action_space)
+                game_history.store_search_statistics(root, self.config.action_space, self.config.policy_target_type)
 
                 # Next batch
                 game_history.action_history.append(action)
@@ -397,11 +385,11 @@ class GameHistory:
         self.game_priority = None
 
     # todo important, update policy targets
-    def store_search_statistics(self, root, action_space):
+    def store_search_statistics(self, root, action_space, policy_target_type):
         # Turn visit count from root into a policy
         if root is not None:
 
-            if not isinstance(root, MVCNode):  # todo
+            if not isinstance(root, MVCNode) or policy_target_type == 'visit':  # todo
                 sum_visits = sum(child.get_visit_count() for child in root.children.values())
                 self.child_visits.append(
                     [

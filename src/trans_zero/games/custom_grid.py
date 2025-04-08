@@ -121,7 +121,8 @@ class MuZeroConfig:
         self.PUCT_C = 2.0
         self.PUCT_variant = "mvc"
         self.mvc_beta = 1.0
-        self.self_prob_type = "mvc" # visit or mvc
+        self.self_prob_type = "mvc" # visit or mvc # todo remove
+        self.policy_target_type = "visit"
         self.test_ucb = False
 
         # Local
@@ -170,7 +171,7 @@ class MuZeroConfig:
         self.stacked_observations = 0  # Number of previous observations and previous actions to add to the current observation
         self.negative_reward = -0.0 #-0.1
         self.obstacle = "lava"
-        self.predict_reward = True
+        self.predict_reward = True # todo check if this should even be an option
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)

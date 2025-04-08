@@ -9,11 +9,13 @@ def policy_value(
     policy,  # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
 ):
+    # consider if discount factor should be a separate parameter
 
     # return the q value the node with the given policy
     # with the defualt tree evaluator, this should return the same as the default value
 
     # added false since it cant happen in muzero // Emil
+     
     # if False and node.terminal:
     #     val = th.tensor(node.reward, dtype=th.float32)
     #     node.policy_value = val
