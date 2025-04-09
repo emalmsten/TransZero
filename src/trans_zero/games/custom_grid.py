@@ -122,7 +122,7 @@ class MuZeroConfig:
         self.PUCT_variant = "mvc"
         self.mvc_beta = 1.0
         self.self_prob_type = "mvc" # visit or mvc # todo remove
-        self.policy_target_type = "visit"
+        self.policy_target_type = "mvc"
         self.test_ucb = False
 
         # Local

@@ -280,12 +280,9 @@ class ReplayBuffer:
         Generate targets for every unroll steps.
         """
         target_values, target_rewards, target_policies, actions, masks = [], [], [], [], []
-        try:
-            n = len(game_history.child_visits[0])
-        except: # todo fix
-            n = 3
 
-        uniform_policy = [1 / n for _ in range(n)]
+        action_space_size = len(game_history.policy_targets[0])
+        uniform_policy = [1 / action_space_size for _ in range(action_space_size)]
 
         indices = range(state_index, state_index + self.config.num_unroll_steps + 1)
         masks = [idx > len(game_history.root_values) for idx in indices]
@@ -294,7 +291,8 @@ class ReplayBuffer:
             if current_index < len(game_history.root_values):
                 value = self.compute_target_value(game_history, current_index)
                 reward = game_history.reward_history[current_index]
-                policy = game_history.child_visits[current_index] # todo update this
+                # child visits in standard MCTS
+                policy = game_history.policy_targets[current_index] # todo rename
                 action = game_history.action_history[current_index]
             elif current_index == len(game_history.root_values):
                 value = 0

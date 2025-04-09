@@ -377,7 +377,7 @@ class GameHistory:
         self.action_history = []
         self.reward_history = []
         self.to_play_history = []
-        self.child_visits = []
+        self.policy_targets = []
         self.root_values = []
         self.reanalysed_predicted_root_values = None
         # For PER
@@ -391,16 +391,23 @@ class GameHistory:
 
             if not isinstance(root, MVCNode) or policy_target_type == 'visit':  # todo
                 sum_visits = sum(child.get_visit_count() for child in root.children.values())
-                self.child_visits.append(
-                    [
+                child_visits =  [
                         root.children[a].get_visit_count() / sum_visits
                         if a in root.children
                         else 0
                         for a in action_space
                     ]
+                self.policy_targets.append(
+                    child_visits
                 )
+                print(child_visits)
+                print(root.policy.softmaxed_distribution(root).probs)
             else:
-                pass # todo get policy target from mvc runner.run_episode from jalde
+                mvc_policy = root.policy.softmaxed_distribution(root).probs
+                # untorch and add to mvc_policies
+                self.policy_targets.append(mvc_policy.tolist())
+
+                # todo get policy target from mvc runner.run_episode from jalde
 
             self.root_values.append(root.value())
 
