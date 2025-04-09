@@ -237,6 +237,7 @@ class MuZeroConfig:
         self.state_size = None #(16, 4, 4) # same as
         self.stable_transformer = False
         self.get_fast_predictions = True # todo rename
+        self.use_forward_causal_mask = False
 
 
         ### Training
