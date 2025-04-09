@@ -190,6 +190,8 @@ def setup_local_args(cmd_args, test):
 def setup(args, test=False):
     if args.run_from_cluster in ("db", "rp"):
         wandb.login(key=os.getenv("WANDB_API_KEY"), relogin=True)
+    elif args.run_from_cluster == "kaggle":
+        pass
     elif args.run_from_cluster is not None:
         raise ValueError(f"Unknown cluster: {args.run_from_cluster}")
     else:
