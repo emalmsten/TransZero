@@ -42,9 +42,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         cum_reward = False,
         state_size = None,
         num_state_values = None, # none for continous,
-        stable_transformer = True
+        stable_transformer = True,
+
+        config = None,
     ):
         super().__init__()
+        self.config = config
+
+
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
         self.support_size = support_size

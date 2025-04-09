@@ -57,6 +57,7 @@ class MuZeroNetwork:
                 cum_reward=config.cum_reward,
                 state_size=config.state_size,
                 stable_transformer=config.stable_transformer,
+                config=config, # TODO important, temporary
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(
