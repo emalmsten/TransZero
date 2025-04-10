@@ -21,8 +21,17 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
 
-        self.action_selection = "mvc" # mvc or std
-        self.mvc_beta = 1
+        self.expansion_strategy = None
+        self.expansion_budget = 4 # atleast 1 node needs to be expanded
+
+        # action selection
+        self.action_selection = "mvc"  # mvc or std
+        self.PUCT_C = 2.5
+        self.PUCT_variant = "mvc"
+        self.mvc_beta = 0.3
+        self.self_prob_type = "mvc"  # visit or mvc # todo remove
+        self.policy_target_type = "mvc"
+        self.test_ucb = False
 
         # Local
         self.testing = False
@@ -73,7 +82,7 @@ class MuZeroConfig:
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
         ### Self-Play
-        self.num_workers = 1  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.num_workers = 8  # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = 700  # Maximum number of moves if game is not finished before
         self.num_simulations = 50  # Number of future moves self-simulated
         self.discount = 0.999  # Chronological discount of the reward
@@ -109,6 +118,8 @@ class MuZeroConfig:
         self.fc_value_layers = [64]  # Define the hidden layers in the value network
         self.fc_policy_layers = [64]  # Define the hidden layers in the policy network
 
+
+        # Transformer
         self.transformer_layers = 4
         self.transformer_heads = 16
         self.transformer_hidden_size = 64
@@ -129,10 +140,13 @@ class MuZeroConfig:
         self.cum_reward = False
         self.state_size = None  # (1,1,8) #None #(16,3,3) # same as
         self.stable_transformer = False
+        self.use_forward_causal_mask = True
+        self.get_fast_predictions = True
+
 
         ### Training
         self.checkpoint_interval = 10
-        self.training_steps = 500000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 750000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # 64  # Number of parts of games to train on at each training step
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None  # None for not using this
@@ -188,6 +202,12 @@ class MuZeroConfig:
                 return self.softmax_temps[i]
 
     # todo implement set names and paths
+    def set_names_and_paths(self):
+        path = self.root / "data/results" / self.game_name / self.network
+        name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
+        log_name = f"{self.game_name}_{self.network}_{name}"
+        results_path = path / name
+        return name, log_name, results_path
 
 class Game(AbstractGame):
     """
