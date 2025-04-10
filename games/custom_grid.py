@@ -164,6 +164,7 @@ class MuZeroConfig:
         self.negative_reward = -0.0 #-0.1
         self.obstacle = "lava"
         self.predict_reward = True
+        self.use_forward_causal_mask = False
 
         # Evaluate
         self.muzero_player = 0  # Turn Muzero begins to play (0: MuZero plays first, 1: MuZero plays second)

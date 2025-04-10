@@ -42,9 +42,11 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         cum_reward = False,
         state_size = None,
         num_state_values = None, # none for continous,
-        stable_transformer = True
+        stable_transformer = True,
+        config=None,
     ):
         super().__init__()
+        self.config = config
         print("MuZeroTransformerNetwork")
         self.action_space_size = action_space_size
         self.support_size = support_size
@@ -234,6 +236,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         # Pass through the transformer encoder
         #print(input_sequence.size())
+        causal_mask = None
+        if self.config.use_forward_causal_mask:
+            causal_mask = self.create_causal_mask(input_sequence.size(1)).to(input_sequence.device)
 
         if self.stable_transformer:
             input_sequence = input_sequence.transpose(0, 1)
@@ -242,7 +247,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             transformer_output = result["logits"]
             transformer_output = transformer_output.transpose(0, 1)
         else:
-            transformer_output = self.transformer_encoder(input_sequence)
+            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask)
 
         # Shape: (B, sequence_length, transformer_hidden_size)
 
