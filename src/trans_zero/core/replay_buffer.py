@@ -343,11 +343,10 @@ class Reanalyse:
         while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
             time.sleep(0.1)
 
-        while ray.get(
-            shared_storage.get_info.remote("training_step")
-        ) < self.config.training_steps and not ray.get(
-            shared_storage.get_info.remote("terminate")
-        ):
+        while (
+                ray.get(shared_storage.get_info.remote(self.config.stopping_criterion)) < self.config.training_steps
+                and not ray.get(shared_storage.get_info.remote("terminate")
+        )):
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             game_id, game_history, _ = ray.get(

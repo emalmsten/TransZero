@@ -112,17 +112,21 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.max_time_minutes = None
+        self.stopping_criterion = 'training_step'  # 'num_played_steps' or 'training_step'
+        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
+
+
 
         self.expansion_strategy = None
         self.expansion_budget = 4 # atleast 1 node needs to be expanded
 
         # action selection
-        self.action_selection = "mvc" # mvc or std
+        self.action_selection = "visit" # mvc or std
         self.PUCT_C = 2.0
-        self.PUCT_variant = "mvc"
+        self.PUCT_variant = "visit"
         self.mvc_beta = 1.0
-        self.self_prob_type = "mvc" # visit or mvc # todo remove
-        self.policy_target_type = "mvc"
+        self.self_prob_type = "visit" # visit or mvc # todo remove
+        self.policy_target_type = "visit"
         self.test_ucb = False
 
         # Local
@@ -136,7 +140,7 @@ class MuZeroConfig:
         self.wandb_entity = "elhmalmsten-tu-delft"
 
         # Essentials
-        self.network = "transformer"
+        self.network = "resnet"
         self.game_name = "custom_grid"
 
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
@@ -241,7 +245,6 @@ class MuZeroConfig:
 
 
         ### Training
-        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 10  # Number of training steps before using the model for self-playing
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)

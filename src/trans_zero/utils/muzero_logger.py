@@ -253,7 +253,7 @@ def logging_loop(muzero, logger):
     max_time_seconds = muzero.config.max_time_minutes * 60 if muzero.config.max_time_minutes else float("inf")
 
     try:
-        while counter == first_step or info["training_step"] < muzero.config.training_steps:
+        while counter == first_step or info[muzero.config.stopping_criterion] < muzero.config.training_steps:
 
             if time.time() - start_time > max_time_seconds:
                 print(f"Max time reached: {muzero.config.max_time_minutes} minutes")
@@ -266,9 +266,13 @@ def logging_loop(muzero, logger):
                 wandb_logging(info, counter, offline_cache, is_double_network)
             if counter % 10 == 0 or counter < 3:
                 print(
-                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{muzero.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
-                    # end="\r", flush=True,
+                    f"Last test reward: {info['total_reward']:.2f} | "
+                    f"Training step: {info['training_step']}/{muzero.config.training_steps} | "
+                    f"Games: {info['num_played_games']} | "
+                    f"Steps: {info['num_played_steps']} | "
+                    f"Loss: {info['total_loss']:.2f}"
                 )
+
             # if logger == "wandb" and counter % muzero.config.checkpoint_interval == 0 and counter > 0:
             #     # save_model(muzero)
             #     save_buffer(muzero)

@@ -46,7 +46,7 @@ class SelfPlay:
     def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
         game_number = 0
         while ray.get(
-            shared_storage.get_info.remote("training_step")
+            shared_storage.get_info.remote(self.config.stopping_criterion)
         ) < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
@@ -59,7 +59,7 @@ class SelfPlay:
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
-                            shared_storage.get_info.remote("training_step")
+                            shared_storage.get_info.remote(self.config.stopping_criterion)
                         )
                     ),
                     self.config.temperature_threshold,

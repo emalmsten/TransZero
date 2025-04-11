@@ -32,6 +32,10 @@ class Trainer:
         self.model.train()
 
         self.training_step = initial_checkpoint["training_step"]
+        self.num_played_step = initial_checkpoint["num_played_steps"]
+        self.stop_crit_step = self.training_step\
+            if self.config.stopping_criterion == "training_step"\
+            else self.num_played_step
 
         if "cuda" not in str(next(self.model.parameters()).device):
             print("You are not training on GPU.\n")
@@ -72,7 +76,7 @@ class Trainer:
         ) = losses
 
         # Save to the shared storage
-        if self.training_step % self.config.checkpoint_interval == 0:
+        if self.stop_crit_step % self.config.checkpoint_interval == 0:
             shared_storage.set_info.remote(
                 {
                     "weights": copy.deepcopy(self.model.get_weights()),
@@ -83,9 +87,9 @@ class Trainer:
             )
 
         # Save to the shared storage
-        if self.config.save_model and self.training_step % self.config.save_interval == 0:
-            shared_storage.save_checkpoint.remote(self.training_step)
-            shared_storage.save_buffer.remote(replay_buffer, self.training_step,
+        if self.config.save_model and self.stop_crit_step % self.config.save_interval == 0:
+            shared_storage.save_checkpoint.remote(self.stop_crit_step)
+            shared_storage.save_buffer.remote(replay_buffer, self.stop_crit_step,
                                               shared_storage.get_info.remote("num_played_games"),
                                               shared_storage.get_info.remote("num_reanalysed_games"))
 
@@ -96,7 +100,6 @@ class Trainer:
 
             shared_storage.set_info.remote(
                 {
-                    "training_step": self.training_step,
                     "trans_value_loss": trans_value_loss,
                     "trans_reward_loss": trans_reward_loss,
                     "trans_policy_loss": trans_policy_loss
@@ -123,13 +126,13 @@ class Trainer:
         next_batch = replay_buffer.get_batch.remote()
         # Training loop
 
-        while self.training_step < self.config.training_steps and not ray.get(
+        while self.stop_crit_step < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
             index_batch, batch = ray.get(next_batch)
             next_batch = replay_buffer.get_batch.remote()
             self.update_lr()
-            losses = self.update_weights(batch)
+            losses = self.update_weights(batch, shared_storage)
             priorities = losses[0]
 
             if self.config.PER:
@@ -138,7 +141,7 @@ class Trainer:
 
             self.save_to_shared_storage(shared_storage, losses, replay_buffer)
 
-            # Managing the self-play / training ratio
+            # Managing the self-play
             if self.config.training_delay:
                 time.sleep(self.config.training_delay)
             if self.config.ratio:
@@ -225,7 +228,7 @@ class Trainer:
 
     def get_predictions(self, init_predictions, latent_root_state, action_batch, transformer_net):
         init_value, init_reward, init_policy_logits = init_predictions
-        values, rewards, policy_logits = [init_value], [init_reward], [init_policy_logits]
+        values, rewards, policy_logits_ar = [init_value], [init_reward], [init_policy_logits]
         hidden_state = latent_root_state
 
         for i in range(1, action_batch.shape[1]):
@@ -247,9 +250,10 @@ class Trainer:
 
             values.append(value)
             rewards.append(reward)
-            policy_logits.append(policy_logits)
+            policy_logits_ar.append(policy_logits)
 
-        return values, rewards, policy_logits
+        # turn into tensors before returning
+        return torch.stack(values, dim=1), torch.stack(rewards, dim=1), torch.stack(policy_logits_ar, dim=1)
 
 
     def calc_weighting_factors(self, device):
@@ -278,7 +282,7 @@ class Trainer:
         return value_losses, reward_losses, policy_losses
 
 
-    def update_weights(self, batch):
+    def update_weights(self, batch, shared_storage):
         """
         Perform one training step.
         """
@@ -317,7 +321,7 @@ class Trainer:
         if transformer_net and self.config.get_fast_predictions:
             predictions, transformer_output = self.get_predictions_fast_trans(init_predictions, latent_root_state, action_batch, mask_batch)
         else:
-            predictions = self.get_predictions(init_predictions, hidden_state, action_batch, mask_batch)
+            predictions = self.get_predictions(init_predictions, hidden_state, action_batch, transformer_net)
 
 
         if transformer_net:
@@ -360,6 +364,13 @@ class Trainer:
         loss.backward()
         self.optimizer.step()
         self.training_step += 1
+        self.num_played_step = ray.get(
+            shared_storage.get_info.remote("num_played_steps")
+        )
+
+        self.stop_crit_step = self.training_step\
+            if self.config.stopping_criterion == "training_step"\
+            else self.num_played_step
 
         loss, value_loss, reward_loss, policy_loss = (
             loss.item(), value_loss.mean().item(), reward_loss.mean().item(), policy_loss.mean().item()
@@ -416,11 +427,11 @@ class Trainer:
     def loss_loop_fast(self, predictions, targets, gradient_scale_batch):
 
         (target_value, target_reward, target_policy) = targets
-        (values, rewards, policy_logits) = predictions
+        (values, rewards, policy_logits_ar) = predictions
 
         # Compute losses
         value_losses, reward_losses, policy_losses = self.loss_function(
-            values, rewards, policy_logits, target_value, target_reward, target_policy
+            values, rewards, policy_logits_ar, target_value, target_reward, target_policy
         )
 
         reward_losses[:,0] = torch.zeros(reward_losses[:,0].shape, device=reward_losses.device)
@@ -456,13 +467,13 @@ class Trainer:
         Update learning rate
         """
         warmup_steps = self.config.warmup_steps
-        if self.training_step < warmup_steps:
+        if self.stop_crit_step < warmup_steps:
             # Linear warm-up phase
-            warmup_factor = self.training_step / warmup_steps
+            warmup_factor = self.stop_crit_step / warmup_steps
             lr = self.config.lr_init * warmup_factor
         else:
             # Exponential decay phase
-            decay_steps = max(1, self.training_step - warmup_steps)
+            decay_steps = max(1, self.stop_crit_step - warmup_steps)
             lr = self.config.lr_init * self.config.lr_decay_rate ** (decay_steps / self.config.lr_decay_steps)
 
         # Apply the learning rate to the optimizer

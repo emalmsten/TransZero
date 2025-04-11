@@ -20,6 +20,9 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.max_time_minutes = None
+        self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
+        # todo consider renaming
+        self.training_steps = 400000  # Total number of training (or env) steps (ie weights update according to a batch)
 
         self.expansion_strategy = None
         self.expansion_budget = 4 # atleast 1 node needs to be expanded
@@ -146,7 +149,6 @@ class MuZeroConfig:
 
         ### Training
         self.checkpoint_interval = 10
-        self.training_steps = 750000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 128  # 64  # Number of parts of games to train on at each training step
         self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.encoding_loss_weight = None  # None for not using this

@@ -15,7 +15,8 @@ class SharedStorage:
     def __init__(self, checkpoint, config, wandb_run=None):
         self.config = config
         self.current_checkpoint = copy.deepcopy(checkpoint)
-        print(self.current_checkpoint["training_step"])
+        print("Training step", self.current_checkpoint["training_step"])
+        print("Env Step", self.current_checkpoint["num_played_steps"])
         self.wandb_run = wandb_run
 
     def save_checkpoint(self, num_played_steps, path=None):
