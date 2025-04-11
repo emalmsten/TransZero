@@ -20,6 +20,7 @@ apt install swig -y
 # install dependencies
 #conda env create -f environment.yml
 # pytorch torchvision torchaudio pytorch-cuda=12.1
+pip install -e .
 conda install numpy==1.26.4 gymnasium nevergrad=1.0.1 bayesian-optimization=1.2.0 -c conda-forge -y
 conda install -c conda-forge "ray-default" box2d-py -y
 pip3 install torch torchvision torchaudio
