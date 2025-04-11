@@ -265,11 +265,17 @@ def logging_loop(muzero, logger):
             elif logger == "wandb":
                 wandb_logging(info, counter, offline_cache, is_double_network)
             if counter % 10 == 0 or counter < 3:
+                ts_text = f"{info['training_step']}"
+                env_text = f"{info['num_played_steps']}"
+                if muzero.config.stopping_criterion == "training_step":
+                    ts_text += f"/{muzero.config.training_steps}"
+                elif muzero.config.stopping_criterion == "num_played_steps":
+                    env_text += f"/{muzero.config.training_steps}"
                 print(
                     f"Last test reward: {info['total_reward']:.2f} | "
-                    f"Training step: {info['training_step']}/{muzero.config.training_steps} | "
+                    f"Training step: {ts_text} | "
                     f"Games: {info['num_played_games']} | "
-                    f"Steps: {info['num_played_steps']} | "
+                    f"Steps: {env_text} | "
                     f"Loss: {info['total_loss']:.2f}"
                 )
 
