@@ -203,6 +203,7 @@ class MuZeroConfig:
 
     # todo implement set names and paths
     def set_names_and_paths(self):
+        self.root = pathlib.Path(self.root)
         path = self.root / "data/results" / self.game_name / self.network
         name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         log_name = f"{self.game_name}_{self.network}_{name}"
