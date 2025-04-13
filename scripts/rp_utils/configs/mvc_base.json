@@ -16,12 +16,12 @@
   "fc_representation_layers": [32],
   "mlp_head_layers": [64, 32],
 
-  "action_selection": "visit",
+  "action_selection": "mvc",
   "PUCT_C": 2.0,
-  "PUCT_variant": "visit",
+  "PUCT_variant": "mvc",
   "mvc_beta": 0.5,
-  "self_prob_type": "visit",
-  "policy_target_type": "visit",
+  "self_prob_type": "mvc",
+  "policy_target_type": "mvc",
   "test_ucb": false,
 
   "training_steps": 400000,
