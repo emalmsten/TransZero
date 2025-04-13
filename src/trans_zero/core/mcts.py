@@ -10,6 +10,7 @@ from .node import Node, MVCNode
 
 from abc import ABC, abstractmethod
 import time
+from collections import defaultdict
 
 
 # Game independent
@@ -305,8 +306,7 @@ class MCTS:
             f.flush()
 
 
-# todo, doesn't really make sense that MCTS PLL only can inherit from MCTS MVC
-class MCTS_PLL(MCTS):
+class MCTS_PLL_1(MCTS):
     def __init__(self, config):
         super().__init__(config)
 
@@ -480,18 +480,226 @@ class MCTS_PLL(MCTS):
         return padded_sequences, pad_masks
 
 
+class MCTS_PLL_2(MCTS_PLL_1):
+    def __init__(self, config):
+        super().__init__(config)
 
-        # todo implement for two players
-        # elif len(self.config.players) == 2:
-        #     for node in reversed(search_path):
-        #         node.value_sum += value if node.to_play == to_play else -value
-        #         min_max_stats.update(node.reward + self.config.discount * -node.value())
-        #
-        #         value = (
-        #                     -node.reward if node.to_play == to_play else node.reward
-        #                 ) + self.config.discount * value
-        #
-        #
+
+    def get_unique_nodes_for_sequence(self, sequences):
+        unique_occurrences = {}
+
+        # Process each input sequence (only one pass over each)
+        for seq in sequences:
+            history = []  # will collect the history (as lowercase tokens)
+            for token in seq:
+                pos = len(history) + 1  # positions start at 1
+                # Construct full_seq as (history plus current token in lowercase)
+                full_seq = tuple(history) + (token,)
+                key = (token, pos, full_seq)
+                unique_occurrences[key] = key
+                history.append(token)
+
+        return unique_occurrences
+
+    def make_causal_mask(self, seqs, device):
+        n = len(seqs)
+        # Pre-cache the full sequences and their lengths.
+        lengths = [len(seq) for seq in seqs]
+
+        # Compute the original mask for tokens_list.
+        inner_mask = [
+            [lengths[j] <= lengths[i] and seqs[i][:lengths[j]] == seqs[j]
+             for j in range(n)]
+            for i in range(n)
+        ]
+        inner_mask_tensor = torch.tensor(inner_mask, dtype=torch.bool, device=device)
+
+        # Create a new mask of size (n+1) x (n+1) pre-filled with True.
+        # This ensures that all tokens attend to the extra (global) entry.
+        outer_mask = torch.ones((n + 1, n + 1), dtype=torch.bool, device=device)
+
+        # Insert the original mask into the lower-right block.
+        outer_mask[1:, 1:] = inner_mask_tensor
+
+        return ~outer_mask # return inverted
+
+    def unwind_sequences(self, sequences):
+        """
+        For a list of sequences of actions (each a list of action labels),
+        this function computes for each (node, position) the set of unique histories (prior nodes),
+        and then "unwinds" them into a single action sequence and a corresponding positional encoding.
+
+        The final encoding ensures positions are non-decreasing.
+        """
+        groups = {}  # (node, pos) -> set of histories (each history is a tuple)
+        order = {}  # (node, pos) -> first occurrence order (to preserve encounter order)
+        next_order = 0
+
+        # Loop once over each sequence to update groups
+        for seq in sequences:
+            history = []
+            for pos, node in enumerate(seq, start=1):
+                key = (node, pos)
+                if key not in groups:
+                    groups[key] = set()
+                    order[key] = next_order
+                    next_order += 1
+                groups[key].add(tuple(history))
+                history.append(node)
+
+        # Now sort keys by position (non-decreasing) and then by encounter order.
+        sorted_keys = sorted(groups.keys(), key=lambda k: (k[1], order[k]))
+
+        action_seq = []
+        pos_seq = []
+        for node, pos in sorted_keys:
+            count = len(groups[(node, pos)])
+            action_seq.append(node * count)  # repeat node as many times as there are unique histories
+            pos_seq.append([pos] * count)
+
+        return action_seq, pos_seq
+
+
+
+
+
+    def run(
+            self,
+            model,
+            observation,
+            legal_actions,
+            to_play,
+            add_exploration_noise,
+            override_root_with=None,
+    ):
+
+        # print(f"is trans net: {is_trans_net}")
+        root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
+
+        min_max_stats = MinMaxStats()
+
+        max_tree_depth = 0
+
+        latent_root_state = root.hidden_state
+        #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+
+        for _ in range(self.config.num_simulations):
+            virtual_to_play = to_play
+            node = root
+            search_path = [node]
+            actions = []
+            current_tree_depth = 0
+
+            # todo reconsider where this should be
+            #node.reset_var()
+
+            while node.expanded():
+                current_tree_depth += 1
+                action, node = self.select_child(node, min_max_stats)  # tree action selection
+                search_path.append(node)
+                actions.append(action)
+
+                # Players play turn by turn
+                if virtual_to_play + 1 < len(self.config.players):
+                    virtual_to_play = self.config.players[virtual_to_play + 1]
+                else:
+                    virtual_to_play = self.config.players[0]
+
+            action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
+            # prepend actions to each
+            action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
+            # get unique nodes for each sequence
+            #action_seq, pos_indices = self.unwind_sequences(action_sequences)
+            unique_occurrences = self.get_unique_nodes_for_sequence(action_sequences)
+
+            tokens_list = list(unique_occurrences.keys())
+            # Sort tokens by: position, then by token label (alphabetically), then by full_seq.
+            tokens_list.sort(key=lambda x: (x[1], x[0], x[2]))
+
+            # Build the action sequence and positional sequence.
+            action_seq, pos_indices, full_seqs = [], [], []
+
+            for token, pos, full_seq in tokens_list:
+                action_seq.append(token)
+                pos_indices.append(pos)
+                full_seqs.append(list(full_seq))
+
+            # Now build the causal mask.
+            causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
+            # unsqueeze last and first dim
+            causal_mask = causal_mask.unsqueeze(0).unsqueeze(-1)
+
+            # make into torch tensor
+            action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
+            pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
+
+            # copy root hidden state into size of action sequences in dim 0
+
+            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
+                None,None,
+                latent_root_state=latent_root_state,
+                action_sequence=action_seq,
+                custom_pos_indices = pos_indices,
+                custom_causal_mask=causal_mask,
+            )
+
+            org_search_path = search_path
+            org_node = node
+            for i, action_sequence in enumerate(action_sequences_from_node):
+                for action in action_sequence:
+                    node = node.children[action]
+                    search_path.append(node)
+
+                #full_ac_seq = actions + action_sequence
+                # todo try recurrent inf fast
+                # value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
+                #     None, None,
+                #     latent_root_state = latent_root_state,
+                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(latent_root_state.device),
+                # )
+
+                last_action_idx = len(actions) + len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
+
+                # just take the last ones
+                # ":" is to keep dimension
+                value_i = all_values[i][[last_action_idx]]
+                reward_i = all_rewards[i][[last_action_idx]]
+                policy_logits_i = all_policy_logits[i][[last_action_idx]]
+
+                # todo emil idea check unceratnity based on several values?
+                # todo alternative emil, instead of expanding bottom up, expand all at once.
+                # for example if having a budget of 6 you could expand A, B, C, AA, AB, AC, or instead do
+                # AA, BA, CA, AB, BB, CB and just fill in the values for A, B and C (given they are already predicted)
+
+                # todo also try longer runs and not capping after terminal state
+                value_i = models.support_to_scalar(value_i, self.config.support_size).item()
+                reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
+
+                node.expand(
+                    legal_actions,
+                    virtual_to_play,
+                    value_i,
+                    reward_i,
+                    policy_logits_i,
+                    latent_root_state, # todo, make optional
+                )
+
+                self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
+
+                search_path = org_search_path
+                node = org_node
+
+            max_tree_depth = max(max_tree_depth, current_tree_depth)
+
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": root_predicted_value,
+        }
+
+        return root, extra_info
+
+
+
 
 class PUCT(ABC):
     """

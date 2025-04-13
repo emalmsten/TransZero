@@ -233,16 +233,20 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return pe
 
 
-    def prediction(self, latent_root_state, action_sequence=None):
+    def prediction(self, latent_root_state, action_sequence=None, custom_pos_indices=None, custom_causal_mask=None):
 
-        input_sequence = self.create_input_sequence(latent_root_state, action_sequence)
+        input_sequence = self.create_input_sequence(latent_root_state, action_sequence, custom_pos_indices=custom_pos_indices)
 
         # Pass through the transformer encoder
         #print(input_sequence.size())
         causal_mask = None
-        if self.config.use_forward_causal_mask:
+
+        if custom_causal_mask is not None:
+            causal_mask = custom_causal_mask
+        elif self.config.use_forward_causal_mask:
             causal_mask = self.create_causal_mask(input_sequence.size(1)).to(
                 input_sequence.device)  # Shape: (sequence_length, sequence_length)
+
 
         if self.stable_transformer:
             input_sequence = input_sequence.transpose(0, 1)
@@ -282,12 +286,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
     def create_causal_mask(self, seq_length):
         return torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
 
+
     def stable_transformer_forward(self, input_sequence, mask):
         input_sequence = input_sequence.transpose(0, 1)
 
         result = self.transformer_encoder(input_sequence, src_key_padding_mask=mask)
         transformer_output = result["logits"]
         return transformer_output.transpose(0, 1)
+
 
     def prediction_fast(self, latent_root_state, action_sequence, action_mask, use_causal_mask=True):
         if self.state_size is not None:
@@ -443,16 +449,24 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             encoded_state,
         )
 
-    def get_positional_encoding(self, sequence_length, embedded_actions):
+    def get_positional_encoding(self, sequence_length, embedded_actions, pos_indices=None):
         if isinstance(self.positional_encoding, nn.Embedding):
-            # Learned positional encoding
-            pos_indices = torch.arange(sequence_length, device=embedded_actions.device).unsqueeze(0)  # Shape: (1, sequence_length)
-            pos_encoding = self.positional_encoding(pos_indices)  # Shape: (1, sequence_length, transformer_hidden_size)
-            #pos_encoding = pos_encoding.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
+            if pos_indices is None:
+                pos_indices = torch.arange(sequence_length, device=embedded_actions.device).unsqueeze(0)
+            else:
+                # Ensure the provided indices have the correct dimensions (e.g., unsqueeze if they are 1D)
+                if pos_indices.dim() == 1:
+                    pos_indices = pos_indices.unsqueeze(0)
+            pos_encoding = self.positional_encoding(pos_indices)
         else:
-            # Sinusoidal positional encoding
-            pos_encoding = self.positional_encoding[:sequence_length]  # Shape: (sequence_length, transformer_hidden_size)
-            pos_encoding = pos_encoding.unsqueeze(0) #.expand(embedded_actions.size(0), -1, -1)  # Shape: (B, sequence_length, transformer_hidden_size)
+            if pos_indices is None:
+                # Default to the contiguous range if no pos_indices provided
+                pos_encoding = self.positional_encoding[:sequence_length]
+            else:
+                # Use the provided indices to fetch the corresponding rows from the sinusoidal encoding.
+                # Here, we assume pos_indices is a tensor of indices into the precomputed positional encodings.
+                pos_encoding = self.positional_encoding[pos_indices.squeeze(0)]
+            pos_encoding = pos_encoding.unsqueeze(0)  # Make sure dimensions match (B, sequence_length, transformer_hidden_size)
 
         return pos_encoding
 
@@ -479,7 +493,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
 
-    def create_input_sequence(self, lrs, action_sequence):
+    def create_input_sequence(self, lrs, action_sequence, custom_pos_indices=None):
         # root hidden state: (B, x)
         # action sequence: (B, y)
         B = lrs.size(0)
@@ -496,8 +510,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         sequence_length_ac = embedded_actions.size(1) # +1 for the root hidden state
 
         # Get positional encoding
-        pos_encoding_ac = self.get_positional_encoding(sequence_length_ac,
-                                                    embedded_actions)  # Shape: (B, y+1 transformer_hidden_size)
+        pos_encoding_ac = self.get_positional_encoding(sequence_length_ac, embedded_actions, pos_indices=custom_pos_indices)  # Shape: (B, y+1 transformer_hidden_size)
         embedded_actions = embedded_actions + pos_encoding_ac
 
 
@@ -544,11 +557,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return value, reward, policy_logits, transformer_output
 
 
-    def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None):
+    def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None,
+                            custom_pos_indices=None, custom_causal_mask=None):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert latent_root_state is not None, "Transformer needs a hidden state"
 
-        policy_logits, value, reward = self.prediction(latent_root_state, action_sequence)
+        policy_logits, value, reward = self.prediction(latent_root_state, action_sequence,
+                                                       custom_pos_indices=custom_pos_indices, custom_causal_mask =custom_causal_mask)
 
         return value, reward, policy_logits, None # next encoded state
 
