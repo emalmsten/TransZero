@@ -289,7 +289,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def create_causal_mask(self, seq_length):
-        return ~torch.tril(torch.ones(seq_length, seq_length)).bool()
+        return torch.triu(torch.full((seq_length, seq_length), float('-inf')), diagonal=1)
 
 
     def stable_transformer_forward(self, input_sequence, mask):
@@ -301,10 +301,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def prediction_fast(self, latent_root_state, action_sequence, action_mask, use_causal_mask=True):
+        #action_mask = None
         if self.state_size is not None:
             flat_size = self.state_size[1] * self.state_size[2]
             # append false to action mask beginning
             action_mask = torch.cat([torch.zeros(action_mask.size(0), (flat_size-1), dtype=torch.bool, device=action_mask.device), action_mask], dim=1)
+
+        action_mask = action_mask.float().masked_fill(action_mask, float('-inf'))
 
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
         if use_causal_mask:
