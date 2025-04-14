@@ -9,6 +9,7 @@ import torch
 
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
+from trans_zero.utils.other_utils import set_global_seeds
 
 
 @ray.remote
@@ -22,8 +23,7 @@ class Trainer:
         self.config = config
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)

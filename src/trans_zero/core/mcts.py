@@ -97,14 +97,12 @@ class MCTS:
 
     def selection(self, node, min_max_stats):
         actions = []
-        search_path = [node]
         virtual_to_play = node.to_play
         current_tree_depth = 0
 
         while node.expanded():
             current_tree_depth += 1
             action, node = self.select_child(node, min_max_stats)  # tree action selection
-            search_path.append(node)
             actions.append(action)
 
             # Players play turn by turn
@@ -113,7 +111,7 @@ class MCTS:
             else:
                 virtual_to_play = self.config.players[0]
 
-        return node, actions, search_path, current_tree_depth, virtual_to_play
+        return node, actions, current_tree_depth, virtual_to_play
 
 
     def run(
@@ -143,7 +141,6 @@ class MCTS:
             (
                 node,
                 actions,
-                search_path,
                 current_tree_depth,
                 virtual_to_play,
             ) = self.selection(root, min_max_stats)
@@ -162,7 +159,7 @@ class MCTS:
                 )
 
             else:
-                parent = search_path[-2]
+                parent = node.parent
                 action = actions[-1]
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
@@ -181,7 +178,7 @@ class MCTS:
                 hidden_state,
             )
 
-            self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
+            self.backpropagate(node, value, virtual_to_play, min_max_stats)
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
@@ -225,13 +222,14 @@ class MCTS:
         return selected_action, node.children[selected_action]
 
 
-    def backpropagate(self, search_path, value, to_play, min_max_stats):
+    def backpropagate(self, node, value, to_play, min_max_stats):
         """
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root
         """
+        # todo, try new backprop
         if len(self.config.players) == 1:
-            for node in reversed(search_path):
+            while True:
                 node.value_sum += value
                 node.increment_visit_count()
                 value = node.reward + self.config.discount * value
@@ -241,8 +239,13 @@ class MCTS:
                 node.variance = None
                 node.policy_value = None
 
+                if node.parent is None:
+                    break
+                node = node.parent
+
+
         elif len(self.config.players) == 2:
-            for node in reversed(search_path):
+            while True:
                 node.value_sum += value if node.to_play == to_play else -value
                 node.increment_visit_count()
                 min_max_stats.update(node.reward + self.config.discount * -node.value())
@@ -250,6 +253,10 @@ class MCTS:
                 value = (
                     -node.reward if node.to_play == to_play else node.reward
                 ) + self.config.discount * value
+
+                if node.parent is None:
+                    break
+                node = node.parent
 
         else:
             raise NotImplementedError("More than two player mode not implemented.")
@@ -371,12 +378,10 @@ class MCTS_PLL_1(MCTS):
                 use_causal_mask = True
             )
 
-            org_search_path = search_path
             org_node = node
             for i, action_sequence in enumerate(action_sequences_from_node):
                 for action in action_sequence:
                     node = node.children[action]
-                    search_path.append(node)
 
                 #full_ac_seq = actions + action_sequence
                 # todo try recurrent inf fast
@@ -412,9 +417,8 @@ class MCTS_PLL_1(MCTS):
                     latent_root_state, # todo, make optional
                 )
 
-                self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
+                self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
 
-                search_path = org_search_path
                 node = org_node
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
@@ -506,22 +510,25 @@ class MCTS_PLL_2(MCTS_PLL_1):
         # Pre-cache the full sequences and their lengths.
         lengths = [len(seq) for seq in seqs]
 
-        # Compute the original mask for tokens_list.
-        inner_mask = [
+        # Compute the allowed (visible) mask based on prefix logic.
+        allowed_mask = [
             [lengths[j] <= lengths[i] and seqs[i][:lengths[j]] == seqs[j]
              for j in range(n)]
             for i in range(n)
         ]
-        inner_mask_tensor = torch.tensor(inner_mask, dtype=torch.bool, device=device)
+        allowed_mask_tensor = torch.tensor(allowed_mask, dtype=torch.bool, device=device)
 
-        # Create a new mask of size (n+1) x (n+1) pre-filled with True.
-        # This ensures that all tokens attend to the extra (global) entry.
-        outer_mask = torch.ones((n + 1, n + 1), dtype=torch.bool, device=device)
+        # Create a new allowed mask for (n+1)x(n+1).
+        # We initialize with True, meaning "allowed".
+        new_allowed_mask = torch.ones((n + 1, n + 1), dtype=torch.bool, device=device)
+        # Insert the computed mask into the lower-right block.
+        new_allowed_mask[1:, 1:] = allowed_mask_tensor
 
-        # Insert the original mask into the lower-right block.
-        outer_mask[1:, 1:] = inner_mask_tensor
-
-        return ~outer_mask # return inverted
+        # Invert the mask.
+        # Now False indicates allowed (visible) and True indicates a masked-out position.
+        final_mask = ~new_allowed_mask
+        print(final_mask)
+        return final_mask
 
     def unwind_sequences(self, sequences):
         """
@@ -560,7 +567,36 @@ class MCTS_PLL_2(MCTS_PLL_1):
         return action_seq, pos_seq
 
 
+    def get_action_sequence(self, actions, latent_root_state, legal_actions):
+        action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
+        # prepend actions to each
+        action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
+        # get unique nodes for each sequence
+        # action_seq, pos_indices = self.unwind_sequences(action_sequences)
+        unique_occurrences = self.get_unique_nodes_for_sequence(action_sequences)
 
+        tokens_list = list(unique_occurrences.keys())
+        # Sort tokens by: position, then by token label (alphabetically), then by full_seq.
+        tokens_list.sort(key=lambda x: (x[1], x[0], x[2]))
+
+        # Build the action sequence and positional sequence.
+        action_seq, pos_indices, full_seqs = [], [], []
+
+        for token, pos, full_seq in tokens_list:
+            action_seq.append(token)
+            pos_indices.append(pos)
+            full_seqs.append(list(full_seq))
+
+        # Now build the causal mask.
+        causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
+        # unsqueeze last and first dim
+        causal_mask = causal_mask.unsqueeze(0).unsqueeze(-1)
+
+        # make into torch tensor
+        action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
+        pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
+
+        return action_seq, pos_indices, full_seqs, causal_mask
 
 
     def run(
@@ -586,7 +622,6 @@ class MCTS_PLL_2(MCTS_PLL_1):
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
             node = root
-            search_path = [node]
             actions = []
             current_tree_depth = 0
 
@@ -596,7 +631,6 @@ class MCTS_PLL_2(MCTS_PLL_1):
             while node.expanded():
                 current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)  # tree action selection
-                search_path.append(node)
                 actions.append(action)
 
                 # Players play turn by turn
@@ -605,33 +639,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 else:
                     virtual_to_play = self.config.players[0]
 
-            action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
-            # prepend actions to each
-            action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
-            # get unique nodes for each sequence
-            #action_seq, pos_indices = self.unwind_sequences(action_sequences)
-            unique_occurrences = self.get_unique_nodes_for_sequence(action_sequences)
-
-            tokens_list = list(unique_occurrences.keys())
-            # Sort tokens by: position, then by token label (alphabetically), then by full_seq.
-            tokens_list.sort(key=lambda x: (x[1], x[0], x[2]))
-
-            # Build the action sequence and positional sequence.
-            action_seq, pos_indices, full_seqs = [], [], []
-
-            for token, pos, full_seq in tokens_list:
-                action_seq.append(token)
-                pos_indices.append(pos)
-                full_seqs.append(list(full_seq))
-
-            # Now build the causal mask.
-            causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
-            # unsqueeze last and first dim
-            causal_mask = causal_mask.unsqueeze(0).unsqueeze(-1)
-
-            # make into torch tensor
-            action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
-            pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
+            action_seq, pos_indices, full_seqs, causal_mask = self.get_action_sequence(actions, latent_root_state, legal_actions)
 
             # copy root hidden state into size of action sequences in dim 0
 
@@ -641,30 +649,19 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 action_sequence=action_seq,
                 custom_pos_indices = pos_indices,
                 custom_causal_mask=causal_mask,
+                return_only_last_prediction=False
             )
 
-            org_search_path = search_path
             org_node = node
-            for i, action_sequence in enumerate(action_sequences_from_node):
-                for action in action_sequence:
+            for i, action_sequence in enumerate(full_seqs):
+                for action in action_sequence[1:]:
                     node = node.children[action]
-                    search_path.append(node)
 
-                #full_ac_seq = actions + action_sequence
-                # todo try recurrent inf fast
-                # value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
-                #     None, None,
-                #     latent_root_state = latent_root_state,
-                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(latent_root_state.device),
-                # )
+                last_action_idx = len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
 
-                last_action_idx = len(actions) + len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
-
-                # just take the last ones
-                # ":" is to keep dimension
-                value_i = all_values[i][[last_action_idx]]
-                reward_i = all_rewards[i][[last_action_idx]]
-                policy_logits_i = all_policy_logits[i][[last_action_idx]]
+                value_i = all_values[:, last_action_idx, :]
+                reward_i = all_rewards[:, last_action_idx, :]
+                policy_logits_i = all_policy_logits[:, last_action_idx, :]
 
                 # todo emil idea check unceratnity based on several values?
                 # todo alternative emil, instead of expanding bottom up, expand all at once.
@@ -672,6 +669,8 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 # AA, BA, CA, AB, BB, CB and just fill in the values for A, B and C (given they are already predicted)
 
                 # todo also try longer runs and not capping after terminal state
+                assert ((value_i >= -self.config.support_size) & (value_i <= self.config.support_size)).all(), f"value_i out of bounds: {value_i}"
+
                 value_i = models.support_to_scalar(value_i, self.config.support_size).item()
                 reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
 
@@ -684,9 +683,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
                     latent_root_state, # todo, make optional
                 )
 
-                self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
-
-                search_path = org_search_path
+                self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
                 node = org_node
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)

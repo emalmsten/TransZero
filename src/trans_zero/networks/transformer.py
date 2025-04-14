@@ -184,7 +184,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 self.full_support_size,
             )
         else:
-
             self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
             self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
             self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
@@ -232,8 +231,17 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         return pe
 
+    def get_cumulative_reward(self, transformer_output):
+        reward = self.reward_head(transformer_output)
+        scalars = []
+        for i in range(1, reward.size(1)):
+            scalars.append(models.support_to_scalar(reward[:, i, :], self.support_size).item())
+        # sum all the scalars
+        return sum(scalars)
 
-    def prediction(self, latent_root_state, action_sequence=None, custom_pos_indices=None, custom_causal_mask=None):
+
+    def prediction(self, latent_root_state, action_sequence=None, custom_pos_indices=None, custom_causal_mask=None,
+                   return_only_last_prediction=True):
 
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence, custom_pos_indices=custom_pos_indices)
 
@@ -260,24 +268,21 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Obtain the value prediction from the last token's output
-        transformer_output_last = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
+        transformer_output_for_prediction = transformer_output
+        if return_only_last_prediction:
+            transformer_output_for_prediction = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
 
-        policy_logits = self.policy_head(transformer_output_last)  # Shape: (B, action_space_size)
-        value = self.value_head(transformer_output_last)  # Shape: (B, full_support_size)
+
+        policy_logits = self.policy_head(transformer_output_for_prediction)  # Shape: (B, action_space_size)
+        value = self.value_head(transformer_output_for_prediction)  # Shape: (B, full_support_size)
 
         # todo check losses and which values and rewards to include there
         fixed_support_in_self_play = False # todo
         # calculate cumulative reward over sequence
         if action_sequence is not None and self.cum_reward and fixed_support_in_self_play:
-            reward = self.reward_head(transformer_output)
-            scalars = []
-            for i in range(1, reward.size(1)):
-                scalars.append(models.support_to_scalar(reward[:, i, :], self.support_size).item())
-            # sum all the scalars
-            reward = sum(scalars)
-
+            reward = self.get_cumulative_reward(transformer_output_for_prediction)
         else:
-            reward = self.reward_head(transformer_output_last)  # Shape: (B, full_support_size)
+            reward = self.reward_head(transformer_output_for_prediction)  # Shape: (B, full_support_size)
             #reward = models.support_to_scalar(reward, self.support_size) # todo
 
         return policy_logits, value, reward
@@ -558,12 +563,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None,
-                            custom_pos_indices=None, custom_causal_mask=None):
+                            custom_pos_indices=None, custom_causal_mask=None, return_only_last_prediction=True):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert latent_root_state is not None, "Transformer needs a hidden state"
 
         policy_logits, value, reward = self.prediction(latent_root_state, action_sequence,
-                                                       custom_pos_indices=custom_pos_indices, custom_causal_mask =custom_causal_mask)
+                                                       custom_pos_indices=custom_pos_indices,
+                                                       custom_causal_mask =custom_causal_mask,
+                                                       return_only_last_prediction=return_only_last_prediction)
 
         return value, reward, policy_logits, None # next encoded state
 

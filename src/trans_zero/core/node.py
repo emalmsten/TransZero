@@ -7,10 +7,11 @@ from trans_zero.mvc_utils.utility_functions import policy_value
 
 class Node:
 
-    def __init__(self, prior, config, name="root"):
+    def __init__(self, prior, config, parent=None, name="root"):
         self.config = config
         self.action_space_size = len(self.config.action_space)
         self.use_reward = config.predict_reward
+        self.parent = parent
 
         self.visit_count = 0
         self.to_play = -1
@@ -31,7 +32,7 @@ class Node:
 
     def make_child(self, prior, child_name):
         """Factory method to create a child node."""
-        return Node(prior, self.config, name=child_name)
+        return Node(prior, self.config, name=child_name, parent=self)
 
     def get_visit_count(self):
         return self.visit_count

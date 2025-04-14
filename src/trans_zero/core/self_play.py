@@ -11,6 +11,7 @@ import trans_zero.networks.muzero_network as mz_net
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
 from .mcts import MCTS, MCTS_PLL_1, MCTS_PLL_2
 from .node import MVCNode
+from trans_zero.utils.other_utils import set_global_seeds
 
 
 @ray.remote
@@ -24,8 +25,7 @@ class SelfPlay:
         self.game = Game(seed, config=config)
 
         # Fix random generator seed
-        numpy.random.seed(seed)
-        torch.manual_seed(seed)
+        set_global_seeds(seed)
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
