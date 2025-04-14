@@ -25,5 +25,5 @@
   "test_ucb": false,
 
   "training_steps": 400000,
-  "num_workers": 12
+  "num_workers": 10
 }
