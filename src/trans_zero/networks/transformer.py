@@ -289,7 +289,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def create_causal_mask(self, seq_length):
-        return torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
+        return ~torch.tril(torch.ones(seq_length, seq_length)).bool()
 
 
     def stable_transformer_forward(self, input_sequence, mask):
