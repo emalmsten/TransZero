@@ -15,7 +15,7 @@ conda create -n tz python=3.10 -y
 conda activate tz
 
 # for lunarlander
-apt install swig -y
+apt update && apt install -y swig curl unzip
 
 # install dependencies
 #conda env create -f environment.yml
@@ -25,8 +25,11 @@ conda install numpy==1.26.4 gymnasium nevergrad=1.0.1 bayesian-optimization=1.2.
 conda install -c conda-forge "ray-default" box2d-py -y
 pip3 install torch torchvision torchaudio
 pip install gym nevergrad wandb minigrid
-pip install --upgrade ray
+pip install ray==2.44.0
 pip install --upgrade nevergrad
+pip install grpcio==1.51.1
+
+
 
 # lunarlander
 # npm?
