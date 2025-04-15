@@ -653,6 +653,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
             # todo reconsider where this should be
             #node.reset_var()
 
+            # log n
             while node.expanded():
                 current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)  # tree action selection
@@ -693,12 +694,8 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 policy_logits_i = all_policy_logits[last_action_idx, :].unsqueeze(0)
 
                 # todo also try longer runs and not capping after terminal state
-                # if not ((value_i >= -self.config.support_size) & (value_i <= self.config.support_size)).all():
-                #     print("Value out of bounds")
-                #     # print highest and lowest value
-                #     print("val OUB: Hv: ", value_i.max(), "Lv: ", value_i.min())
-                #     value_i = torch.clamp(value_i, min=-self.config.support_size, max=self.config.support_size)
 
+                # todo pllize
                 value_i = models.support_to_scalar(value_i, self.config.support_size).item()
                 reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
 
@@ -722,6 +719,29 @@ class MCTS_PLL_2(MCTS_PLL_1):
         }
 
         return root, extra_info
+
+
+
+    def backpropagate_more(self, node, value, to_play, min_max_stats):
+        """
+        At the end of a simulation, we propagate the evaluation all the way up the tree
+        to the root
+        """
+        # todo, try new backprop
+        if len(self.config.players) == 1:
+            while True:
+                node.value_sum += value
+                node.increment_visit_count()
+                value = node.reward + self.config.discount * value
+                min_max_stats.update(value)
+
+                # resetting in the backprop, NEW, todo remove other
+                node.variance = None
+                node.policy_value = None
+
+                if node.parent is None:
+                    break
+                node = node.parent
 
 
 
