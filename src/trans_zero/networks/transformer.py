@@ -241,7 +241,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def prediction(self, latent_root_state, action_sequence=None, custom_pos_indices=None, custom_causal_mask=None,
-                   return_only_last_prediction=True):
+                   return_n_last_predictions=1):
 
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence, custom_pos_indices=custom_pos_indices)
 
@@ -251,10 +251,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         if custom_causal_mask is not None:
             causal_mask = custom_causal_mask
-        elif self.config.use_forward_causal_mask:
+
+        if self.config.use_forward_causal_mask:
             causal_mask = self.create_causal_mask(input_sequence.size(1)).to(
                 input_sequence.device)  # Shape: (sequence_length, sequence_length)
-
 
         if self.stable_transformer:
             input_sequence = input_sequence.transpose(0, 1)
@@ -263,14 +263,18 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             transformer_output = result["logits"]
             transformer_output = transformer_output.transpose(0, 1)
         else:
-            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask)
+            is_causal = causal_mask is not None and custom_causal_mask is None
+            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, is_causal=is_causal)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Obtain the value prediction from the last token's output
-        transformer_output_for_prediction = transformer_output
-        if return_only_last_prediction:
+        if return_n_last_predictions == 1:
             transformer_output_for_prediction = transformer_output[:, -1, :]  # Shape: (B, transformer_hidden_size)
+        else:
+            transformer_output_for_prediction = transformer_output[:, -return_n_last_predictions:, :]
+            transformer_output_for_prediction = transformer_output_for_prediction.squeeze(0)
+
 
 
         policy_logits = self.policy_head(transformer_output_for_prediction)  # Shape: (B, action_space_size)
@@ -566,14 +570,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
     def recurrent_inference(self, encoded_state, action, latent_root_state=None, action_sequence=None,
-                            custom_pos_indices=None, custom_causal_mask=None, return_only_last_prediction=True):
+                            custom_pos_indices=None, custom_causal_mask=None, return_n_last_predictions=1):
         assert action_sequence is not None, "Transformer needs an action sequence"
         assert latent_root_state is not None, "Transformer needs a hidden state"
 
         policy_logits, value, reward = self.prediction(latent_root_state, action_sequence,
                                                        custom_pos_indices=custom_pos_indices,
                                                        custom_causal_mask =custom_causal_mask,
-                                                       return_only_last_prediction=return_only_last_prediction)
+                                                       return_n_last_predictions=return_n_last_predictions)
 
         return value, reward, policy_logits, None # next encoded state
 

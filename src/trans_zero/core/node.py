@@ -62,8 +62,7 @@ class Node:
         policy = {a: policy_values[i] for i, a in enumerate(actions)}
         a_dict = a_dict_cg if len(actions) == 3 else a_dict_ll
         for action, p in policy.items():
-            a_name = a_dict[action]
-            child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
+            child_name = f"{self.name}_{action}" if self.name != "root" else f"r_{action}"
             self.children[action] = self.make_child(p, child_name)
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
@@ -96,6 +95,7 @@ class MVCNode(Node):
         self.variance = None
         self.policy_value = None
         self.policy = MeanVarianceConstraintPolicy(config)
+        self.name = name
 
     def value(self):
         """

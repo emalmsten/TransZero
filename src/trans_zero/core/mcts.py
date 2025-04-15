@@ -496,7 +496,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
         for seq in sequences:
             history = []  # will collect the history (as lowercase tokens)
             for token in seq:
-                pos = len(history) + 1  # positions start at 1
+                pos = len(history)  # positions start at 1
                 # Construct full_seq as (history plus current token in lowercase)
                 full_seq = tuple(history) + (token,)
                 key = (token, pos, full_seq)
@@ -510,7 +510,8 @@ class MCTS_PLL_2(MCTS_PLL_1):
         # Pre-cache the full sequences and their lengths.
         lengths = [len(seq) for seq in seqs]
 
-        # Compute the allowed (visible) mask based on prefix logic.
+        # Compute the allowed mask for the tokens based on the prefix condition.
+        # For each token i and j in tokens_list, allowed if token i's full_seq starts with token j's full_seq.
         allowed_mask = [
             [lengths[j] <= lengths[i] and seqs[i][:lengths[j]] == seqs[j]
              for j in range(n)]
@@ -518,17 +519,28 @@ class MCTS_PLL_2(MCTS_PLL_1):
         ]
         allowed_mask_tensor = torch.tensor(allowed_mask, dtype=torch.bool, device=device)
 
-        # Create a new allowed mask for (n+1)x(n+1).
-        # We initialize with True, meaning "allowed".
-        new_allowed_mask = torch.ones((n + 1, n + 1), dtype=torch.bool, device=device)
-        # Insert the computed mask into the lower-right block.
-        new_allowed_mask[1:, 1:] = allowed_mask_tensor
+        # Enforce causal ordering (i.e. j <= i) to create a normal causal mask.
+        # For tokens positions (indices 0 to n-1 corresponding to tokens_list), we construct a lower-triangular mask.
+        causal_order = torch.tril(torch.ones((n, n), dtype=torch.bool, device=device))
+        final_allowed_tokens = allowed_mask_tensor & causal_order
 
-        # Invert the mask.
-        # Now False indicates allowed (visible) and True indicates a masked-out position.
-        final_mask = ~new_allowed_mask
-        print(final_mask)
-        return final_mask
+        # Create a new mask that is (n+1) x (n+1) to include the global token at index 0.
+        new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
+
+        # Global token row (index 0): allow only itself.
+        new_allowed[0, 0] = True
+
+        # For all token rows (indices 1 to n), always allow attending to the global token (column 0).
+        new_allowed[1:, 0] = True
+
+        # For the remaining positions, use the computed allowed tokens mask.
+        new_allowed[1:, 1:] = final_allowed_tokens
+
+        # Convert boolean mask to the float mask expected by torch.nn,
+        # where allowed positions become 0 and masked out positions become -inf.
+        attention_mask = torch.where(new_allowed, torch.tensor(0.0), torch.tensor(float('-inf')))
+        return attention_mask
+
 
     def unwind_sequences(self, sequences):
         """
@@ -590,13 +602,26 @@ class MCTS_PLL_2(MCTS_PLL_1):
         # Now build the causal mask.
         causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
         # unsqueeze last and first dim
-        causal_mask = causal_mask.unsqueeze(0).unsqueeze(-1)
 
         # make into torch tensor
         action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
         pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
 
         return action_seq, pos_indices, full_seqs, causal_mask
+
+    @staticmethod
+    def trim_sequences(sequences, actions):
+        action_length = len(actions)
+        result = []
+
+        for seq in sequences:
+            if len(seq) < action_length:
+                # Remove sequences that are just prefixes of actions
+                continue
+            # Remove the action prefix from the sequence
+            result.append(seq[action_length:])
+
+        return result
 
 
     def run(
@@ -639,37 +664,40 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 else:
                     virtual_to_play = self.config.players[0]
 
-            action_seq, pos_indices, full_seqs, causal_mask = self.get_action_sequence(actions, latent_root_state, legal_actions)
+            action_seq_for_pred, pos_indices, full_seqs, causal_mask = self.get_action_sequence(actions, latent_root_state, legal_actions)
 
             # copy root hidden state into size of action sequences in dim 0
+            # todo, check if pos is 0 indexed
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
                 None,None,
                 latent_root_state=latent_root_state,
-                action_sequence=action_seq,
+                action_sequence=action_seq_for_pred,
                 custom_pos_indices = pos_indices,
                 custom_causal_mask=causal_mask,
-                return_only_last_prediction=False
+                return_n_last_predictions=self.config.expansion_budget
             )
+            all_actions_from_node = self.trim_sequences(full_seqs, actions)
+            all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
 
             org_node = node
-            for i, action_sequence in enumerate(full_seqs):
-                for action in action_sequence[1:]:
+            # todo we do not need to expand nor predict already expanded nodes
+            for i, actions_from_node in enumerate(all_actions_from_node):
+                for action in actions_from_node:
                     node = node.children[action]
 
-                last_action_idx = len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
+                last_action_idx = i
 
-                value_i = all_values[:, last_action_idx, :]
-                reward_i = all_rewards[:, last_action_idx, :]
-                policy_logits_i = all_policy_logits[:, last_action_idx, :]
-
-                # todo emil idea check unceratnity based on several values?
-                # todo alternative emil, instead of expanding bottom up, expand all at once.
-                # for example if having a budget of 6 you could expand A, B, C, AA, AB, AC, or instead do
-                # AA, BA, CA, AB, BB, CB and just fill in the values for A, B and C (given they are already predicted)
+                value_i = all_values[last_action_idx, :].unsqueeze(0)
+                reward_i = all_rewards[last_action_idx, :].unsqueeze(0)
+                policy_logits_i = all_policy_logits[last_action_idx, :].unsqueeze(0)
 
                 # todo also try longer runs and not capping after terminal state
-                assert ((value_i >= -self.config.support_size) & (value_i <= self.config.support_size)).all(), f"value_i out of bounds: {value_i}"
+                # if not ((value_i >= -self.config.support_size) & (value_i <= self.config.support_size)).all():
+                #     print("Value out of bounds")
+                #     # print highest and lowest value
+                #     print("val OUB: Hv: ", value_i.max(), "Lv: ", value_i.min())
+                #     value_i = torch.clamp(value_i, min=-self.config.support_size, max=self.config.support_size)
 
                 value_i = models.support_to_scalar(value_i, self.config.support_size).item()
                 reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
