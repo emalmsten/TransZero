@@ -251,8 +251,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
         if custom_causal_mask is not None:
             causal_mask = custom_causal_mask
-
-        if self.config.use_forward_causal_mask:
+        elif self.config.use_forward_causal_mask:
             causal_mask = self.create_causal_mask(input_sequence.size(1)).to(
                 input_sequence.device)  # Shape: (sequence_length, sequence_length)
 
