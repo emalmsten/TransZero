@@ -239,7 +239,7 @@ class MCTS:
                 node.value_sum += value
                 node.increment_visit_count()
                 value = node.reward + self.config.discount * value
-                min_max_stats.update(value)
+                min_max_stats.update(node.reward + self.config.discount * node.value())
 
                 # resetting in the backprop, NEW, todo remove other
                 node.variance = None
@@ -749,7 +749,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 #self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
                 node = org_node
 
-            self.backpropagate_more(node_list, all_value_scalars, virtual_to_play, min_max_stats)
+            self.backpropagate_more(node_list, min_max_stats)
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
 
@@ -761,36 +761,13 @@ class MCTS_PLL_2(MCTS_PLL_1):
         return root, extra_info
 
 
-    def backpropagate_more(self, node_list, value_list, to_play, min_max_stats):
-        # put parents in a dict
+    def backpropagate_more(self, node_list, min_max_stats):
 
-        def updates(node):
-            # node.increment_visit_count()
-            min_max_stats.update(value)
+        # reverse traversal to get children first
+        for node in node_list:
+            min_max_stats.update(node.reward + self.config.discount * node.value()) # todo check if this should even be used
             node.variance = None
             node.policy_value = None
-
-        parents = defaultdict(list)
-        # reverse traversal to get children first
-        for i in range(len(node_list) - 1, -1, -1):
-            node = node_list[i]
-            value = value_list[i].item()
-
-            child_val_sum, child_rew_sum, visits = parents.get(node, (0, 0, 0))
-            # add own reward for parent pluts the discounted child rewards
-            rew_sum = node.reward * (visits + 1) + self.config.discount * child_rew_sum # correct
-            val_sum = self.config.discount * (value + child_val_sum)
-
-            # if parent not in dict, add it (todo check if this is really q)
-            (sibling_val_cum_sum, sibling_rew_cum_sum, sibling_cum_visits) = parents.get(node.parent, (0, 0, 0))
-            parents[node.parent] = (sibling_val_cum_sum + val_sum, sibling_rew_cum_sum + rew_sum, sibling_cum_visits + visits + 1)
-
-            node.value_sum += (value + child_rew_sum + child_val_sum)
-            # assert that value_sum_2 equals value sum (to a few decimals)
-
-            updates(node)
-
-
 
 
 class PUCT(ABC):
@@ -908,3 +885,34 @@ class MinMaxStats:
             return (value - self.minimum) / (self.maximum - self.minimum)
         return value
 
+
+
+    #
+    # def backpropagate_more(self, node_list, value_list, to_play, min_max_stats):
+    #     # put parents in a dict
+    #
+    #     def updates(node):
+    #         # node.increment_visit_count()
+    #         min_max_stats.update(value)
+    #         node.variance = None
+    #         node.policy_value = None
+    #
+    #     parents = defaultdict(list)
+    #     # reverse traversal to get children first
+    #     for i in range(len(node_list) - 1, -1, -1):
+    #         node = node_list[i]
+    #         value = value_list[i].item()
+    #
+    #         child_val_sum, child_rew_sum, visits = parents.get(node, (0, 0, 0))
+    #         # add own reward for parent pluts the discounted child rewards
+    #         rew_sum = node.reward * (visits + 1) + self.config.discount * child_rew_sum # correct
+    #         val_sum = self.config.discount * (value + child_val_sum)
+    #
+    #         # if parent not in dict, add it (todo check if this is really q)
+    #         (sibling_val_cum_sum, sibling_rew_cum_sum, sibling_cum_visits) = parents.get(node.parent, (0, 0, 0))
+    #         parents[node.parent] = (sibling_val_cum_sum + val_sum, sibling_rew_cum_sum + rew_sum, sibling_cum_visits + visits + 1)
+    #
+    #         node.value_sum += (value + child_rew_sum + child_val_sum)
+    #         # assert that value_sum_2 equals value sum (to a few decimals)
+    #
+    #         updates(node)
