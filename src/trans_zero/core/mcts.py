@@ -65,6 +65,9 @@ class MCTS:
         # Make the root predicted value and reward a scalar
         root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
         reward = models.support_to_scalar(reward, self.config.support_size).item()
+        policy_values = torch.softmax(
+            torch.tensor([policy_logits[0][a] for a in legal_actions]), dim=0
+        ).tolist()
 
         assert (
             legal_actions
@@ -73,7 +76,7 @@ class MCTS:
             set(self.config.action_space)
         ), "Legal actions should be a subset of the action space."
 
-        root.expand(legal_actions, to_play, root_predicted_value, reward, policy_logits, hidden_state)
+        root.expand(legal_actions, to_play, root_predicted_value, reward, policy_values, hidden_state)
 
         return root, root_predicted_value
 
@@ -168,13 +171,16 @@ class MCTS:
 
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
+            policy_values = torch.softmax(
+                torch.tensor([policy_logits[0][a] for a in self.config.action_space]), dim=0
+            ).tolist()
 
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
                 value,
                 reward,
-                policy_logits,
+                policy_values,
                 hidden_state,
             )
 
@@ -542,6 +548,44 @@ class MCTS_PLL_2(MCTS_PLL_1):
         return attention_mask
 
 
+    def make_causal_mask_fast(self, seqs, device):
+        n = len(seqs)
+        # Convert sequences to tuples for quicker prefix comparisons
+        seqs = [tuple(seq) for seq in seqs]
+        lengths = [len(s) for s in seqs]
+
+        # We'll build a boolean tensor of shape [n, n] for the allowed positions
+        # and incorporate the causal condition (j <= i) in a single loop.
+        allowed_mask = torch.zeros((n, n), dtype=torch.bool, device=device)
+
+        for i in range(n):
+            seq_i = seqs[i]
+            len_i = lengths[i]
+            # Only check j up to i for the causal condition
+            for j in range(i + 1):
+                seq_j = seqs[j]
+                len_j = lengths[j]
+                # Check that seq_j is a prefix of seq_i
+                if len_j <= len_i and seq_i[:len_j] == seq_j:
+                    allowed_mask[i, j] = True
+
+        # Now include the "global" token at index 0 in a new (n+1) x (n+1) matrix
+        new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
+        # Allow the global token to attend only to itself
+        new_allowed[0, 0] = True
+        # All real tokens (1..n) can always attend to the global token (column 0)
+        new_allowed[1:, 0] = True
+        # Copy in our computed mask
+        new_allowed[1:, 1:] = allowed_mask
+
+        # Convert boolean allowed positions to the float mask format (0 for allowed, -inf for disallowed)
+        attention_mask = torch.where(
+            new_allowed,
+            torch.tensor(0.0, device=device),
+            torch.tensor(float('-inf'), device=device)
+        )
+        return attention_mask
+
     def unwind_sequences(self, sequences):
         """
         For a list of sequences of actions (each a list of action labels),
@@ -599,30 +643,18 @@ class MCTS_PLL_2(MCTS_PLL_1):
             pos_indices.append(pos)
             full_seqs.append(list(full_seq))
 
-        # Now build the causal mask.
-        causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
+
         # unsqueeze last and first dim
 
         # make into torch tensor
         action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
         pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
 
-        return action_seq, pos_indices, full_seqs, causal_mask
+        return action_seq, pos_indices, full_seqs
 
     @staticmethod
-    def trim_sequences(sequences, actions):
-        action_length = len(actions)
-        result = []
-
-        for seq in sequences:
-            if len(seq) < action_length:
-                # Remove sequences that are just prefixes of actions
-                continue
-            # Remove the action prefix from the sequence
-            result.append(seq[action_length:])
-
-        return result
-
+    def trim_sequences(sequences, action_length):
+        return [seq[action_length:] for seq in sequences if len(seq) >= action_length]
 
     def run(
             self,
@@ -643,6 +675,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
 
         latent_root_state = root.hidden_state
         #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        legal_actions_tensor = torch.tensor(legal_actions, device=latent_root_state.device)
 
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
@@ -665,9 +698,11 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 else:
                     virtual_to_play = self.config.players[0]
 
-            action_seq_for_pred, pos_indices, full_seqs, causal_mask = self.get_action_sequence(actions, latent_root_state, legal_actions)
+            action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence(actions, latent_root_state, legal_actions)
+            causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
 
             # copy root hidden state into size of action sequences in dim 0
+
             # todo, check if pos is 0 indexed
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
@@ -677,11 +712,17 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 custom_pos_indices = pos_indices,
                 custom_causal_mask=causal_mask,
                 return_n_last_predictions=self.config.expansion_budget
-            )
-            all_actions_from_node = self.trim_sequences(full_seqs, actions)
+                )
+
+            all_value_scalars = models.support_to_scalar(all_values, self.config.support_size)
+            all_reward_scalars = models.support_to_scalar(all_rewards, self.config.support_size)
+            all_policy_probs = torch.softmax(all_policy_logits[:, legal_actions_tensor], dim=-1)
+
+            all_actions_from_node = self.trim_sequences(full_seqs, len(actions))
             all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
 
             org_node = node
+            node_list = []
             # todo we do not need to expand nor predict already expanded nodes
             for i, actions_from_node in enumerate(all_actions_from_node):
                 for action in actions_from_node:
@@ -689,29 +730,28 @@ class MCTS_PLL_2(MCTS_PLL_1):
 
                 last_action_idx = i
 
-                value_i = all_values[last_action_idx, :].unsqueeze(0)
-                reward_i = all_rewards[last_action_idx, :].unsqueeze(0)
-                policy_logits_i = all_policy_logits[last_action_idx, :].unsqueeze(0)
+                value_i = all_value_scalars[last_action_idx].item()
+                reward_i = all_reward_scalars[last_action_idx].item()
+                policy_values_i = all_policy_probs[last_action_idx].tolist()
 
                 # todo also try longer runs and not capping after terminal state
-
-                # todo pllize
-                value_i = models.support_to_scalar(value_i, self.config.support_size).item()
-                reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
 
                 node.expand(
                     legal_actions,
                     virtual_to_play,
                     value_i,
                     reward_i,
-                    policy_logits_i,
+                    policy_values_i,
                     latent_root_state, # todo, make optional
                 )
-
-                self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
+                # append a deep copy of the node
+                node_list.append(node)
+                #self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
                 node = org_node
 
+            self.backpropagate_more(node_list, all_value_scalars, virtual_to_play, min_max_stats)
             max_tree_depth = max(max_tree_depth, current_tree_depth)
+
 
         extra_info = {
             "max_tree_depth": max_tree_depth,
@@ -721,27 +761,34 @@ class MCTS_PLL_2(MCTS_PLL_1):
         return root, extra_info
 
 
+    def backpropagate_more(self, node_list, value_list, to_play, min_max_stats):
+        # put parents in a dict
 
-    def backpropagate_more(self, node, value, to_play, min_max_stats):
-        """
-        At the end of a simulation, we propagate the evaluation all the way up the tree
-        to the root
-        """
-        # todo, try new backprop
-        if len(self.config.players) == 1:
-            while True:
-                node.value_sum += value
-                node.increment_visit_count()
-                value = node.reward + self.config.discount * value
-                min_max_stats.update(value)
+        def updates(node):
+            # node.increment_visit_count()
+            min_max_stats.update(value)
+            node.variance = None
+            node.policy_value = None
 
-                # resetting in the backprop, NEW, todo remove other
-                node.variance = None
-                node.policy_value = None
+        parents = defaultdict(list)
+        # reverse traversal to get children first
+        for i in range(len(node_list) - 1, -1, -1):
+            node = node_list[i]
+            value = value_list[i].item()
 
-                if node.parent is None:
-                    break
-                node = node.parent
+            child_val_sum, child_rew_sum, visits = parents.get(node, (0, 0, 0))
+            # add own reward for parent pluts the discounted child rewards
+            rew_sum = node.reward * (visits + 1) + self.config.discount * child_rew_sum # correct
+            val_sum = self.config.discount * (value + child_val_sum)
+
+            # if parent not in dict, add it (todo check if this is really q)
+            (sibling_val_cum_sum, sibling_rew_cum_sum, sibling_cum_visits) = parents.get(node.parent, (0, 0, 0))
+            parents[node.parent] = (sibling_val_cum_sum + val_sum, sibling_rew_cum_sum + rew_sum, sibling_cum_visits + visits + 1)
+
+            node.value_sum += (value + child_rew_sum + child_val_sum)
+            # assert that value_sum_2 equals value sum (to a few decimals)
+
+            updates(node)
 
 
 
