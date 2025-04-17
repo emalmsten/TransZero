@@ -21,6 +21,7 @@ class Trainer:
 
     def __init__(self, initial_checkpoint, config):
         self.config = config
+        self.previous_save_modulo = 0
 
         # Fix random generator seed
         set_global_seeds(self.config.seed)
@@ -76,7 +77,11 @@ class Trainer:
         ) = losses
 
         # Save to the shared storage
-        if self.stop_crit_step % self.config.checkpoint_interval == 0:
+        save_modulo = self.stop_crit_step % self.config.checkpoint_interval
+        save_checkpoint = save_modulo < self.previous_save_modulo
+        self.previous_save_modulo = save_modulo
+
+        if save_checkpoint:
             shared_storage.set_info.remote(
                 {
                     "weights": copy.deepcopy(self.model.get_weights()),
@@ -85,13 +90,6 @@ class Trainer:
                     ),
                 }
             )
-
-        # Save to the shared storage
-        if self.config.save_model and self.stop_crit_step % self.config.save_interval == 0:
-            shared_storage.save_checkpoint.remote(self.stop_crit_step)
-            shared_storage.save_buffer.remote(replay_buffer, self.stop_crit_step,
-                                              shared_storage.get_info.remote("num_played_games"),
-                                              shared_storage.get_info.remote("num_reanalysed_games"))
 
         if self.config.network == "double":
             value_loss, trans_value_loss = value_loss

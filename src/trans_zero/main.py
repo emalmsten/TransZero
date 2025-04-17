@@ -213,7 +213,7 @@ def main(args):
     muzero = MuZero(args.game_name, args.config, restart_wandb_id=args.wandb_run_id, test=args.test_mode is not None)
 
     if muzero.config.logger == "wandb":
-        muzero.wandb_run = init_wandb(muzero.config, args)
+        muzero.wandb_run = init_wandb(muzero.config, args.wandb_run_id)
 
     if args.wandb_run_id:
         checkpoint_path, replay_buffer_path = get_wandb_artifacts(
