@@ -10,6 +10,7 @@ import torch
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 from trans_zero.utils.other_utils import set_global_seeds
+from .self_play import SelfPlay
 
 
 @ray.remote
@@ -28,7 +29,13 @@ class Trainer:
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
-        self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
+        model_weights = copy.deepcopy(initial_checkpoint["weights"])
+        try:
+            self.model.set_weights(model_weights)
+        except Exception as e:
+            self.model.set_weights(SelfPlay.remove_module_prefix(model_weights))
+
+
         self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
 

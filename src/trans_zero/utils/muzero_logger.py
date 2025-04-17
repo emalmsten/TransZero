@@ -4,7 +4,7 @@ import ray
 import os
 import pickle
 import torch
-
+# todo make into a class
 keys = [
     "total_reward",
     "muzero_reward",
@@ -91,7 +91,7 @@ def init_wandb(config, restart_wandb_id=None):
 def get_wandb_config(entity, project, run_id):
     config = wandb.Api().run(f"{entity}/{project}/{run_id}").config
     # remove "project" attribute
-    del config["project"]
+    config.pop("project", None)
     del config["results_path"]
     del config["testing"]
     if "max_time_minutes" in config:
@@ -165,7 +165,6 @@ def save_buffer_locally(cfg, muzero, info, path=None):
         path = cfg.results_path / "replay_buffer.pkl"
 
     buffer = ray.get(replay_buffer.get_buffer.remote())
-    print("played_steps:", num_played_steps)
 
     pickle.dump(
         {

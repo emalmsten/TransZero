@@ -104,7 +104,6 @@ class MuZero:
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             self.checkpoint,
             self.config,
-            self.wandb_run,
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
@@ -287,10 +286,10 @@ class MuZero:
         else:
             print(f"Using empty buffer.")
             self.replay_buffer = {}
-            self.checkpoint["training_step"] = 0
-            self.checkpoint["num_played_steps"] = 0
-            self.checkpoint["num_played_games"] = 0
-            self.checkpoint["num_reanalysed_games"] = 0
+            # self.checkpoint["training_step"] = 0
+            # self.checkpoint["num_played_steps"] = 0
+            # self.checkpoint["num_played_games"] = 0
+            # self.checkpoint["num_reanalysed_games"] = 0
 
 
 

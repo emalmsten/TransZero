@@ -5,6 +5,7 @@ import numpy
 import ray
 import torch
 
+from trans_zero.core.self_play import SelfPlay
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 from trans_zero.utils.other_utils import set_global_seeds
@@ -334,7 +335,11 @@ class Reanalyse:
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
-        self.model.set_weights(initial_checkpoint["weights"])
+        initial_weights = initial_checkpoint["weights"]
+        try:
+            self.model.set_weights(initial_weights)
+        except Exception as e:
+            self.model.set_weights(SelfPlay.remove_module_prefix(initial_weights))
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()
 

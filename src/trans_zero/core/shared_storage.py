@@ -12,7 +12,7 @@ class SharedStorage:
     Class which run in a dedicated thread to store the network weights and some information.
     """
 
-    def __init__(self, checkpoint, config, wandb_run=None):
+    def __init__(self, checkpoint, config):
         self.config = config
         self.current_checkpoint = copy.deepcopy(checkpoint)
         print("Training step", self.current_checkpoint["training_step"])
