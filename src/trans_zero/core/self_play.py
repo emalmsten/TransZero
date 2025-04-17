@@ -9,8 +9,9 @@ import torch
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from .mcts import MCTS, MCTS_PLL
+from .mcts import MCTS, MCTS_PLL_1, MCTS_PLL_2
 from .node import MVCNode
+from trans_zero.utils.other_utils import set_global_seeds
 
 
 @ray.remote
@@ -24,8 +25,7 @@ class SelfPlay:
         self.game = Game(seed, config=config)
 
         # Fix random generator seed
-        numpy.random.seed(seed)
-        torch.manual_seed(seed)
+        set_global_seeds(seed)
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
@@ -170,7 +170,15 @@ class SelfPlay:
                 if opponent == "self" or muzero_player == self.game.to_play():
 
                     if self.config.expansion_strategy == 'deep':
-                        root, mcts_info = MCTS_PLL(self.config).run(
+                        root, mcts_info = MCTS_PLL_1(self.config).run(
+                            self.model,
+                            stacked_observations,
+                            self.game.legal_actions(),
+                            self.game.to_play(),
+                            temperature != 0
+                        )
+                    elif self.config.expansion_strategy == 'deep_2':
+                        root, mcts_info = MCTS_PLL_2(self.config).run(
                             self.model,
                             stacked_observations,
                             self.game.legal_actions(),

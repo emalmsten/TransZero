@@ -10,6 +10,7 @@ from .node import Node, MVCNode
 
 from abc import ABC, abstractmethod
 import time
+from collections import defaultdict
 
 
 # Game independent
@@ -64,6 +65,9 @@ class MCTS:
         # Make the root predicted value and reward a scalar
         root_predicted_value = models.support_to_scalar(root_predicted_value, self.config.support_size).item()
         reward = models.support_to_scalar(reward, self.config.support_size).item()
+        policy_values = torch.softmax(
+            torch.tensor([policy_logits[0][a] for a in legal_actions]), dim=0
+        ).tolist()
 
         assert (
             legal_actions
@@ -72,7 +76,7 @@ class MCTS:
             set(self.config.action_space)
         ), "Legal actions should be a subset of the action space."
 
-        root.expand(legal_actions, to_play, root_predicted_value, reward, policy_logits, hidden_state)
+        root.expand(legal_actions, to_play, root_predicted_value, reward, policy_values, hidden_state)
 
         return root, root_predicted_value
 
@@ -96,14 +100,12 @@ class MCTS:
 
     def selection(self, node, min_max_stats):
         actions = []
-        search_path = [node]
         virtual_to_play = node.to_play
         current_tree_depth = 0
 
         while node.expanded():
             current_tree_depth += 1
             action, node = self.select_child(node, min_max_stats)  # tree action selection
-            search_path.append(node)
             actions.append(action)
 
             # Players play turn by turn
@@ -112,7 +114,7 @@ class MCTS:
             else:
                 virtual_to_play = self.config.players[0]
 
-        return node, actions, search_path, current_tree_depth, virtual_to_play
+        return node, actions, current_tree_depth, virtual_to_play
 
 
     def run(
@@ -142,7 +144,6 @@ class MCTS:
             (
                 node,
                 actions,
-                search_path,
                 current_tree_depth,
                 virtual_to_play,
             ) = self.selection(root, min_max_stats)
@@ -161,7 +162,7 @@ class MCTS:
                 )
 
             else:
-                parent = search_path[-2]
+                parent = node.parent
                 action = actions[-1]
                 value, reward, policy_logits, hidden_state = model.recurrent_inference(
                     parent.hidden_state,
@@ -170,17 +171,20 @@ class MCTS:
 
             value = models.support_to_scalar(value, self.config.support_size).item()
             reward = models.support_to_scalar(reward, self.config.support_size).item()
+            policy_values = torch.softmax(
+                torch.tensor([policy_logits[0][a] for a in self.config.action_space]), dim=0
+            ).tolist()
 
             node.expand(
                 self.config.action_space,
                 virtual_to_play,
                 value,
                 reward,
-                policy_logits,
+                policy_values,
                 hidden_state,
             )
 
-            self.backpropagate(search_path, value, virtual_to_play, min_max_stats)
+            self.backpropagate(node, value, virtual_to_play, min_max_stats)
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
@@ -224,24 +228,30 @@ class MCTS:
         return selected_action, node.children[selected_action]
 
 
-    def backpropagate(self, search_path, value, to_play, min_max_stats):
+    def backpropagate(self, node, value, to_play, min_max_stats):
         """
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root
         """
+        # todo, try new backprop
         if len(self.config.players) == 1:
-            for node in reversed(search_path):
+            while True:
                 node.value_sum += value
                 node.increment_visit_count()
                 value = node.reward + self.config.discount * value
-                min_max_stats.update(value)
+                min_max_stats.update(node.reward + self.config.discount * node.value())
 
                 # resetting in the backprop, NEW, todo remove other
                 node.variance = None
                 node.policy_value = None
 
+                if node.parent is None:
+                    break
+                node = node.parent
+
+
         elif len(self.config.players) == 2:
-            for node in reversed(search_path):
+            while True:
                 node.value_sum += value if node.to_play == to_play else -value
                 node.increment_visit_count()
                 min_max_stats.update(node.reward + self.config.discount * -node.value())
@@ -249,6 +259,10 @@ class MCTS:
                 value = (
                     -node.reward if node.to_play == to_play else node.reward
                 ) + self.config.discount * value
+
+                if node.parent is None:
+                    break
+                node = node.parent
 
         else:
             raise NotImplementedError("More than two player mode not implemented.")
@@ -305,8 +319,7 @@ class MCTS:
             f.flush()
 
 
-# todo, doesn't really make sense that MCTS PLL only can inherit from MCTS MVC
-class MCTS_PLL(MCTS):
+class MCTS_PLL_1(MCTS):
     def __init__(self, config):
         super().__init__(config)
 
@@ -371,12 +384,10 @@ class MCTS_PLL(MCTS):
                 use_causal_mask = True
             )
 
-            org_search_path = search_path
             org_node = node
             for i, action_sequence in enumerate(action_sequences_from_node):
                 for action in action_sequence:
                     node = node.children[action]
-                    search_path.append(node)
 
                 #full_ac_seq = actions + action_sequence
                 # todo try recurrent inf fast
@@ -412,9 +423,8 @@ class MCTS_PLL(MCTS):
                     latent_root_state, # todo, make optional
                 )
 
-                self.backpropagate(search_path, value_i, virtual_to_play, min_max_stats)
+                self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
 
-                search_path = org_search_path
                 node = org_node
 
             max_tree_depth = max(max_tree_depth, current_tree_depth)
@@ -480,18 +490,285 @@ class MCTS_PLL(MCTS):
         return padded_sequences, pad_masks
 
 
+class MCTS_PLL_2(MCTS_PLL_1):
+    def __init__(self, config):
+        super().__init__(config)
 
-        # todo implement for two players
-        # elif len(self.config.players) == 2:
-        #     for node in reversed(search_path):
-        #         node.value_sum += value if node.to_play == to_play else -value
-        #         min_max_stats.update(node.reward + self.config.discount * -node.value())
-        #
-        #         value = (
-        #                     -node.reward if node.to_play == to_play else node.reward
-        #                 ) + self.config.discount * value
-        #
-        #
+
+    def get_unique_nodes_for_sequence(self, sequences):
+        unique_occurrences = {}
+
+        # Process each input sequence (only one pass over each)
+        for seq in sequences:
+            history = []  # will collect the history (as lowercase tokens)
+            for token in seq:
+                pos = len(history)  # positions start at 1
+                # Construct full_seq as (history plus current token in lowercase)
+                full_seq = tuple(history) + (token,)
+                key = (token, pos, full_seq)
+                unique_occurrences[key] = key
+                history.append(token)
+
+        return unique_occurrences
+
+    def make_causal_mask(self, seqs, device):
+        n = len(seqs)
+        # Pre-cache the full sequences and their lengths.
+        lengths = [len(seq) for seq in seqs]
+
+        # Compute the allowed mask for the tokens based on the prefix condition.
+        # For each token i and j in tokens_list, allowed if token i's full_seq starts with token j's full_seq.
+        allowed_mask = [
+            [lengths[j] <= lengths[i] and seqs[i][:lengths[j]] == seqs[j]
+             for j in range(n)]
+            for i in range(n)
+        ]
+        allowed_mask_tensor = torch.tensor(allowed_mask, dtype=torch.bool, device=device)
+
+        # Enforce causal ordering (i.e. j <= i) to create a normal causal mask.
+        # For tokens positions (indices 0 to n-1 corresponding to tokens_list), we construct a lower-triangular mask.
+        causal_order = torch.tril(torch.ones((n, n), dtype=torch.bool, device=device))
+        final_allowed_tokens = allowed_mask_tensor & causal_order
+
+        # Create a new mask that is (n+1) x (n+1) to include the global token at index 0.
+        new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
+
+        # Global token row (index 0): allow only itself.
+        new_allowed[0, 0] = True
+
+        # For all token rows (indices 1 to n), always allow attending to the global token (column 0).
+        new_allowed[1:, 0] = True
+
+        # For the remaining positions, use the computed allowed tokens mask.
+        new_allowed[1:, 1:] = final_allowed_tokens
+
+        # Convert boolean mask to the float mask expected by torch.nn,
+        # where allowed positions become 0 and masked out positions become -inf.
+        attention_mask = torch.where(new_allowed, torch.tensor(0.0), torch.tensor(float('-inf')))
+        return attention_mask
+
+
+    def make_causal_mask_fast(self, seqs, device):
+        n = len(seqs)
+        # Convert sequences to tuples for quicker prefix comparisons
+        seqs = [tuple(seq) for seq in seqs]
+        lengths = [len(s) for s in seqs]
+
+        # We'll build a boolean tensor of shape [n, n] for the allowed positions
+        # and incorporate the causal condition (j <= i) in a single loop.
+        allowed_mask = torch.zeros((n, n), dtype=torch.bool, device=device)
+
+        for i in range(n):
+            seq_i = seqs[i]
+            len_i = lengths[i]
+            # Only check j up to i for the causal condition
+            for j in range(i + 1):
+                seq_j = seqs[j]
+                len_j = lengths[j]
+                # Check that seq_j is a prefix of seq_i
+                if len_j <= len_i and seq_i[:len_j] == seq_j:
+                    allowed_mask[i, j] = True
+
+        # Now include the "global" token at index 0 in a new (n+1) x (n+1) matrix
+        new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
+        # Allow the global token to attend only to itself
+        new_allowed[0, 0] = True
+        # All real tokens (1..n) can always attend to the global token (column 0)
+        new_allowed[1:, 0] = True
+        # Copy in our computed mask
+        new_allowed[1:, 1:] = allowed_mask
+
+        # Convert boolean allowed positions to the float mask format (0 for allowed, -inf for disallowed)
+        attention_mask = torch.where(
+            new_allowed,
+            torch.tensor(0.0, device=device),
+            torch.tensor(float('-inf'), device=device)
+        )
+        return attention_mask
+
+    def unwind_sequences(self, sequences):
+        """
+        For a list of sequences of actions (each a list of action labels),
+        this function computes for each (node, position) the set of unique histories (prior nodes),
+        and then "unwinds" them into a single action sequence and a corresponding positional encoding.
+
+        The final encoding ensures positions are non-decreasing.
+        """
+        groups = {}  # (node, pos) -> set of histories (each history is a tuple)
+        order = {}  # (node, pos) -> first occurrence order (to preserve encounter order)
+        next_order = 0
+
+        # Loop once over each sequence to update groups
+        for seq in sequences:
+            history = []
+            for pos, node in enumerate(seq, start=1):
+                key = (node, pos)
+                if key not in groups:
+                    groups[key] = set()
+                    order[key] = next_order
+                    next_order += 1
+                groups[key].add(tuple(history))
+                history.append(node)
+
+        # Now sort keys by position (non-decreasing) and then by encounter order.
+        sorted_keys = sorted(groups.keys(), key=lambda k: (k[1], order[k]))
+
+        action_seq = []
+        pos_seq = []
+        for node, pos in sorted_keys:
+            count = len(groups[(node, pos)])
+            action_seq.append(node * count)  # repeat node as many times as there are unique histories
+            pos_seq.append([pos] * count)
+
+        return action_seq, pos_seq
+
+
+    def get_action_sequence(self, actions, latent_root_state, legal_actions):
+        action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
+        # prepend actions to each
+        action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
+        # get unique nodes for each sequence
+        # action_seq, pos_indices = self.unwind_sequences(action_sequences)
+        unique_occurrences = self.get_unique_nodes_for_sequence(action_sequences)
+
+        tokens_list = list(unique_occurrences.keys())
+        # Sort tokens by: position, then by token label (alphabetically), then by full_seq.
+        tokens_list.sort(key=lambda x: (x[1], x[0], x[2]))
+
+        # Build the action sequence and positional sequence.
+        action_seq, pos_indices, full_seqs = [], [], []
+
+        for token, pos, full_seq in tokens_list:
+            action_seq.append(token)
+            pos_indices.append(pos)
+            full_seqs.append(list(full_seq))
+
+
+        # unsqueeze last and first dim
+
+        # make into torch tensor
+        action_seq = torch.tensor(action_seq).to(latent_root_state.device).unsqueeze(0)
+        pos_indices = torch.tensor(pos_indices).to(latent_root_state.device)
+
+        return action_seq, pos_indices, full_seqs
+
+    @staticmethod
+    def trim_sequences(sequences, action_length):
+        return [seq[action_length:] for seq in sequences if len(seq) >= action_length]
+
+    def run(
+            self,
+            model,
+            observation,
+            legal_actions,
+            to_play,
+            add_exploration_noise,
+            override_root_with=None,
+    ):
+
+        # print(f"is trans net: {is_trans_net}")
+        root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
+
+        min_max_stats = MinMaxStats()
+
+        max_tree_depth = 0
+
+        latent_root_state = root.hidden_state
+        #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        legal_actions_tensor = torch.tensor(legal_actions, device=latent_root_state.device)
+
+        for _ in range(self.config.num_simulations):
+            virtual_to_play = to_play
+            node = root
+            actions = []
+            current_tree_depth = 0
+
+            # todo reconsider where this should be
+            #node.reset_var()
+
+            # log n
+            while node.expanded():
+                current_tree_depth += 1
+                action, node = self.select_child(node, min_max_stats)  # tree action selection
+                actions.append(action)
+
+                # Players play turn by turn
+                if virtual_to_play + 1 < len(self.config.players):
+                    virtual_to_play = self.config.players[virtual_to_play + 1]
+                else:
+                    virtual_to_play = self.config.players[0]
+
+            action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence(actions, latent_root_state, legal_actions)
+            causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
+
+            # copy root hidden state into size of action sequences in dim 0
+
+            # todo, check if pos is 0 indexed
+
+            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
+                None,None,
+                latent_root_state=latent_root_state,
+                action_sequence=action_seq_for_pred,
+                custom_pos_indices = pos_indices,
+                custom_causal_mask=causal_mask,
+                return_n_last_predictions=self.config.expansion_budget
+                )
+
+            all_value_scalars = models.support_to_scalar(all_values, self.config.support_size)
+            all_reward_scalars = models.support_to_scalar(all_rewards, self.config.support_size)
+            all_policy_probs = torch.softmax(all_policy_logits[:, legal_actions_tensor], dim=-1)
+
+            all_actions_from_node = self.trim_sequences(full_seqs, len(actions))
+            all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
+
+            org_node = node
+            node_list = []
+            # todo we do not need to expand nor predict already expanded nodes
+            for i, actions_from_node in enumerate(all_actions_from_node):
+                for action in actions_from_node:
+                    node = node.children[action]
+
+                last_action_idx = i
+
+                value_i = all_value_scalars[last_action_idx].item()
+                reward_i = all_reward_scalars[last_action_idx].item()
+                policy_values_i = all_policy_probs[last_action_idx].tolist()
+
+                # todo also try longer runs and not capping after terminal state
+
+                node.expand(
+                    legal_actions,
+                    virtual_to_play,
+                    value_i,
+                    reward_i,
+                    policy_values_i,
+                    latent_root_state, # todo, make optional
+                )
+                # append a deep copy of the node
+                node_list.append(node)
+                #self.backpropagate(node, value_i, virtual_to_play, min_max_stats)
+                node = org_node
+
+            self.backpropagate_more(node_list, min_max_stats)
+            max_tree_depth = max(max_tree_depth, current_tree_depth)
+
+
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": root_predicted_value,
+        }
+
+        return root, extra_info
+
+
+    def backpropagate_more(self, node_list, min_max_stats):
+
+        # reverse traversal to get children first
+        for node in node_list:
+            min_max_stats.update(node.reward + self.config.discount * node.value()) # todo check if this should even be used
+            node.variance = None
+            node.policy_value = None
+
 
 class PUCT(ABC):
     """
@@ -608,3 +885,34 @@ class MinMaxStats:
             return (value - self.minimum) / (self.maximum - self.minimum)
         return value
 
+
+
+    #
+    # def backpropagate_more(self, node_list, value_list, to_play, min_max_stats):
+    #     # put parents in a dict
+    #
+    #     def updates(node):
+    #         # node.increment_visit_count()
+    #         min_max_stats.update(value)
+    #         node.variance = None
+    #         node.policy_value = None
+    #
+    #     parents = defaultdict(list)
+    #     # reverse traversal to get children first
+    #     for i in range(len(node_list) - 1, -1, -1):
+    #         node = node_list[i]
+    #         value = value_list[i].item()
+    #
+    #         child_val_sum, child_rew_sum, visits = parents.get(node, (0, 0, 0))
+    #         # add own reward for parent pluts the discounted child rewards
+    #         rew_sum = node.reward * (visits + 1) + self.config.discount * child_rew_sum # correct
+    #         val_sum = self.config.discount * (value + child_val_sum)
+    #
+    #         # if parent not in dict, add it (todo check if this is really q)
+    #         (sibling_val_cum_sum, sibling_rew_cum_sum, sibling_cum_visits) = parents.get(node.parent, (0, 0, 0))
+    #         parents[node.parent] = (sibling_val_cum_sum + val_sum, sibling_rew_cum_sum + rew_sum, sibling_cum_visits + visits + 1)
+    #
+    #         node.value_sum += (value + child_rew_sum + child_val_sum)
+    #         # assert that value_sum_2 equals value sum (to a few decimals)
+    #
+    #         updates(node)

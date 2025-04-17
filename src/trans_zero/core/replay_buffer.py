@@ -5,8 +5,11 @@ import numpy
 import ray
 import torch
 
+from trans_zero.core.self_play import SelfPlay
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
+from trans_zero.utils.other_utils import set_global_seeds
+
 
 @ray.remote
 class ReplayBuffer:
@@ -28,7 +31,7 @@ class ReplayBuffer:
             )
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
     def save_game(self, game_history, shared_storage=None):
         if self.config.PER:
@@ -328,12 +331,15 @@ class Reanalyse:
         self.config = config
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
-        self.model.set_weights(initial_checkpoint["weights"])
+        initial_weights = initial_checkpoint["weights"]
+        try:
+            self.model.set_weights(initial_weights)
+        except Exception as e:
+            self.model.set_weights(SelfPlay.remove_module_prefix(initial_weights))
         self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu"))
         self.model.eval()
 

@@ -91,8 +91,8 @@ def refresh(cfg):
     if cfg.debug_mode:
         reason = "debug mode is True"
         set_attributes(cfg,
-                       ["logger", "save_model", "train_on_gpu", "selfplay_on_gpu", "reanalyse_on_gpu"],
-                            [None, False, False, False, False], reason)
+                       ["logger", "save_model", "train_on_gpu", "selfplay_on_gpu", "reanalyse_on_gpu", "num_workers"],
+                            [None, False, False, False, False, 1], reason)
 
     cfg.name, cfg.log_name, cfg.results_path = cfg.set_names_and_paths()
 

@@ -85,7 +85,7 @@ class PolicyDistribution(Policy):
         """
         Returns the relative probability of selecting the node itself
         """
-        return probs.sum() / ((node.visit_count - 1) or 1)
+        return probs.sum() / ((node.get_visit_count() - 1) or 1)
 
     def add_self_to_probs(self, node, probs: th.Tensor) -> th.Tensor:
         """

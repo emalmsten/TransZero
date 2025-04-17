@@ -7,10 +7,11 @@ from trans_zero.mvc_utils.utility_functions import policy_value
 
 class Node:
 
-    def __init__(self, prior, config, name="root"):
+    def __init__(self, prior, config, parent=None, name="root"):
         self.config = config
         self.action_space_size = len(self.config.action_space)
         self.use_reward = config.predict_reward
+        self.parent = parent
 
         self.visit_count = 0
         self.to_play = -1
@@ -31,7 +32,7 @@ class Node:
 
     def make_child(self, prior, child_name):
         """Factory method to create a child node."""
-        return Node(prior, self.config, name=child_name)
+        return Node(prior, self.config, name=child_name, parent=self)
 
     def get_visit_count(self):
         return self.visit_count
@@ -45,7 +46,7 @@ class Node:
         return self.value_sum / self.get_visit_count()
 
 
-    def expand(self, actions, to_play, value , reward, policy_logits, hidden_state):
+    def expand(self, available_actions, to_play, value, reward, policy_values, hidden_state):
         """
         We expand a node using the value, reward and policy prediction obtained from the
         neural network.
@@ -55,15 +56,12 @@ class Node:
         self.value_evaluation = value
         self.hidden_state = hidden_state
 
-        policy_values = torch.softmax(
-            torch.tensor([policy_logits[0][a] for a in actions]), dim=0
-        ).tolist()
-        policy = {a: policy_values[i] for i, a in enumerate(actions)}
-        a_dict = a_dict_cg if len(actions) == 3 else a_dict_ll
-        for action, p in policy.items():
-            a_name = a_dict[action]
-            child_name = f"{self.name}_{a_name}" if self.name != "root" else f"_{a_name}"
-            self.children[action] = self.make_child(p, child_name)
+        for action, p in zip(available_actions, policy_values):
+            self.children[action] = self.make_child(p, self.get_child_name(action))
+
+
+    def get_child_name(self, action):
+        return f"{self.name}_{action}" if self.name != "root" else f"r_{action}"
 
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
@@ -95,6 +93,7 @@ class MVCNode(Node):
         self.variance = None
         self.policy_value = None
         self.policy = MeanVarianceConstraintPolicy(config)
+        self.name = name
 
     def value(self):
         """

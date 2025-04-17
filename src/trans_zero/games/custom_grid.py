@@ -241,7 +241,7 @@ class MuZeroConfig:
         self.state_size = None #(16, 4, 4) # same as
         self.stable_transformer = False
         self.get_fast_predictions = True # todo rename
-        self.use_forward_causal_mask = False
+        self.use_forward_causal_mask = True
 
 
         ### Training
@@ -256,7 +256,7 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.003 # res: 0.015
+        self.lr_init = 0.001 # res: 0.015
         self.lr_decay_rate = 0.95
         self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
         self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
@@ -316,7 +316,7 @@ class MuZeroConfig:
 
 
     def set_names_and_paths(self):
-        path = self.root / "data/results" / self.game_name / self.custom_map / self.network
+        path = pathlib.Path(self.root) / "data/results" / self.game_name / self.custom_map / self.network
         name = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}{self.append}'
         log_name = f"{self.game_name}_{self.custom_map}_{'random' if self.random_map else'fixed'}_{self.pov}_{self.network}_{name}"
         results_path = path / name

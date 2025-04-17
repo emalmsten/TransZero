@@ -20,6 +20,7 @@ from trans_zero.utils.config_utils import print_config, init_config
 
 from trans_zero.utils.muzero_logger import logging_loop, get_initial_checkpoint
 from trans_zero.utils.ray_utils import calc_num_gpus, CPUActor, calc_num_gpus_per_worker
+from ..utils.other_utils import set_global_seeds
 
 
 # todo consider if muzero should have some less/different responsibilities (and name)
@@ -58,8 +59,7 @@ class MuZero:
 
         # Fix random generator seed
         # todo make sure the seeds are used everywhere
-        numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         self.num_gpus, total_gpus = calc_num_gpus(self.config, split_resources_in)
 
@@ -104,7 +104,6 @@ class MuZero:
         self.shared_storage_worker = shared_storage.SharedStorage.remote(
             self.checkpoint,
             self.config,
-            self.wandb_run,
         )
         self.shared_storage_worker.set_info.remote("terminate", False)
 
@@ -287,10 +286,10 @@ class MuZero:
         else:
             print(f"Using empty buffer.")
             self.replay_buffer = {}
-            self.checkpoint["training_step"] = 0
-            self.checkpoint["num_played_steps"] = 0
-            self.checkpoint["num_played_games"] = 0
-            self.checkpoint["num_reanalysed_games"] = 0
+            # self.checkpoint["training_step"] = 0
+            # self.checkpoint["num_played_steps"] = 0
+            # self.checkpoint["num_played_games"] = 0
+            # self.checkpoint["num_reanalysed_games"] = 0
 
 
 

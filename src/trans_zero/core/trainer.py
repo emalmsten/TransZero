@@ -9,6 +9,8 @@ import torch
 
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
+from trans_zero.utils.other_utils import set_global_seeds
+from .self_play import SelfPlay
 
 
 @ray.remote
@@ -20,14 +22,20 @@ class Trainer:
 
     def __init__(self, initial_checkpoint, config):
         self.config = config
+        self.previous_save_modulo = 0
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
-        self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
+        model_weights = copy.deepcopy(initial_checkpoint["weights"])
+        try:
+            self.model.set_weights(model_weights)
+        except Exception as e:
+            self.model.set_weights(SelfPlay.remove_module_prefix(model_weights))
+
+
         self.model.to(torch.device("cuda" if self.config.train_on_gpu else "cpu"))
         self.model.train()
 
@@ -76,7 +84,11 @@ class Trainer:
         ) = losses
 
         # Save to the shared storage
-        if self.stop_crit_step % self.config.checkpoint_interval == 0:
+        save_modulo = self.stop_crit_step % self.config.checkpoint_interval
+        save_checkpoint = save_modulo < self.previous_save_modulo
+        self.previous_save_modulo = save_modulo
+
+        if save_checkpoint:
             shared_storage.set_info.remote(
                 {
                     "weights": copy.deepcopy(self.model.get_weights()),
@@ -85,13 +97,6 @@ class Trainer:
                     ),
                 }
             )
-
-        # Save to the shared storage
-        if self.config.save_model and self.stop_crit_step % self.config.save_interval == 0:
-            shared_storage.save_checkpoint.remote(self.stop_crit_step)
-            shared_storage.save_buffer.remote(replay_buffer, self.stop_crit_step,
-                                              shared_storage.get_info.remote("num_played_games"),
-                                              shared_storage.get_info.remote("num_reanalysed_games"))
 
         if self.config.network == "double":
             value_loss, trans_value_loss = value_loss
