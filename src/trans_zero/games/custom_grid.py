@@ -278,8 +278,7 @@ class MuZeroConfig:
         # fmt: on
         self.softmax_limits = [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
         self.softmax_temps =  [1, 0.5, 0.25, 0.1] # res 1, 0.5, 0.25
-        self.mvc_softmax_temps = [1, 0.5, 0.25, 0.1]
-
+        self.mvc_softmax_temps = None #[1, 0.5, 0.25, 0.1]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
