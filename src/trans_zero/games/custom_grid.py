@@ -290,6 +290,8 @@ class MuZeroConfig:
             Positive float.
         """
         softmax_temps = self.mvc_softmax_temps if self.action_selection == "mvc" else self.softmax_temps
+        if softmax_temps is None:
+            return 0.0  # won't be used # todo
         for i, limit in enumerate(self.softmax_limits):
             if trained_steps < limit * self.training_steps:
                 return softmax_temps[i]
