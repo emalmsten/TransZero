@@ -190,6 +190,8 @@ class MuZeroConfig:
 
         self.softmax_limits = [0.25, 0.5, 0.75, 1]  # [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]#
         self.softmax_temps = [0.4, 0.35, 0.15, 0.05]  # res [ 0.9, 0.8, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1] #
+        self.mvc_softmax_temps = [0.4, 0.35, 0.15, 0.05]
+
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -199,9 +201,10 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
+        softmax_temps = self.mvc_softmax_temps if self.action_selection == "mvc" else self.softmax_temps
         for i, limit in enumerate(self.softmax_limits):
             if trained_steps < limit * self.training_steps:
-                return self.softmax_temps[i]
+                return softmax_temps[i]
 
     # todo implement set names and paths
     def set_names_and_paths(self):
