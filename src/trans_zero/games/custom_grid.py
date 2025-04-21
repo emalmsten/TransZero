@@ -278,6 +278,7 @@ class MuZeroConfig:
         # fmt: on
         self.softmax_limits = [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
         self.softmax_temps =  [1, 0.5, 0.25, 0.1] # res 1, 0.5, 0.25
+        self.mvc_softmax_temps = [1, 0.5, 0.25, 0.1]
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -288,9 +289,10 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
+        softmax_temps = self.mvc_softmax_temps if self.action_selection == "mvc" else self.softmax_temps
         for i, limit in enumerate(self.softmax_limits):
             if trained_steps < limit * self.training_steps:
-                return self.softmax_temps[i]
+                return softmax_temps[i]
 
 
     def get_observation_shape(self, pov):

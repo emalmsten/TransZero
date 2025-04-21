@@ -314,6 +314,8 @@ class SelfPlay:
 
     def select_action(self, node, temperature):
         if self.config.action_selection == "mvc":
+            if self.config.mvc_softmax_temps is None:
+                temperature = None
             return self.mvc_action_selection(node, temperature)
         else:
             return self.std_action_selection(node, temperature)
