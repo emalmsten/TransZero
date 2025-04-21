@@ -20,7 +20,7 @@
   "action_selection": "mvc",
   "PUCT_C": 2.5,
   "PUCT_variant": "mvc",
-  "mvc_beta": 0.01,
+  "mvc_beta": 0.002,
   "self_prob_type": "mvc",
   "policy_target_type": "mvc",
   "test_ucb": false,
