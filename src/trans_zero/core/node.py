@@ -80,6 +80,12 @@ class Node:
         for child in self.children.values():
             child.reset_ucb()
 
+    def reset_var(self):
+        pass
+
+    def reset_val(self):
+        pass
+
 
     def __repr__(self):
         return self.name
@@ -92,15 +98,19 @@ class MVCNode(Node):
         self.parent = parent
         self.variance = None
         self.policy_value = None
+
         self.policy = MeanVarianceConstraintPolicy(config)
         self.name = name
+
+        self.prev_variance = None
+        self.prev_policy_value = None
 
     def value(self):
         """
         Override the value method to return the policy value.
         """
         if self.policy_value is None:
-            return policy_value(self, self.policy, self.policy.discount_factor)
+            self.policy_value = policy_value(self, self.policy, self.policy.discount_factor)
         return self.policy_value
 
     def get_visit_count(self):
@@ -113,22 +123,45 @@ class MVCNode(Node):
         """
         return MVCNode(prior, self.config, name=child_name, parent=self)
 
-    def reset_var_val(self):
+    def reset_var_val_recursive(self):
         """
         Reset the variance and policy_value attributes recursively.
         """
         self.variance = None
         self.policy_value = None
         for child in self.children.values():
-            child.reset_var_val()
+            child.reset_var_val_recursive()
 
-    def reset_var(self):
+    def reset_var_recursive(self):
         """
         Reset the variance attribute recursively.
         """
         self.variance = None
         for child in self.children.values():
-            child.reset_var()
+            child.reset_var_recursive()
+
+
+    def reset_var(self):
+        """
+        Reset the variance attribute recursively.
+        """
+        # check if the old is equal to the new
+
+        self.prev_variance = self.variance
+        self.variance = None
+
+    def reset_val(self):
+        """
+        Reset the policy_value attribute recursively.
+        """
+
+        self.prev_policy_value = self.policy_value
+        self.policy_value = None
+
+
+
+
+
 
     def __repr__(self):
         return self.name

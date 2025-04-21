@@ -98,7 +98,7 @@ class PolicyDistribution(Policy):
         return th.cat([probs, th.tensor([self_prob])])
 
     def softmaxed_distribution(
-        self, node, include_self=False, **kwargs
+        self, node, include_self=False, temperature=None
     ) -> th.distributions.Categorical:
         """
         Relative probabilities with self handling
@@ -112,7 +112,9 @@ class PolicyDistribution(Policy):
 
         probs = self._probs(node, include_self and self.self_prob_type == 'mvc')
         # softmax the probs
-        softmaxed_probs = custom_softmax(probs, self.temperature, None)
+        if temperature is None:
+            temperature = self.temperature
+        softmaxed_probs = custom_softmax(probs, temperature, None)
 
         if include_self and self.self_prob_type == 'visit': # todo emil temporary solution of the self prob
             softmaxed_probs = self.add_self_to_probs(node, softmaxed_probs)

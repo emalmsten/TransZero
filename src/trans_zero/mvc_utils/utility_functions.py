@@ -2,6 +2,7 @@ import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
 
+# todo, try if the prev policy value is equal to the current one, same with variance
 
 # TODO: can improve this implementation
 def policy_value(
@@ -27,7 +28,7 @@ def policy_value(
     if isinstance(policy, th.distributions.Categorical):
         pi = policy
     else:
-        pi = policy.softmaxed_distribution(node, include_self=True, action_space_size=node.action_space_size)
+        pi = policy.softmaxed_distribution(node, include_self=True)
 
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
@@ -134,7 +135,7 @@ def get_children_policy_values_and_inverse_variance(
     vals = th.ones(parent.action_space_size + include_self, dtype=th.float32) * -th.inf
     inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
     for action, child in parent.children.items():
-        pi = policy.softmaxed_distribution(child, action_space_size=parent.action_space_size, include_self=True)
+        pi = policy.softmaxed_distribution(child, include_self=True)
         vals[action] = policy_value(child, pi, discount_factor)
         inv_vars[action] = 1 / independent_policy_value_variance(
             child, pi, discount_factor

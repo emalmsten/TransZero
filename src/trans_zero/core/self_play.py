@@ -53,7 +53,6 @@ class SelfPlay:
             game_number += 1
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
-
             # normal train mode
             if not test_mode:
                 game_history = self.play_game(
@@ -306,15 +305,16 @@ class SelfPlay:
         return action
 
 
-    def mvc_action_selection(self, tree):
-        policy_dist = self.mvc.softmaxed_distribution(tree)
+    def mvc_action_selection(self, tree, temperature):
+        temperature = None # todo
+        policy_dist = self.mvc.softmaxed_distribution(tree, temperature=temperature)
         action = policy_dist.sample().item()
         return action
 
 
     def select_action(self, node, temperature):
         if self.config.action_selection == "mvc":
-            return self.mvc_action_selection(node)
+            return self.mvc_action_selection(node, temperature)
         else:
             return self.std_action_selection(node, temperature)
 

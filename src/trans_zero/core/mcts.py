@@ -242,8 +242,8 @@ class MCTS:
                 min_max_stats.update(node.reward + self.config.discount * node.value())
 
                 # resetting in the backprop, NEW, todo remove other
-                node.variance = None
-                node.policy_value = None
+                node.reset_var()
+                node.reset_val()
 
                 if node.parent is None:
                     break
