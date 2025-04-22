@@ -306,7 +306,6 @@ class SelfPlay:
 
 
     def mvc_action_selection(self, tree, temperature):
-        temperature = None # todo
         policy_dist = self.mvc.softmaxed_distribution(tree, temperature=temperature)
         action = policy_dist.sample().item()
         return action
