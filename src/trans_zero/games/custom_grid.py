@@ -112,21 +112,23 @@ class MuZeroConfig:
         cuda = torch.cuda.is_available()
 
         self.max_time_minutes = None
-        self.stopping_criterion = 'training_step'  # 'num_played_steps' or 'training_step'
-        self.training_steps = 40000  # Total number of training steps (ie weights update according to a batch)
+        self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
+        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
 
 
+        self.expansion_strategy = "deep_2"
+        self.expansion_budget = 13 # atleast 1 node needs to be expanded
+        self.num_simulations = 5  # Number of future moves self-simulated
+        self.max_seq_length = 30 # todo reconsider length
 
-        self.expansion_strategy = None
-        self.expansion_budget = 4 # atleast 1 node needs to be expanded
 
         # action selection
-        self.action_selection = "visit" # mvc or std
-        self.PUCT_C = 2.0
-        self.PUCT_variant = "visit"
-        self.mvc_beta = 1.0
-        self.self_prob_type = "visit" # visit or mvc # todo remove
-        self.policy_target_type = "visit"
+        self.action_selection = "mvc" # mvc or std
+        self.PUCT_C = 2.5
+        self.PUCT_variant = "mvc"
+        self.mvc_beta = 0.3
+        self.self_prob_type = "mvc" # visit or mvc # todo remove
+        self.policy_target_type = "mvc"
         self.test_ucb = False
 
         # Local
@@ -140,7 +142,7 @@ class MuZeroConfig:
         self.wandb_entity = "elhmalmsten-tu-delft"
 
         # Essentials
-        self.network = "resnet"
+        self.network = "transformer"
         self.game_name = "custom_grid"
 
         self.custom_map = "3x3_2h_2d" #4x4_3h_1d"
@@ -182,9 +184,8 @@ class MuZeroConfig:
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
         ### Self-Play
-        self.num_workers = 4 # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.num_workers = 8 # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
-        self.num_simulations = 20  # Number of future moves self-simulated
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
 
@@ -223,7 +224,6 @@ class MuZeroConfig:
         self.transformer_layers = 4
         self.transformer_heads = 8
         self.transformer_hidden_size = 32
-        self.max_seq_length = 50 # todo reconsider length
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False

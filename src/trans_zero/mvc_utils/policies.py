@@ -97,6 +97,7 @@ class PolicyDistribution(Policy):
         self_prob = self.self_prob(node, probs)
         return th.cat([probs, th.tensor([self_prob])])
 
+# todo important consider res 4x4 w other lr for res
     def softmaxed_distribution(
         self, node, include_self=False, temperature=None
     ) -> th.distributions.Categorical:

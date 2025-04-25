@@ -158,13 +158,9 @@ class MVCNode(Node):
         self.prev_policy_value = self.policy_value
         self.policy_value = None
 
-
-
-
-
-
     def __repr__(self):
         return self.name
+
 
 # todo clean
 a_dict_cg = {
