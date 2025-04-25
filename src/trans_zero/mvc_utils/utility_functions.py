@@ -1,3 +1,5 @@
+import time
+
 import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
@@ -9,6 +11,7 @@ def policy_value(
     node,
     policy,  # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
+    other_policy=None,
 ):
     # consider if discount factor should be a separate parameter
 
@@ -24,6 +27,11 @@ def policy_value(
 
     if node.policy_value:
         return node.policy_value
+
+    # put this after potentially just returning policy_value
+    if policy is None:
+        # todo cache this at node level
+        policy = other_policy.softmaxed_distribution(node, include_self=True)
 
     if isinstance(policy, th.distributions.Categorical):
         pi = policy
@@ -66,9 +74,13 @@ def independent_policy_value_variance(
     node,
     policy,
     discount_factor: float,
+    other_policy=None,
 ):
     if node.variance is not None:
         return node.variance
+
+    if policy is None:
+        policy = other_policy.softmaxed_distribution(node, include_self=True)
     # return the variance of the q value the node with the given policy
     if isinstance(policy, th.distributions.Categorical):
         pi = policy
@@ -134,12 +146,18 @@ def get_children_policy_values_and_inverse_variance(
     """
     vals = th.ones(parent.action_space_size + include_self, dtype=th.float32) * -th.inf
     inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
+
     for action, child in parent.children.items():
+        start = time.time()
         pi = policy.softmaxed_distribution(child, include_self=True)
-        vals[action] = policy_value(child, pi, discount_factor)
+        vals[action] = policy_value(child, None, discount_factor, other_policy = policy) # todo temp name
+        vals_time = time.time()
         inv_vars[action] = 1 / independent_policy_value_variance(
-            child, pi, discount_factor
+            child, None, discount_factor, other_policy = policy
         )
+        end = time.time()
+        #print(f" vals: {vals_time - pi_time}, inv_vars: {end - vals_time}")
+
     if include_self:
         vals[-1] = parent.value_evaluation
         inv_vars[-1] = 1 / value_evaluation_variance(parent)

@@ -233,7 +233,6 @@ class MCTS:
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root
         """
-        # todo, try new backprop
         if len(self.config.players) == 1:
             while True:
                 node.value_sum += value
@@ -277,8 +276,6 @@ class MCTS:
     #     par_visit = parent.visit_count
     #     child_visit = child.visit_count
     #     return par_inv_q_var, child_inv_q_var, par_visit, child_visit
-
-    # todo consider causal mask in forward pass of transformer
 
     # def ucb_score_test(self, parent, child, min_max_stats):
     #     u_std, u_mvc = self.calc_U_std(parent, child), self.calc_U_mvc(parent, child)
@@ -800,8 +797,14 @@ class PUCT(ABC):
         Compute the PUCT (Predictor + UCT) score for a child node.
         Score = Q + U
         """
+        start = time.time()
         U = child.prior * self.U(parent, child)
+        U_time = time.time()
         Q = self.Q(child)
+        Q_time = time.time()
+        #print(f"U time: {U_time - start}, Q time: {Q_time - U_time}")
+
+
         Q = min_max_stats.normalize(Q)
         return Q + U
 
