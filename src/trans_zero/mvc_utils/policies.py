@@ -72,7 +72,8 @@ class PolicyDistribution(Policy):
         """
         Returns a random action from the distribution
         """
-        return int(self.softmaxed_distribution(node).sample().item())
+        #return int(self.softmaxed_distribution(node).sample().item())
+        return node.get_pi().sample().item()
 
     @abstractmethod
     def _probs(self, node, include_self=False) -> th.Tensor:

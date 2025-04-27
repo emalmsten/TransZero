@@ -413,7 +413,7 @@ class GameHistory:
                     child_visits
                 )
             else:
-                mvc_policy = root.policy.softmaxed_distribution(root).probs
+                mvc_policy = root.get_pi().probs #policy.softmaxed_distribution(root).probs
                 # untorch and add to mvc_policies
                 self.policy_targets.append(mvc_policy.tolist())
 

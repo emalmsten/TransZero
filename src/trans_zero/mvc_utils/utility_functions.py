@@ -9,7 +9,7 @@ from .value_transforms import IdentityValueTransform, ValueTransform
 # TODO: can improve this implementation
 def policy_value(
     node,
-    policy,  # PolicyDistribution | th.distributions.Categorical,
+    #policy,  # PolicyDistribution | th.distributions.Categorical,
     discount_factor: float,
     other_policy=None,
 ):
@@ -24,19 +24,19 @@ def policy_value(
     #     val = th.tensor(node.reward, dtype=th.float32)
     #     node.policy_value = val
     #     return val
+    # if isinstance(policy, th.distributions.Categorical):
+    #     pi = policy
+    # else:
+    #     pi = policy.softmaxed_distribution(node, include_self=True)
+
 
     if node.policy_value:
         return node.policy_value
 
-    # put this after potentially just returning policy_value
-    if policy is None:
-        # todo cache this at node level
-        policy = other_policy.softmaxed_distribution(node, include_self=True)
+    # if node.pi is None:
+    #     node.pi = other_policy.softmaxed_distribution(node, include_self=True)
 
-    if isinstance(policy, th.distributions.Categorical):
-        pi = policy
-    else:
-        pi = policy.softmaxed_distribution(node, include_self=True)
+    pi = node.get_pi(include_self=True)
 
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
@@ -46,7 +46,7 @@ def policy_value(
     child_values = th.zeros_like(child_propabilities, dtype=th.float32)
 
     for action, child in node.children.items():
-        child_values[action] = policy_value(child, policy, discount_factor)
+        child_values[action] = policy_value(child, discount_factor)
 
     val = node.reward + discount_factor * (
         own_propability * node.value_evaluation
@@ -72,20 +72,22 @@ def value_evaluation_variance(node):
 
 def independent_policy_value_variance(
     node,
-    policy,
+    #policy,
     discount_factor: float,
-    other_policy=None,
+    #other_policy=None,
 ):
     if node.variance is not None:
         return node.variance
 
-    if policy is None:
-        policy = other_policy.softmaxed_distribution(node, include_self=True)
-    # return the variance of the q value the node with the given policy
-    if isinstance(policy, th.distributions.Categorical):
-        pi = policy
-    else:
-        pi = policy.softmaxed_distribution(node, include_self=True)
+    pi = node.get_pi(include_self=True)
+
+    # if policy is None:
+    #     policy = other_policy.softmaxed_distribution(node, include_self=True)
+    # # return the variance of the q value the node with the given policy
+    # if isinstance(policy, th.distributions.Categorical):
+    #     pi = policy
+    # else:
+    #     pi = policy.softmaxed_distribution(node, include_self=True)
 
     probabilities_squared = pi.probs**2  # type: ignore
     own_propability_squared = probabilities_squared[-1]
@@ -93,7 +95,7 @@ def independent_policy_value_variance(
     child_variances = th.zeros_like(child_propabilities_squared, dtype=th.float32)
     for action, child in node.children.items():
         child_variances[action] = independent_policy_value_variance(
-            child, policy, discount_factor
+            child, discount_factor
         )
 
     var = reward_variance(node) + discount_factor**2 * (
@@ -113,22 +115,22 @@ def get_children_policy_values(
     # have a look at this, infs mess things up
     vals = th.ones(int(parent.action_space.n), dtype=th.float32) * -th.inf
     for action, child in parent.children.items():
-        vals[action] = policy_value(child, policy, discount_factor)
+        vals[action] = policy_value(child, discount_factor)
     vals = transform.normalize(vals)
     return vals
 
 
-def compute_inverse_q_variance(node, policy, discount_factor: float):
-    return 1.0 / independent_policy_value_variance(node, policy, discount_factor)
+def compute_inverse_q_variance(node, discount_factor: float):
+    return 1.0 / independent_policy_value_variance(node, discount_factor)
 
 
 def get_children_inverse_variances(
-    parent, policy, discount_factor: float
+    parent,  discount_factor: float
 ) -> th.Tensor:
     inverse_variances = th.zeros(parent.action_space_size, dtype=th.float32)
     for action, child in parent.children.items():
         inverse_variances[action] = 1.0 / independent_policy_value_variance(
-            child, policy, discount_factor
+            child,  discount_factor
         )
 
     return inverse_variances
@@ -149,11 +151,11 @@ def get_children_policy_values_and_inverse_variance(
 
     for action, child in parent.children.items():
         start = time.time()
-        pi = policy.softmaxed_distribution(child, include_self=True)
-        vals[action] = policy_value(child, None, discount_factor, other_policy = policy) # todo temp name
+        #pi = policy.softmaxed_distribution(child, include_self=True)
+        vals[action] = policy_value(child, discount_factor) # todo temp name
         vals_time = time.time()
         inv_vars[action] = 1 / independent_policy_value_variance(
-            child, None, discount_factor, other_policy = policy
+            child,  discount_factor
         )
         end = time.time()
         #print(f" vals: {vals_time - pi_time}, inv_vars: {end - vals_time}")

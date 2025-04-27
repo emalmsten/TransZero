@@ -1,5 +1,5 @@
 import numpy
-import torch
+import torch as th
 
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
 from trans_zero.mvc_utils.utility_functions import policy_value
@@ -98,6 +98,7 @@ class MVCNode(Node):
         self.parent = parent
         self.variance = None
         self.policy_value = None
+        self.pi = None
 
         self.policy = MeanVarianceConstraintPolicy(config)
         self.name = name
@@ -110,7 +111,7 @@ class MVCNode(Node):
         Override the value method to return the policy value.
         """
         if self.policy_value is None:
-            self.policy_value = policy_value(self, self.policy, self.policy.discount_factor)
+            self.policy_value = policy_value(self, self.policy.discount_factor)
         return self.policy_value
 
     def get_visit_count(self):
@@ -131,6 +132,22 @@ class MVCNode(Node):
         self.policy_value = None
         for child in self.children.values():
             child.reset_var_val_recursive()
+
+    def get_pi(self, include_self=False):
+        """
+        Get the policy distribution for the node.
+        """
+        if self.pi is None:
+            self.pi = self.policy.softmaxed_distribution(self, include_self=True)
+
+        if include_self:
+            return self.pi
+        else:
+            probs = self.pi.probs
+            return th.distributions.Categorical(probs=probs[:-1])
+
+        #return self.pi if include_self else self.pi
+
 
     def reset_var_recursive(self):
         """
@@ -157,6 +174,12 @@ class MVCNode(Node):
 
         self.prev_policy_value = self.policy_value
         self.policy_value = None
+
+    def reset_pi(self):
+        """
+        Reset the pi attribute.
+        """
+        self.pi = None
 
     def __repr__(self):
         return self.name

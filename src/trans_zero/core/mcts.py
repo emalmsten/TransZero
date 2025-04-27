@@ -243,6 +243,7 @@ class MCTS:
                 # resetting in the backprop, NEW, todo remove other
                 node.reset_var()
                 node.reset_val()
+                node.reset_pi()
 
                 if node.parent is None:
                     break
@@ -797,11 +798,11 @@ class PUCT(ABC):
         Compute the PUCT (Predictor + UCT) score for a child node.
         Score = Q + U
         """
-        start = time.time()
+        #start = time.time()
         U = child.prior * self.U(parent, child)
-        U_time = time.time()
+        #U_time = time.time()
         Q = self.Q(child)
-        Q_time = time.time()
+        #Q_time = time.time()
         #print(f"U time: {U_time - start}, Q time: {Q_time - U_time}")
 
 
@@ -845,11 +846,11 @@ class PUCT_MVC(PUCT):
 
 
     def Q(self, child):
-        return policy_value(child, self.policy, self.config.discount)
+        return policy_value(child, self.config.discount)
 
     def U(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+        par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
 
         return self.config.PUCT_C * (math.sqrt(par_inv_q_var) / (child_inv_q_var + 1))
 
