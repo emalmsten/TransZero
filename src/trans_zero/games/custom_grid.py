@@ -120,6 +120,7 @@ class MuZeroConfig:
         self.expansion_budget = 13 # atleast 1 node needs to be expanded
         self.num_simulations = 25  # Number of future moves self-simulated
         self.max_seq_length = 30 # todo reconsider length
+        self.expand_all_children = True
 
 
         # action selection

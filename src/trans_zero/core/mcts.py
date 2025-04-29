@@ -435,8 +435,7 @@ class MCTS_PLL_1(MCTS):
         return root, extra_info
 
 
-    @staticmethod
-    def bfs_actions(budget, action_space):
+    def bfs_actions(self, budget, action_space):
         """
         Generate sequences of actions in a breadth-first search manner, starting from an empty sequence.
 
@@ -450,7 +449,7 @@ class MCTS_PLL_1(MCTS):
         from collections import deque
 
         results = []
-        queue = deque([[]])  # Start with the empty sequence
+        queue = deque([[a] for a in action_space]) if self.config.expand_all_children else deque([[]])# Start with the empty sequence
 
         while queue and len(results) < budget:
             sequence = queue.popleft()
@@ -654,6 +653,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
     def trim_sequences(sequences, action_length):
         return [seq[action_length:] for seq in sequences if len(seq) >= action_length]
 
+
     def run(
             self,
             model,
@@ -685,7 +685,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
             #node.reset_var()
 
             # log n
-            while node.expanded():
+            while node.expanded() and not self.config.expand_all_children:
                 current_tree_depth += 1
                 action, node = self.select_child(node, min_max_stats)  # tree action selection
                 actions.append(action)
@@ -696,15 +696,13 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 else:
                     virtual_to_play = self.config.players[0]
 
+
             action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence(actions, latent_root_state, legal_actions)
             causal_mask = self.make_causal_mask(full_seqs, device=latent_root_state.device)
 
-            # copy root hidden state into size of action sequences in dim 0
-
-            # todo, check if pos is 0 indexed
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
-                None,None,
+                None, None,
                 latent_root_state=latent_root_state,
                 action_sequence=action_seq_for_pred,
                 custom_pos_indices = pos_indices,
