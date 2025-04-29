@@ -181,7 +181,7 @@ class DiagnoseModel:
             node_id = id
             graph.node(
                 str(node_id),
-                label=f"Action: {action}\nValue: {node.value():.2f}\nVisit count: {node.visit_count}\nPrior: {node.prior:.2f}\nReward: {node.reward:.2f}",
+                label=f"Action: {action}\nValue: {node.get_value():.2f}\nVisit count: {node.visit_count}\nPrior: {node.prior:.2f}\nReward: {node.reward:.2f}",
                 color="orange" if best else "black",
             )
             id += 1
@@ -255,7 +255,7 @@ class Trajectoryinfo:
         )
         self.values_after_planning.append(
             [
-                root.children[action].value()
+                root.children[action].get_value()
                 if action in root.children.keys()
                 else numpy.NaN
                 for action in self.config.action_space
@@ -266,7 +266,7 @@ class Trajectoryinfo:
             if not new_prior_root_value
             else new_prior_root_value
         )
-        self.root_value_after_planning.append(root.value())
+        self.root_value_after_planning.append(root.get_value())
         self.prior_rewards.append(
             [
                 root.children[action].reward

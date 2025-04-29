@@ -1,8 +1,8 @@
 import numpy
 import torch as th
 
-from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from trans_zero.mvc_utils.utility_functions import policy_value
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, custom_softmax
+from trans_zero.mvc_utils.utility_functions import policy_value, independent_policy_value_variance
 
 
 class Node:
@@ -40,7 +40,7 @@ class Node:
     def increment_visit_count(self):
         self.visit_count += 1
 
-    def value(self): # todo make in mvc format
+    def get_value(self): # todo make in mvc format
         if self.get_visit_count() == 0:
             return 0
         return self.value_sum / self.get_visit_count()
@@ -86,6 +86,9 @@ class Node:
     def reset_val(self):
         pass
 
+    def reset_pi(self):
+        pass
+
 
     def __repr__(self):
         return self.name
@@ -98,21 +101,35 @@ class MVCNode(Node):
         self.parent = parent
         self.variance = None
         self.policy_value = None
-        self.pi = None
+        self.pi_probs = None
 
-        self.policy = MeanVarianceConstraintPolicy(config)
+        self.policy = parent.policy if parent is not None else MeanVarianceConstraintPolicy(config)
         self.name = name
 
         self.prev_variance = None
         self.prev_policy_value = None
 
-    def value(self):
+        self.diff_var_val = 0
+        self.same_var_val = 0
+
+    def get_value(self):
         """
         Override the value method to return the policy value.
         """
+        # return 0.5
         if self.policy_value is None:
             self.policy_value = policy_value(self, self.policy.discount_factor)
+
         return self.policy_value
+
+    def get_variance(self):
+        if self.variance is None:
+            self.variance = independent_policy_value_variance(
+                self, self.policy.discount_factor
+            )
+
+        return self.variance
+
 
     def get_visit_count(self):
         return self.visit_count
@@ -124,38 +141,23 @@ class MVCNode(Node):
         """
         return MVCNode(prior, self.config, name=child_name, parent=self)
 
-    def reset_var_val_recursive(self):
-        """
-        Reset the variance and policy_value attributes recursively.
-        """
-        self.variance = None
-        self.policy_value = None
-        for child in self.children.values():
-            child.reset_var_val_recursive()
-
-    def get_pi(self, include_self=False):
+    def get_pi(self, include_self=False, temperature = None):
         """
         Get the policy distribution for the node.
         """
-        if self.pi is None:
-            self.pi = self.policy.softmaxed_distribution(self, include_self=True)
+        if self.pi_probs is None:
+            self.pi_probs = self.policy.softmaxed_distribution(self)
 
-        if include_self:
-            return self.pi
-        else:
-            probs = self.pi.probs
-            return th.distributions.Categorical(probs=probs[:-1])
+        pi_probs = self.pi_probs.clone()
 
-        #return self.pi if include_self else self.pi
+        if not include_self:
+            pi_probs = pi_probs[:-1]
 
+        if temperature is not None:
+            pi_probs = custom_softmax(pi_probs, temperature, None)
 
-    def reset_var_recursive(self):
-        """
-        Reset the variance attribute recursively.
-        """
-        self.variance = None
-        for child in self.children.values():
-            child.reset_var_recursive()
+        return th.distributions.Categorical(probs=pi_probs)
+
 
 
     def reset_var(self):
@@ -179,7 +181,7 @@ class MVCNode(Node):
         """
         Reset the pi attribute.
         """
-        self.pi = None
+        self.pi_probs = None
 
     def __repr__(self):
         return self.name

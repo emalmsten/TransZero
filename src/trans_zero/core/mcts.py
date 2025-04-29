@@ -5,12 +5,11 @@ import torch
 
 from trans_zero.utils import models
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from trans_zero.mvc_utils.utility_functions import policy_value, compute_inverse_q_variance, get_children_inverse_variances
+from trans_zero.mvc_utils.utility_functions import compute_inverse_q_variance
 from .node import Node, MVCNode
 
 from abc import ABC, abstractmethod
 import time
-from collections import defaultdict
 
 
 # Game independent
@@ -26,14 +25,18 @@ class MCTS:
         self.config = config
 
         # todo, could be cleaned up
-        if self.config.PUCT_variant == "visit":
-            self.puct = PUCT_visit(config)
-            self.unexpanded_root = Node(0, self.config)
-        elif self.config.PUCT_variant == "mvc":
-            self.puct = PUCT_MVC(config)
-            self.unexpanded_root = MVCNode(0, self.config) # todo, stop sending the config around, keep it central
+        if self.config.PUCT_variant == "mvc" or self.config.action_selection == "mvc" or self.config.policy_target_type == "mvc":
+            # self.puct = PUCT_MVC(config)
+            self.unexpanded_root = MVCNode(0, self.config)  # todo, stop sending the config around, keep it central
         else:
-            raise NotImplementedError(f"PUCT variant {self.config.PUCT_variant} not implemented.")
+            #self.puct = PUCT_visit(config)
+            self.unexpanded_root = Node(0, self.config)
+
+        if self.config.PUCT_variant == "mvc":
+            self.puct = PUCT_MVC(config)
+        else:
+            self.puct = PUCT_visit(config)
+
 
         if self.config.test_ucb: # todo clean
             timestamp = time.time()
@@ -238,7 +241,7 @@ class MCTS:
                 node.value_sum += value
                 node.increment_visit_count()
                 value = node.reward + self.config.discount * value
-                min_max_stats.update(node.reward + self.config.discount * node.value())
+                min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
                 # resetting in the backprop, NEW, todo remove other
                 node.reset_var()
@@ -254,7 +257,7 @@ class MCTS:
             while True:
                 node.value_sum += value if node.to_play == to_play else -value
                 node.increment_visit_count()
-                min_max_stats.update(node.reward + self.config.discount * -node.value())
+                min_max_stats.update(node.reward + self.config.discount * -node.get_value())
 
                 value = (
                     -node.reward if node.to_play == to_play else node.reward
@@ -761,9 +764,10 @@ class MCTS_PLL_2(MCTS_PLL_1):
 
         # reverse traversal to get children first
         for node in node_list:
-            min_max_stats.update(node.reward + self.config.discount * node.value()) # todo check if this should even be used
-            node.variance = None
-            node.policy_value = None
+            min_max_stats.update(node.reward + self.config.discount * node.get_value()) # todo check if this should even be used
+            node.reset_var()
+            node.reset_val()
+            node.reset_pi()
 
 
 class PUCT(ABC):
@@ -796,13 +800,12 @@ class PUCT(ABC):
         Compute the PUCT (Predictor + UCT) score for a child node.
         Score = Q + U
         """
-        #start = time.time()
+        start = time.time()
         U = child.prior * self.U(parent, child)
-        #U_time = time.time()
+        U_time = time.time()
         Q = self.Q(child)
-        #Q_time = time.time()
-        #print(f"U time: {U_time - start}, Q time: {Q_time - U_time}")
-
+        Q_time = time.time()
+        #print(f"U time: {round(U_time - start, 6)}, Q time: {round(Q_time - U_time, 6)}")
 
         Q = min_max_stats.normalize(Q)
         return Q + U
@@ -832,7 +835,7 @@ class PUCT_visit(PUCT):
             return 0
 
         raw_value = child.reward + self.config.discount * (
-            child.value() if len(self.config.players) == 1 else -child.value()
+            child.get_value() if len(self.config.players) == 1 else -child.get_value()
         )
         return raw_value
 
@@ -844,18 +847,20 @@ class PUCT_MVC(PUCT):
 
 
     def Q(self, child):
-        return policy_value(child, self.config.discount)
+        return child.get_value()
 
     def U(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
+        par_inv_q_var = compute_inverse_q_variance(parent)
+        child_inv_q_var = compute_inverse_q_variance(child)
 
         return self.config.PUCT_C * (math.sqrt(par_inv_q_var) / (child_inv_q_var + 1))
 
+
+
     # todo try, seems not to work
     def calc_U_mvc_experimental(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.policy, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.policy, self.config.discount)
+        par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
+        child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
 
         par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
         child_inv_q_var = max(child_inv_q_var/3 - 1, 0)

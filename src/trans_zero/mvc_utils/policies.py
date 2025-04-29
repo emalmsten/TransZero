@@ -100,27 +100,19 @@ class PolicyDistribution(Policy):
 
 # todo important consider res 4x4 w other lr for res
     def softmaxed_distribution(
-        self, node, include_self=False, temperature=None
-    ) -> th.distributions.Categorical:
+        self, node
+    ):
         """
         Relative probabilities with self handling
         """
         # policy for leaf nodes
         # note to emil, leaf node handling, not really relevant for now
-        if include_self and len(node.children) == 0:
-            probs = th.zeros(node.action_space_size + include_self, dtype=th.float32)
+        if len(node.children) == 0:
+            probs = th.zeros(node.action_space_size + 1, dtype=th.float32)
             probs[-1] = 1.0
-            return th.distributions.Categorical(probs=probs)
+            return probs
 
-        probs = self._probs(node, include_self and self.self_prob_type == 'mvc')
-        # softmax the probs
-        if temperature is None:
-            temperature = self.temperature
-        softmaxed_probs = custom_softmax(probs, temperature, None)
-
-        if include_self and self.self_prob_type == 'visit': # todo emil temporary solution of the self prob
-            softmaxed_probs = self.add_self_to_probs(node, softmaxed_probs)
-        return th.distributions.Categorical(probs=softmaxed_probs)
+        return self._probs(node, include_self = True)
 
 
 class RandomPolicy(Policy):
@@ -148,8 +140,6 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
     def _probs(self, node, include_self=False) -> th.Tensor:
         normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
             parent=node,
-            policy=self,
-            discount_factor=self.discount_factor,
             transform=self.value_transform,
             include_self=include_self)
 

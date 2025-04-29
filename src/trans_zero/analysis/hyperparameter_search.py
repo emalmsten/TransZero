@@ -33,8 +33,8 @@ def hyperparameter_search(
         for i in range(parallel_experiments):
             if 0 < budget:
                 param = optimizer.ask()
-                print(f"Launching new experiment: {param.value}")
-                muzero = MuZero(game_name, param.value, parallel_experiments)
+                print(f"Launching new experiment: {param.get_value}")
+                muzero = MuZero(game_name, param.get_value, parallel_experiments)
                 muzero.param = param
                 muzero.train()
                 running_experiments.append(muzero)
@@ -53,14 +53,14 @@ def hyperparameter_search(
                             "config": experiment.config,
                             "checkpoint": experiment.checkpoint,
                         }
-                    print(f"Parameters: {experiment.param.value}")
+                    print(f"Parameters: {experiment.param.get_value}")
                     print(f"Result: {result}")
                     optimizer.tell(experiment.param, -result)
 
                     if 0 < budget:
                         param = optimizer.ask()
-                        print(f"Launching new experiment: {param.value}")
-                        muzero = MuZero(game_name, param.value, parallel_experiments)
+                        print(f"Launching new experiment: {param.get_value}")
+                        muzero = MuZero(game_name, param.get_value, parallel_experiments)
                         muzero.param = param
                         muzero.train()
                         running_experiments[i] = muzero
@@ -75,7 +75,7 @@ def hyperparameter_search(
 
     recommendation = optimizer.provide_recommendation()
     print("Best hyperparameters:")
-    print(recommendation.value)
+    print(recommendation.get_value)
     if best_training:
         # Save best training weights (but it's not the recommended weights)
         best_training["config"].results_path.mkdir(parents=True, exist_ok=True)
@@ -88,6 +88,6 @@ def hyperparameter_search(
             best_training["config"].results_path / "best_parameters.txt",
             "w",
         )
-        text_file.write(str(recommendation.value))
+        text_file.write(str(recommendation.get_value))
         text_file.close()
-    return recommendation.value
+    return recommendation.get_value

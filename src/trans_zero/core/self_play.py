@@ -203,7 +203,7 @@ class SelfPlay:
 
                     if render:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
-                        print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
+                        print(f"Root value for player {self.game.to_play()}: {root.get_value():.2f}")
 
                     if self.config.show_preds:
                         game_dict["results"].append(mcts_info["predictions"])
@@ -238,6 +238,7 @@ class SelfPlay:
                 f.write('\n')  # Add a newline after each JSON object
                 f.flush()
 
+
         return game_history
 
     def close_game(self):
@@ -256,7 +257,7 @@ class SelfPlay:
                 True,
             )
             print(f'Tree depth: {mcts_info["max_tree_depth"]}')
-            print(f"Root value for player {self.game.to_play()}: {root.value():.2f}")
+            print(f"Root value for player {self.game.to_play()}: {root.get_value():.2f}")
             print(
                 f"Player {self.game.to_play()} turn. MuZero suggests {self.game.action_to_string(self.select_action(root, 0))}"
             )
@@ -306,7 +307,7 @@ class SelfPlay:
 
 
     def mvc_action_selection(self, tree, temperature):
-        policy_dist = self.mvc.softmaxed_distribution(tree, temperature=temperature)
+        policy_dist = tree.get_pi(temperature=temperature)
         action = policy_dist.sample().item()
         return action
 
@@ -317,6 +318,7 @@ class SelfPlay:
                 temperature = None
 
             action = self.mvc_action_selection(node, temperature)
+
         else:
             action = self.std_action_selection(node, temperature)
 
@@ -419,7 +421,7 @@ class GameHistory:
 
                 # todo get policy target from mvc runner.run_episode from jalde
 
-            self.root_values.append(root.value())
+            self.root_values.append(root.get_value())
 
 
         else:
