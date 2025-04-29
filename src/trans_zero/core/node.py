@@ -114,13 +114,19 @@ class MVCNode(Node):
 
         self.children = {}
 
+    def is_leaf(self):
+        """
+        Check if the node is a leaf node.
+        """
+        return len(self.children) == 0
+
     def get_value(self):
         """
         Override the value method to return the policy value.
         """
         # return 0.5
         if self.policy_value is None:
-            if self.children:
+            if not self.is_leaf():
                 self.policy_value = policy_value(self, self.policy.discount_factor)
             else:
                 self.policy_value = 0.0
@@ -130,7 +136,7 @@ class MVCNode(Node):
 
     def get_variance(self):
         if self.variance is None:
-            if self.children:
+            if not self.is_leaf():
                 self.variance = independent_policy_value_variance(
                     self, self.policy.discount_factor
                 )
@@ -145,7 +151,7 @@ class MVCNode(Node):
         Get the policy distribution for the node.
         """
         if self.pi_probs is None:
-            if self.children:
+            if not self.is_leaf():
                 self.pi_probs = self.policy.softmaxed_distribution(self)
             else:
                 self.pi_probs = th.zeros(self.action_space_size + 1, dtype=th.float32)
@@ -189,8 +195,8 @@ class MVCNode(Node):
         Reset the policy_value attribute recursively.
         """
 
-        self.prev_variance = self.variance
-        self.variance = None
+        self.prev_policy_value = self.policy_value
+        self.policy_value = None
 
 
     def reset_pi(self):
