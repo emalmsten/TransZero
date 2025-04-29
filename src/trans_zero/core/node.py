@@ -112,41 +112,45 @@ class MVCNode(Node):
         self.diff_var_val = 0
         self.same_var_val = 0
 
+        self.children = {}
+
     def get_value(self):
         """
         Override the value method to return the policy value.
         """
         # return 0.5
         if self.policy_value is None:
-            self.policy_value = policy_value(self, self.policy.discount_factor)
+            if self.children:
+                self.policy_value = policy_value(self, self.policy.discount_factor)
+            else:
+                self.policy_value = 0.0
 
         return self.policy_value
 
+
     def get_variance(self):
         if self.variance is None:
-            self.variance = independent_policy_value_variance(
-                self, self.policy.discount_factor
-            )
+            if self.children:
+                self.variance = independent_policy_value_variance(
+                    self, self.policy.discount_factor
+                )
+            else:
+                self.variance = self.config.discount**2
 
         return self.variance
 
-
-    def get_visit_count(self):
-        return self.visit_count
-        #todo raise NotImplementedError("MVCNode does not use visit count")
-
-    def make_child(self, prior, child_name):
-        """
-        Override the factory method to create a MVCNode child.
-        """
-        return MVCNode(prior, self.config, name=child_name, parent=self)
 
     def get_pi(self, include_self=False, temperature = None):
         """
         Get the policy distribution for the node.
         """
         if self.pi_probs is None:
-            self.pi_probs = self.policy.softmaxed_distribution(self)
+            if self.children:
+                self.pi_probs = self.policy.softmaxed_distribution(self)
+            else:
+                self.pi_probs = th.zeros(self.action_space_size + 1, dtype=th.float32)
+                self.pi_probs[-1] = 1.0
+
 
         pi_probs = self.pi_probs.clone()
 
@@ -159,28 +163,41 @@ class MVCNode(Node):
         return th.distributions.Categorical(probs=pi_probs)
 
 
+    def get_visit_count(self):
+        return self.visit_count
+        #todo raise NotImplementedError("MVCNode does not use visit count")
+
+
+    def make_child(self, prior, child_name):
+        """
+        Override the factory method to create a MVCNode child.
+        """
+        return MVCNode(prior, self.config, name=child_name, parent=self)
+
 
     def reset_var(self):
         """
         Reset the variance attribute recursively.
         """
-        # check if the old is equal to the new
 
         self.prev_variance = self.variance
         self.variance = None
+
 
     def reset_val(self):
         """
         Reset the policy_value attribute recursively.
         """
 
-        self.prev_policy_value = self.policy_value
-        self.policy_value = None
+        self.prev_variance = self.variance
+        self.variance = None
+
 
     def reset_pi(self):
         """
         Reset the pi attribute.
         """
+
         self.pi_probs = None
 
     def __repr__(self):
