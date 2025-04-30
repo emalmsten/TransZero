@@ -99,7 +99,9 @@ class MVCNode(Node):
         super().__init__(prior, config, name)
         self.config = config
         self.parent = parent
+
         self.variance = None
+        self.inv_var = None
         self.policy_value = None
         self.pi_probs = None
 
@@ -146,13 +148,20 @@ class MVCNode(Node):
         return self.variance
 
 
+    def get_inv_var(self):
+        if self.inv_var is None:
+            self.inv_var = 1.0 / self.get_variance()
+
+        return self.inv_var
+
+
     def get_pi(self, include_self=False, temperature = None):
         """
         Get the policy distribution for the node.
         """
         if self.pi_probs is None:
             if not self.is_leaf():
-                self.pi_probs = self.policy.softmaxed_distribution(self)
+                self.pi_probs = self.policy._probs(self, include_self = True)
             else:
                 self.pi_probs = th.zeros(self.action_space_size + 1, dtype=th.float32)
                 self.pi_probs[-1] = 1.0
@@ -188,6 +197,7 @@ class MVCNode(Node):
 
         self.prev_variance = self.variance
         self.variance = None
+        self.inv_var = None
 
 
     def reset_val(self):

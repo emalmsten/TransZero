@@ -82,43 +82,10 @@ class PolicyDistribution(Policy):
         """
         pass
 
-    def self_prob(self, node, probs: th.Tensor) -> float:
-        """
-        Returns the relative probability of selecting the node itself
-        """
-        return probs.sum() / ((node.get_visit_count() - 1) or 1)
-
-    def add_self_to_probs(self, node, probs: th.Tensor) -> th.Tensor:
-        """
-        Takes the current policy and adds one extra value to it, which is the probability of selecting the node itself.
-        Should return a tensor with one extra value at the end
-        The default choice is to set it to 1/visits
-        Note that policy is not yet normalized, so we can't just add 1/visits to the last value
-        """
-        self_prob = self.self_prob(node, probs)
-        return th.cat([probs, th.tensor([self_prob])])
-
-# todo important consider res 4x4 w other lr for res
-    def softmaxed_distribution(
-        self, node
-    ):
-        """
-        Relative probabilities with self handling
-        """
-        # policy for leaf nodes
-        # note to emil, leaf node handling, not really relevant for now
-        if len(node.children) == 0:
-            probs = th.zeros(node.action_space_size + 1, dtype=th.float32)
-            probs[-1] = 1.0
-            return probs
-
-        return self._probs(node, include_self = True)
-
 
 class RandomPolicy(Policy):
     def sample(self, node) -> int:
         return node.action_space.sample()
-
 
 
 class MeanVarianceConstraintPolicy(PolicyDistribution):
@@ -134,8 +101,6 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         self.beta = config.mvc_beta
         self.discount_factor = config.discount
 
-    def get_beta(self):
-        return self.beta
 
     def _probs(self, node, include_self=False) -> th.Tensor:
         normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
@@ -151,10 +116,5 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         probs = inv_vars * th.exp(logits - logits.max())
 
         return probs
-
-    def self_prob(self, node, probs: th.Tensor) -> float:
-        softmax_probs = th.softmax(probs, dim=0)
-        # The self probability is the last element in the softmaxed distribution.
-        return softmax_probs[-1].item()
 
 

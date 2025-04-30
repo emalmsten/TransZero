@@ -81,7 +81,7 @@ def get_children_policy_values(
 
 
 def compute_inverse_q_variance(node):
-    return 1.0 / node.get_variance()
+    return node.get_inv_var()
 
 
 def get_children_inverse_variances(
@@ -89,7 +89,7 @@ def get_children_inverse_variances(
 ) -> th.Tensor:
     inverse_variances = th.zeros(parent.action_space_size, dtype=th.float32)
     for action, child in parent.children.items():
-        inverse_variances[action] = 1.0 / child.get_variance()
+        inverse_variances[action] = child.get_inv_var()
 
     return inverse_variances
 
@@ -106,8 +106,8 @@ def get_children_policy_values_and_inverse_variance(
     inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
 
     for action, child in parent.children.items():
-        vals[action] = child.get_value() # todo temp name
-        inv_vars[action] = 1 / child.get_variance()
+        vals[action] = child.get_value()
+        inv_vars[action] = child.get_inv_var()
 
     if include_self:
         vals[-1] = parent.value_evaluation
