@@ -243,7 +243,6 @@ class MCTS:
                 value = node.reward + self.config.discount * value
                 min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
-                # resetting in the backprop, NEW, todo remove other
                 node.reset_var()
                 node.reset_val()
                 node.reset_pi()
@@ -683,9 +682,6 @@ class MCTS_PLL_2(MCTS_PLL_1):
             node = root
             actions = []
             current_tree_depth = 0
-
-            # todo reconsider where this should be
-            #node.reset_var()
 
             # log n
             while node.expanded() and not self.config.expand_all_children:

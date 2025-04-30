@@ -4,8 +4,6 @@ import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
 
-# todo, try if the prev policy value is equal to the current one, same with variance
-
 # TODO: can improve this implementation
 def policy_value(
     node,

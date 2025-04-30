@@ -40,7 +40,7 @@ class Node:
     def increment_visit_count(self):
         self.visit_count += 1
 
-    def get_value(self): # todo make in mvc format
+    def get_value(self):
         if self.get_visit_count() == 0:
             return 0
         return self.value_sum / self.get_visit_count()
