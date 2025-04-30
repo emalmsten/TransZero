@@ -61,12 +61,10 @@ class PolicyDistribution(Policy):
         self,
         temperature: float = None,
         value_transform: ValueTransform = IdentityValueTransform,
-        self_prob_type: str = "visit",
     ) -> None:
         super().__init__()
         self.temperature = temperature
         self.value_transform = value_transform
-        self.self_prob_type = self_prob_type
 
     def sample(self, node) -> int:
         """
@@ -95,7 +93,6 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
     """
     def __init__(self, config, *args, **kwargs):
         # add the self prob arg from config to args
-        kwargs['self_prob_type'] = config.self_prob_type
 
         super().__init__(*args, **kwargs)
         self.beta = config.mvc_beta

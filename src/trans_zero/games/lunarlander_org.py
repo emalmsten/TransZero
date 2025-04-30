@@ -32,7 +32,6 @@ class MuZeroConfig:
         self.PUCT_C = 2.5
         self.PUCT_variant = "mvc"
         self.mvc_beta = 0.3
-        self.self_prob_type = "mvc"  # visit or mvc # todo remove
         self.policy_target_type = "mvc"
         self.test_ucb = False
 
