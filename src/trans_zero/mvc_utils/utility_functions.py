@@ -55,10 +55,12 @@ def independent_policy_value_variance(
     probabilities_squared = pi.probs**2  # type: ignore
     own_propability_squared = probabilities_squared[-1]
     child_propabilities_squared = probabilities_squared[:-1]
-    child_variances = th.zeros_like(child_propabilities_squared, dtype=th.float32)
 
-    for action, child in node.children.items():
-        child_variances[action] = child.get_variance()
+    child_variances = th.full_like(child_propabilities_squared, node.config.discount**2, dtype=th.float32)
+
+    if not node.all_children_are_leafs:
+        for action, child in node.children.items():
+            child_variances[action] = child.get_variance()
 
     var = reward_variance(node) + discount_factor**2 * (
         own_propability_squared * value_evaluation_variance(node)
@@ -66,6 +68,37 @@ def independent_policy_value_variance(
     )
 
     return var
+
+
+
+def get_children_policy_values_and_inverse_variance(
+    parent,
+    transform: ValueTransform = IdentityValueTransform,
+) -> tuple[th.Tensor, th.Tensor]:
+    """
+    This is more efficent than calling get_children_policy_values and get_children_variances separately
+    """
+
+
+    vals = th.zeros(parent.action_space_size + 1, dtype=th.float32)
+    inv_vars = th.full_like(vals + 1, 1.0/parent.config.discount**2, dtype=th.float32)
+
+    if not parent.all_children_are_leafs:
+        for action, child in parent.children.items():
+            vals[action] = child.get_value()
+            inv_vars[action] = child.get_inv_var()
+
+    vals[-1] = parent.value_evaluation
+    inv_vars[-1] = 1 / value_evaluation_variance(parent)
+
+    normalized_vals = transform.normalize(vals)
+    return normalized_vals, inv_vars
+
+
+
+
+ # todo unused -----------------------
+
 
 
 def get_children_policy_values(
@@ -79,11 +112,6 @@ def get_children_policy_values(
     vals = transform.normalize(vals)
     return vals
 
-
-def compute_inverse_q_variance(node):
-    return node.get_inv_var()
-
-
 def get_children_inverse_variances(
     parent
 ) -> th.Tensor:
@@ -92,29 +120,6 @@ def get_children_inverse_variances(
         inverse_variances[action] = child.get_inv_var()
 
     return inverse_variances
-
-
-def get_children_policy_values_and_inverse_variance(
-    parent,
-    transform: ValueTransform = IdentityValueTransform,
-    include_self: bool = False,
-) -> tuple[th.Tensor, th.Tensor]:
-    """
-    This is more efficent than calling get_children_policy_values and get_children_variances separately
-    """
-    vals = th.ones(parent.action_space_size + include_self, dtype=th.float32) * -th.inf
-    inv_vars = th.zeros_like(vals + include_self, dtype=th.float32)
-
-    for action, child in parent.children.items():
-        vals[action] = child.get_value()
-        inv_vars[action] = child.get_inv_var()
-
-    if include_self:
-        vals[-1] = parent.value_evaluation
-        inv_vars[-1] = 1 / value_evaluation_variance(parent)
-
-    normalized_vals = transform.normalize(vals)
-    return normalized_vals, inv_vars
 
 
 def expanded_mask(node) -> th.Tensor:
