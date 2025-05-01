@@ -14,6 +14,8 @@ def policy_value(
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
 
+    # todo also use cache here
+
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
     child_values = th.zeros_like(child_propabilities, dtype=th.float32)

@@ -99,11 +99,11 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         self.discount_factor = config.discount
 
 
-    def _probs(self, node, include_self=False) -> th.Tensor:
+    def _probs(self, node) -> th.Tensor:
         normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
             parent=node,
             transform=self.value_transform,
-            include_self=include_self)
+            )
 
         # Build unnormalized probabilities (a typical mean-variance approach)
         #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )

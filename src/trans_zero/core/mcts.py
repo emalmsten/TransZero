@@ -5,7 +5,6 @@ import torch
 
 from trans_zero.utils import models
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from trans_zero.mvc_utils.utility_functions import compute_inverse_q_variance
 from .node import Node, MVCNode
 
 from abc import ABC, abstractmethod
@@ -796,13 +795,8 @@ class PUCT(ABC):
         Compute the PUCT (Predictor + UCT) score for a child node.
         Score = Q + U
         """
-        start = time.time()
         U = child.prior * self.U(parent, child)
-        U_time = time.time()
         Q = self.Q(child)
-        Q_time = time.time()
-        #print(f"U time: {round(U_time - start, 6)}, Q time: {round(Q_time - U_time, 6)}")
-
         Q = min_max_stats.normalize(Q)
         return Q + U
 
@@ -846,27 +840,27 @@ class PUCT_MVC(PUCT):
         return child.get_value()
 
     def U(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent)
-        child_inv_q_var = compute_inverse_q_variance(child)
+        par_inv_q_var = parent.get_inv_var()
+        child_inv_q_var = child.get_inv_var()
 
         return self.config.PUCT_C * (math.sqrt(par_inv_q_var) / (child_inv_q_var + 1))
 
 
 
     # todo try, seems not to work
-    def calc_U_mvc_experimental(self, parent, child):
-        par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
-        child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
-
-        par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
-        child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
-
-        pb_c_log = math.log(
-            (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
-        )
-        pb_c = pb_c_log + self.config.pb_c_init
-        pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
-        return pb_c
+    # def calc_U_mvc_experimental(self, parent, child):
+    #     par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
+    #     child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
+    #
+    #     par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
+    #     child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
+    #
+    #     pb_c_log = math.log(
+    #         (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
+    #     )
+    #     pb_c = pb_c_log + self.config.pb_c_init
+    #     pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
+    #     return pb_c
 
 
 class MinMaxStats:

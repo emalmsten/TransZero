@@ -116,11 +116,9 @@ class MVCNode(Node):
 
         self.children = {}
 
-    def is_leaf(self):
-        """
-        Check if the node is a leaf node.
-        """
-        return len(self.children) == 0
+        self.is_leaf = True
+        self.all_children_are_leafs = True
+
 
     def get_value(self):
         """
@@ -128,7 +126,7 @@ class MVCNode(Node):
         """
         # return 0.5
         if self.policy_value is None:
-            if not self.is_leaf():
+            if not self.is_leaf:
                 self.policy_value = policy_value(self, self.policy.discount_factor)
             else:
                 self.policy_value = 0.0
@@ -138,7 +136,7 @@ class MVCNode(Node):
 
     def get_variance(self):
         if self.variance is None:
-            if not self.is_leaf():
+            if not self.is_leaf:
                 self.variance = independent_policy_value_variance(
                     self, self.policy.discount_factor
                 )
@@ -160,8 +158,8 @@ class MVCNode(Node):
         Get the policy distribution for the node.
         """
         if self.pi_probs is None:
-            if not self.is_leaf():
-                self.pi_probs = self.policy._probs(self, include_self = True)
+            if not self.is_leaf:
+                self.pi_probs = self.policy._probs(self)
             else:
                 self.pi_probs = th.zeros(self.action_space_size + 1, dtype=th.float32)
                 self.pi_probs[-1] = 1.0
@@ -187,6 +185,10 @@ class MVCNode(Node):
         """
         Override the factory method to create a MVCNode child.
         """
+        self.is_leaf = False
+        if self.parent is not None:
+            self.parent.all_children_are_leafs = False
+
         return MVCNode(prior, self.config, name=child_name, parent=self)
 
 
