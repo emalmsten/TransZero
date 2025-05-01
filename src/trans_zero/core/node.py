@@ -117,7 +117,6 @@ class MVCNode(Node):
         self.children = {}
 
         self.is_leaf = True
-        self.all_children_are_leafs = True
 
 
     def get_value(self):
@@ -186,9 +185,6 @@ class MVCNode(Node):
         Override the factory method to create a MVCNode child.
         """
         self.is_leaf = False
-        if self.parent is not None:
-            self.parent.all_children_are_leafs = False
-
         return MVCNode(prior, self.config, name=child_name, parent=self)
 
 

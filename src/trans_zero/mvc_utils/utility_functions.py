@@ -14,11 +14,9 @@ def policy_value(
     probabilities: th.Tensor = pi.probs
     assert probabilities.shape[-1] == node.action_space_size + 1
 
-    # todo also use cache here
-
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
-    child_values = th.zeros_like(child_propabilities, dtype=th.float32)
+    child_values = th.empty_like(child_propabilities, dtype=th.float32)
 
     for action, child in node.children.items():
         child_values[action] = child.get_value()
@@ -56,11 +54,10 @@ def independent_policy_value_variance(
     own_propability_squared = probabilities_squared[-1]
     child_propabilities_squared = probabilities_squared[:-1]
 
-    child_variances = th.full_like(child_propabilities_squared, node.config.discount**2, dtype=th.float32)
+    child_variances = th.empty_like(child_propabilities_squared, dtype=th.float32)
 
-    if not node.all_children_are_leafs:
-        for action, child in node.children.items():
-            child_variances[action] = child.get_variance()
+    for action, child in node.children.items():
+        child_variances[action] = child.get_variance()
 
     var = reward_variance(node) + discount_factor**2 * (
         own_propability_squared * value_evaluation_variance(node)
@@ -80,13 +77,12 @@ def get_children_policy_values_and_inverse_variance(
     """
 
 
-    vals = th.zeros(parent.action_space_size + 1, dtype=th.float32)
-    inv_vars = th.full_like(vals + 1, 1.0/parent.config.discount**2, dtype=th.float32)
+    vals = th.empty(parent.action_space_size + 1, dtype=th.float32)
+    inv_vars = th.empty(parent.action_space_size + 1, dtype=th.float32)
 
-    if not parent.all_children_are_leafs:
-        for action, child in parent.children.items():
-            vals[action] = child.get_value()
-            inv_vars[action] = child.get_inv_var()
+    for action, child in parent.children.items():
+        vals[action] = child.get_value()
+        inv_vars[action] = child.get_inv_var()
 
     vals[-1] = parent.value_evaluation
     inv_vars[-1] = 1 / value_evaluation_variance(parent)
