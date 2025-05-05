@@ -691,8 +691,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
 
         #root.expand(legal_actions, to_play, value, reward, policy_values,)
         full_seqs = [[]] + full_seqs
-        root.hidden_state = root_latent_state # todo
-        self.multi_expansion(all_scalars, root, full_seqs, legal_actions, to_play)
+        self.multi_expansion(all_scalars, root, full_seqs, legal_actions, to_play, root_latent_state)
 
         return root, all_scalars
 
@@ -772,7 +771,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
             all_actions_from_node = self.trim_sequences(full_seqs, len(actions))
             all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
 
-            self.multi_expansion(all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play)
+            self.multi_expansion(all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play,latent_root_state)
             max_tree_depth = max(max_tree_depth, current_tree_depth)
 
 
@@ -783,7 +782,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
 
         return root, extra_info
 
-    def multi_expansion(self, all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play):
+    def multi_expansion(self, all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play, root_latent_state):
         all_value_scalars, all_reward_scalars, all_policy_probs = all_scalars
         org_node = node
         node_list = []  # todo turn into queue
@@ -805,7 +804,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 value_i,
                 reward_i,
                 policy_values_i,
-                None,  # todo, make optional
+                root_latent_state,  # todo, make optional
             )
             node_list.append(node)
             node = org_node

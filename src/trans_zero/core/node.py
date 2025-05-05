@@ -56,7 +56,7 @@ class Node:
         self.to_play = to_play
         self.reward = reward if self.use_reward else 0
         self.value_evaluation = value
-        #self.hidden_state = hidden_state
+        self.hidden_state = hidden_state
         assert len(self.children) == 0, f"{self.name}: expanding already expanded node"
 
         for action, p in zip(available_actions, policy_values):
