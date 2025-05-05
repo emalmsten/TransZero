@@ -23,6 +23,7 @@ class Node:
         self.value_evaluation = 0
 
         self.ucb_score = None
+        self.is_leaf = True
 
         # for debugging
         self.name = name
@@ -32,6 +33,7 @@ class Node:
 
     def make_child(self, prior, child_name):
         """Factory method to create a child node."""
+        self.is_leaf = False
         return Node(prior, self.config, name=child_name, parent=self)
 
     def get_visit_count(self):
@@ -54,7 +56,8 @@ class Node:
         self.to_play = to_play
         self.reward = reward if self.use_reward else 0
         self.value_evaluation = value
-        self.hidden_state = hidden_state
+        #self.hidden_state = hidden_state
+        assert len(self.children) == 0, f"{self.name}: expanding already expanded node"
 
         for action, p in zip(available_actions, policy_values):
             self.children[action] = self.make_child(p, self.get_child_name(action))
@@ -89,6 +92,10 @@ class Node:
     def reset_pi(self):
         pass
 
+    def print_tree(self, level=0):
+        print(" " * (level * 4) + f"O")
+        for child in self.children.values():
+            child.print_tree(level + 1)
 
     def __repr__(self):
         return self.name
@@ -116,7 +123,6 @@ class MVCNode(Node):
 
         self.children = {}
 
-        self.is_leaf = True
 
 
     def get_value(self):

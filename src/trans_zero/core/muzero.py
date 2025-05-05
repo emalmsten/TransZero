@@ -149,23 +149,22 @@ class MuZero:
                 self.replay_buffer_worker, self.shared_storage_worker
             )
 
-        if logger is not None:
-            num_gpus = num_gpus_per_worker if self.config.selfplay_on_gpu else 0
-            self.test_worker = self_play.SelfPlay.options(
-                num_cpus=0,
-                num_gpus=num_gpus,
-            ).remote(
-                self.checkpoint,
-                self.Game,
-                self.config,
-                self.config.seed + self.config.num_workers,
-            )
-            self.test_worker.continuous_self_play.remote(
-                self.shared_storage_worker, None, True
-            )
+        num_gpus = num_gpus_per_worker if self.config.selfplay_on_gpu else 0
+        self.test_worker = self_play.SelfPlay.options(
+            num_cpus=0,
+            num_gpus=num_gpus,
+        ).remote(
+            self.checkpoint,
+            self.Game,
+            self.config,
+            self.config.seed + self.config.num_workers,
+        )
+        self.test_worker.continuous_self_play.remote(
+            self.shared_storage_worker, None, True
+        )
 
+        logging_loop(self, logger)
 
-            logging_loop(self, logger)
 
 
 

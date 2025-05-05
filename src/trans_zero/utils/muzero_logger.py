@@ -278,7 +278,7 @@ def logging_loop(muzero, logger):
         keys.append("trans_policy_loss")
 
     # Loop for updating the training performance
-    first_step = muzero.wandb_run.step
+    first_step = muzero.wandb_run.step if logger is not None else 0
     counter = first_step
     offline_cache = []  # Stores logs when offline
 

@@ -116,10 +116,10 @@ class MuZeroConfig:
         self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
 
 
-        self.expansion_strategy = None #"deep_2"
-        self.expansion_budget = 13 # atleast 1 node needs to be expanded
-        self.num_simulations = 25  # Number of future moves self-simulated
-        self.max_seq_length = 30 # todo reconsider length
+        self.expansion_strategy = "deep_2" #None #
+        self.expansion_budget = 12 # atleast 1 node needs to be expanded
+        self.num_simulations = 5  # Number of future moves self-simulated
+        self.max_seq_length = 25 # todo reconsider length
         self.expand_all_children = True
 
 

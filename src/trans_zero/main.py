@@ -165,7 +165,7 @@ def load_config(config):
 
 
 def setup_local_args(cmd_args, test):
-    cmd_args.game_name = "custom_grid"  # "lunarlander_org" # "custom_grid" # #"custom_grid"  # #"gridworld" #
+    cmd_args.game_name = "custom_grid" #"lunarlander_org" #
     # args.wandb_run_id = "6k4ghx4k"
     # args.wandb_model_number = 320000
     # args.model_path = "models/trans/trans_lunar_320k.checkpoint"

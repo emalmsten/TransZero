@@ -246,7 +246,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence, custom_pos_indices=custom_pos_indices)
 
         # Pass through the transformer encoder
-        #print(input_sequence.size())
         causal_mask = None
 
         if custom_causal_mask is not None:
@@ -273,7 +272,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         else:
             transformer_output_for_prediction = transformer_output[:, -return_n_last_predictions:, :]
             transformer_output_for_prediction = transformer_output_for_prediction.squeeze(0)
-
 
 
         policy_logits = self.policy_head(transformer_output_for_prediction)  # Shape: (B, action_space_size)
@@ -436,15 +434,25 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
 
-    def initial_inference(self, observation):
-        encoded_state = self.representation(observation)
-        #encoded_state_old = self.representation_old(observation)
-        # print("encoded_state", encoded_state.shape())
-        # print("encoded_state_old", encoded_state_old.shape())
-        policy_logits, value, reward = self.prediction(encoded_state)
+    def pll_initial_inference(self, encoded_state, state_reward, pll_args):
+        all_policy_logits, values, rewards = self.prediction(
+            encoded_state,
+            **pll_args
+        )
 
-        # reward equal to 0 for consistency
-        reward = torch.log(
+        # reward at root equal to 0 for consistency
+        rewards[0] = state_reward
+
+        return values, rewards, all_policy_logits, encoded_state
+
+
+    def initial_inference(self, observation, pll_args=None):
+        # only in the parallel version are the optional arguments used
+
+        encoded_state = self.representation(observation)
+
+        # reward at root equal to 0 for consistency
+        state_reward = torch.log(
             (
                 torch.zeros(1, self.full_support_size)
                 .scatter(1, torch.tensor([[self.full_support_size // 2]]).long(), 1.0)
@@ -453,9 +461,14 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             )
         )
 
+        if pll_args is not None:
+            return self.pll_initial_inference(encoded_state, state_reward, pll_args)
+
+        policy_logits, value, _ = self.prediction(encoded_state)
+
         return (
             value,
-            reward,
+            state_reward,
             policy_logits,
             encoded_state,
         )
