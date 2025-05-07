@@ -34,6 +34,7 @@ class MuZeroConfig:
         self.mvc_beta = 0.3
         self.policy_target_type = "mvc"
         self.test_ucb = False
+        self.expand_all_children = True
 
         # Local
         self.testing = False
