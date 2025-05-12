@@ -200,14 +200,10 @@ class MVCNode(Node):
                 self.pi_probs = th.zeros(self.action_space_size + 1, dtype=th.float32)
                 self.pi_probs[-1] = 1.0
 
-
-        pi_probs = self.pi_probs.clone()
-
-        if not include_self:
-            pi_probs = pi_probs[:-1]
+        pi_probs = self.pi_probs if include_self else self.pi_probs[:-1]
 
         if temperature is not None:
-            pi_probs = custom_softmax(pi_probs, temperature, None)
+            pi_probs = custom_softmax(pi_probs, temperature)
 
         return th.distributions.Categorical(probs=pi_probs)
 

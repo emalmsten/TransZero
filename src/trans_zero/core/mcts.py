@@ -242,11 +242,12 @@ class MCTS:
         """
         if len(self.config.players) == 1:
             while True:
-                node.value_sum += value
-                node.increment_visit_count()
-                value = node.reward + self.config.discount * value
-                self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
+                if not isinstance(node, MVCNode):
+                    node.value_sum += value
+                    node.increment_visit_count()
+                    value = node.reward + self.config.discount * value
 
+                self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
                 node.recalculate_val_and_var()
 
                 if node.parent is None:
@@ -254,6 +255,7 @@ class MCTS:
 
                 node.parent.set_children_val_and_vars(node)
                 node = node.parent
+
 
 
         elif len(self.config.players) == 2:
