@@ -413,12 +413,16 @@ class GameHistory:
                 self.policy_targets.append(
                     child_visits
                 )
+                self.root_values.append(root.get_value())
+
             else:
                 mvc_policy = root.get_pi().probs
                 # untorch and add to mvc_policies
                 self.policy_targets.append(mvc_policy.tolist())
 
-            self.root_values.append(root.get_value())
+                self.root_values.append((root.get_value() - root.reward)/root.config.discount)
+
+
 
 
         else:

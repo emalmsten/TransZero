@@ -246,8 +246,12 @@ class MCTS:
                     node.value_sum += value
                     node.increment_visit_count()
                     value = node.reward + self.config.discount * value
+                    self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
-                self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
+                else:
+                    self.min_max_stats.update(node.get_value())
+
+
                 node.recalculate_val_and_var()
 
                 if node.parent is None:
