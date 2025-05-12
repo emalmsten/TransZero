@@ -117,25 +117,25 @@ def get_children_policy_values_and_inverse_variance(
 
 
 
-def get_children_policy_values(
-    parent,
-    transform: ValueTransform = IdentityValueTransform,
-) -> th.Tensor:
-    # have a look at this, infs mess things up
-    vals = th.ones(int(parent.action_space.n), dtype=th.float32) * -th.inf
-    for action, child in parent.children.items():
-        vals[action] = child.get_value()
-    vals = transform.normalize(vals)
-    return vals
+# def get_children_policy_values(
+#     parent,
+#     transform: ValueTransform = IdentityValueTransform,
+# ) -> th.Tensor:
+#     # have a look at this, infs mess things up
+#     vals = th.ones(int(parent.action_space.n), dtype=th.float32) * -th.inf
+#     for action, child in parent.children.items():
+#         vals[action] = child.get_value()
+#     vals = transform.normalize(vals)
+#     return vals
 
-def get_children_inverse_variances(
-    parent
-) -> th.Tensor:
-    inverse_variances = th.zeros(parent.action_space_size, dtype=th.float32)
-    for action, child in parent.children.items():
-        inverse_variances[action] = child.get_inv_var()
-
-    return inverse_variances
+# def get_children_inverse_variances(
+#     parent
+# ) -> th.Tensor:
+#     inverse_variances = th.zeros(parent.action_space_size, dtype=th.float32)
+#     for action, child in parent.children.items():
+#         inverse_variances[action] = child.get_inv_var()
+#
+#     return inverse_variances
 
 
 def expanded_mask(node) -> th.Tensor:
