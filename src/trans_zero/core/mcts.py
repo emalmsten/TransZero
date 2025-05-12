@@ -899,7 +899,10 @@ class PUCT_MVC(PUCT):
 
 
     def Q(self, child):
-        return child.get_value()
+        q = child.reward + self.config.discount * (
+            child.get_value() if len(self.config.players) == 1 else -child.get_value()
+        )
+        return q
 
     def U(self, parent, child):
         par_inv_q_var = parent.get_inv_var()
