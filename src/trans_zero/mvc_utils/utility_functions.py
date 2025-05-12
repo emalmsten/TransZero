@@ -41,49 +41,6 @@ def policy_value_and_variance(node, discount_factor: float):
 
 
 
-# TODO: can improve this implementation
-def policy_value(
-    node,
-    discount_factor: float,
-):
-    pi = node.get_pi(include_self=True)
-
-    probabilities: th.Tensor = pi.probs
-    assert probabilities.shape[-1] == node.action_space_size + 1
-
-    own_propability = probabilities[-1]  # type: ignore
-    child_propabilities = probabilities[:-1]  # type: ignore
-
-    child_values = node.children_vals[:-1] #th.empty_like(child_propabilities, dtype=th.float32)
-
-    val = node.reward + discount_factor * (
-        own_propability * node.value_evaluation
-        + (child_propabilities * child_values).sum()
-    )
-
-    return val
-
-
-def independent_policy_value_variance(
-    node,
-    discount_factor: float,
-):
-
-    pi = node.get_pi(include_self=True)
-
-    probabilities_squared = pi.probs**2  # type: ignore
-    own_propability_squared = probabilities_squared[-1]
-    child_propabilities_squared = probabilities_squared[:-1]
-
-    child_variances = node.children_vars[:-1]
-
-    var = reward_variance(node) + discount_factor**2 * (
-        own_propability_squared * value_evaluation_variance(node)
-        + (child_propabilities_squared * child_variances).sum()
-    )
-
-    return var
-
 
 def reward_variance(node):
     # todo, need to figure out the reward variance for deterministic environments
@@ -161,3 +118,45 @@ def get_transformed_default_values(node, transform: ValueTransform = IdentityVal
     return transform.normalize(vals)
 
 
+# TODO: can improve this implementation
+def policy_value(
+    node,
+    discount_factor: float,
+):
+    pi = node.get_pi(include_self=True)
+
+    probabilities: th.Tensor = pi.probs
+    assert probabilities.shape[-1] == node.action_space_size + 1
+
+    own_propability = probabilities[-1]  # type: ignore
+    child_propabilities = probabilities[:-1]  # type: ignore
+
+    child_values = node.children_vals[:-1] #th.empty_like(child_propabilities, dtype=th.float32)
+
+    val = node.reward + discount_factor * (
+        own_propability * node.value_evaluation
+        + (child_propabilities * child_values).sum()
+    )
+
+    return val
+
+
+def independent_policy_value_variance(
+    node,
+    discount_factor: float,
+):
+
+    pi = node.get_pi(include_self=True)
+
+    probabilities_squared = pi.probs**2  # type: ignore
+    own_propability_squared = probabilities_squared[-1]
+    child_propabilities_squared = probabilities_squared[:-1]
+
+    child_variances = node.children_vars[:-1]
+
+    var = reward_variance(node) + discount_factor**2 * (
+        own_propability_squared * value_evaluation_variance(node)
+        + (child_propabilities_squared * child_variances).sum()
+    )
+
+    return var
