@@ -1,3 +1,4 @@
+import time
 from abc import ABC, abstractmethod
 import torch as th
 
@@ -74,7 +75,7 @@ class PolicyDistribution(Policy):
         return node.get_pi().sample().item()
 
     @abstractmethod
-    def _probs(self, node, include_self=False) -> th.Tensor:
+    def _probs(self, node) -> th.Tensor:
         """
         Returns the relative probabilities of the actions (excluding the special action)
         """
@@ -99,11 +100,8 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         self.discount_factor = config.discount
 
 
-    def _probs(self, node) -> th.Tensor:
-        normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(
-            parent=node,
-            transform=self.value_transform,
-            )
+    def _probs(self, node):
+        normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(node)
 
         # Build unnormalized probabilities (a typical mean-variance approach)
         #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )

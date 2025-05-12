@@ -10,6 +10,8 @@ from .node import Node, MVCNode
 from abc import ABC, abstractmethod
 import time
 
+from ..mvc_utils.utility_functions import policy_value_and_variance
+
 
 # Game independent
 class MCTS:
@@ -139,6 +141,8 @@ class MCTS:
         transformer_net = self.config.network == "transformer"
 
         root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
+        # if calc here
+        root.recalculate_val_and_var()
 
         max_tree_depth = 0
 
@@ -243,12 +247,12 @@ class MCTS:
                 value = node.reward + self.config.discount * value
                 self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
-                node.reset_var()
-                node.reset_val()
-                node.reset_pi()
+                node.recalculate_val_and_var()
 
                 if node.parent is None:
                     break
+
+                node.parent.set_children_val_and_vars(node)
                 node = node.parent
 
 

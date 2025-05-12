@@ -4,6 +4,43 @@ import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
 
+
+def policy_value_and_variance(node, discount_factor: float):
+    """
+    Calculates the policy value and variance for a node.
+    This is used to calculate the value of a node in the tree.
+    The value is calculated as the sum of the expected value of the children
+    and the expected value of the current node.
+    The variance is calculated as the sum of the variances of the children
+    and the variance of the current node.
+    """
+
+    pi = node.get_pi(include_self=True)
+
+    probabilities: th.Tensor = pi.probs
+    # torch squre for quickness
+    probabilities_squared = th.pow(probabilities, 2)
+    assert probabilities.shape[-1] == node.action_space_size + 1
+    own_propability, child_propabilities = probabilities[-1], probabilities[:-1]
+    own_propability_squared, child_propabilities_squared = probabilities_squared[-1], probabilities_squared[:-1]
+
+    child_values = node.children_vals[:-1]
+    child_variances = node.children_vars[:-1]
+
+    val = node.reward + discount_factor * (
+        own_propability * node.value_evaluation
+        + (child_propabilities * child_values).sum()
+    )
+
+    var = reward_variance(node) + discount_factor**2 * (
+        own_propability_squared * value_evaluation_variance(node)
+        + (child_propabilities_squared * child_variances).sum()
+    )
+
+    return val, var #, probabilities
+
+
+
 # TODO: can improve this implementation
 def policy_value(
     node,
@@ -16,10 +53,8 @@ def policy_value(
 
     own_propability = probabilities[-1]  # type: ignore
     child_propabilities = probabilities[:-1]  # type: ignore
-    child_values = th.empty_like(child_propabilities, dtype=th.float32)
 
-    for action, child in node.children.items():
-        child_values[action] = child.get_value()
+    child_values = node.children_vals[:-1] #th.empty_like(child_propabilities, dtype=th.float32)
 
     val = node.reward + discount_factor * (
         own_propability * node.value_evaluation
@@ -27,6 +62,27 @@ def policy_value(
     )
 
     return val
+
+
+def independent_policy_value_variance(
+    node,
+    discount_factor: float,
+):
+
+    pi = node.get_pi(include_self=True)
+
+    probabilities_squared = pi.probs**2  # type: ignore
+    own_propability_squared = probabilities_squared[-1]
+    child_propabilities_squared = probabilities_squared[:-1]
+
+    child_variances = node.children_vars[:-1]
+
+    var = reward_variance(node) + discount_factor**2 * (
+        own_propability_squared * value_evaluation_variance(node)
+        + (child_propabilities_squared * child_variances).sum()
+    )
+
+    return var
 
 
 def reward_variance(node):
@@ -43,52 +99,16 @@ def value_evaluation_variance(node):
     return 1.0
 
 
-def independent_policy_value_variance(
-    node,
-    discount_factor: float,
-):
-
-    pi = node.get_pi(include_self=True)
-
-    probabilities_squared = pi.probs**2  # type: ignore
-    own_propability_squared = probabilities_squared[-1]
-    child_propabilities_squared = probabilities_squared[:-1]
-
-    child_variances = th.empty_like(child_propabilities_squared, dtype=th.float32)
-
-    for action, child in node.children.items():
-        child_variances[action] = child.get_variance()
-
-    var = reward_variance(node) + discount_factor**2 * (
-        own_propability_squared * value_evaluation_variance(node)
-        + (child_propabilities_squared * child_variances).sum()
-    )
-
-    return var
-
-
 
 def get_children_policy_values_and_inverse_variance(
     parent,
-    transform: ValueTransform = IdentityValueTransform,
+    #transform: ValueTransform = IdentityValueTransform,
 ) -> tuple[th.Tensor, th.Tensor]:
     """
     This is more efficent than calling get_children_policy_values and get_children_variances separately
     """
 
-
-    vals = th.empty(parent.action_space_size + 1, dtype=th.float32)
-    inv_vars = th.empty(parent.action_space_size + 1, dtype=th.float32)
-
-    for action, child in parent.children.items():
-        vals[action] = child.get_value()
-        inv_vars[action] = child.get_inv_var()
-
-    vals[-1] = parent.value_evaluation
-    inv_vars[-1] = 1 / value_evaluation_variance(parent)
-
-    normalized_vals = transform.normalize(vals)
-    return normalized_vals, inv_vars
+    return parent.children_vals, parent.children_inv_vars
 
 
 
