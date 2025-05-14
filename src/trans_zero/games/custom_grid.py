@@ -231,8 +231,8 @@ class MuZeroConfig:
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
-                (32, 1, 1),  # Output: (batch_size, 16, 3, 3)
-                (64, 1, 1),
+                (16, 3, 1),  # Output: (batch_size, 16, 3, 3)
+                (32, 3, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.fc_layers_trans = [128, 64]

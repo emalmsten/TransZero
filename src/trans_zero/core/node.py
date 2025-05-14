@@ -119,9 +119,6 @@ class MVCNode(Node):
         self.policy = parent.policy if parent is not None else MeanVarianceConstraintPolicy(config)
         self.name = name
 
-        self.diff_var_val = 0
-        self.same_var_val = 0
-
         self.children = {}
 
         # fill with self.config.discount**2

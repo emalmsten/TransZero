@@ -249,10 +249,8 @@ class MCTS:
                     self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
                 else:
+                    node.recalculate_val_and_var()
                     self.min_max_stats.update(node.get_value())
-
-
-                node.recalculate_val_and_var()
 
                 if node.parent is None:
                     break
