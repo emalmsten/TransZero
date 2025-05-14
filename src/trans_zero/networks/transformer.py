@@ -99,7 +99,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 )
             )
         elif representation_network_type == "cnn_mlp":
-            out_channels = 32
             self.cnn = ConvRepresentationNet(
                 input_channels=6,
                 conv_layers=self.config.conv_layers_trans,
@@ -107,7 +106,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
             self.representation_network = cond_wrap(
                 mlp(
-                    out_channels
+                    conv_layers[-1][0]
                     * observation_shape[1]
                     * observation_shape[2]
                     * (stacked_observations + 1)
