@@ -28,11 +28,11 @@ class MuZeroConfig:
         self.expansion_budget = 4 # atleast 1 node needs to be expanded
 
         # action selection
-        self.action_selection = "mvc"  # mvc or std
+        self.action_selection = "visit"  # mvc or std
         self.PUCT_C = 2.5
-        self.PUCT_variant = "mvc"
+        self.PUCT_variant = "visit"
         self.mvc_beta = 0.3
-        self.policy_target_type = "mvc"
+        self.policy_target_type = "visit"
         self.test_ucb = False
         self.expand_all_children = True
 
