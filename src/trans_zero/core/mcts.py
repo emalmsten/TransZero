@@ -10,9 +10,6 @@ from .node import Node, MVCNode
 from abc import ABC, abstractmethod
 import time
 
-from ..mvc_utils.utility_functions import policy_value_and_variance
-
-
 # Game independent
 class MCTS:
     """
@@ -212,10 +209,7 @@ class MCTS:
         # if self.config.PUCT_U == "mvc":
         #     node.reset_var()
 
-        action_score_pairs = [
-            (action, self.puct.ucb_score(node, child, self.min_max_stats))
-            for action, child in node.children.items()
-        ]
+        ucb_scores = self.puct.get_ucb_scores(node, self.min_max_stats)
 
         # if self.config.test_ucb:
         #     res_U = [self.U_comparator(node, child) for action, child in node.children.items()]
@@ -224,15 +218,15 @@ class MCTS:
             #self.write_test_to_file(node, min_max_stats)
 
         # Find the maximum UCB score
-        max_ucb = max(score for action, score in action_score_pairs)
+        max_ucb = max(ucb_scores)
 
         # Select actions that have the maximum UCB score
-        best_actions = [action for action, score in action_score_pairs if score == max_ucb]
+        best_actions = [action for action, score in zip(node.action_space, ucb_scores) if score == max_ucb]
 
         # Randomly select among best actions
         selected_action = numpy.random.choice(best_actions)
 
-        return selected_action, node.children[selected_action]
+        return selected_action, node.get_child(selected_action)
 
 
     def backpropagate(self, node, value, to_play):

@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
-from .utility_functions import get_children_policy_values_and_inverse_variance
 
 # todo maybe get some more order of mvc utils
 
@@ -117,9 +116,6 @@ class PolicyDistribution(Policy):
         pass
 
 
-class RandomPolicy(Policy):
-    def sample(self, node) -> int:
-        return node.action_space.sample()
 
 
 class MeanVarianceConstraintPolicy(PolicyDistribution):
@@ -136,14 +132,13 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
 
 
     def _probs(self, node):
-        normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(node)
 
         # Build unnormalized probabilities (a typical mean-variance approach)
         #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
-        logits = self.beta * th.nan_to_num(normalized_vals)
+        logits = self.beta * th.nan_to_num(node.children_vals)
 
         # logits - logits.max() is to avoid numerical instability
-        probs = inv_vars * th.exp(logits - logits.max())
+        probs = node.children_inv_vars * th.exp(logits - logits.max())
 
         return probs
 

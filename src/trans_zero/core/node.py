@@ -3,8 +3,9 @@ import torch
 import torch as th
 
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, custom_softmax, custom_softmax_old
-from trans_zero.mvc_utils.utility_functions import policy_value, independent_policy_value_variance, \
-    policy_value_and_variance
+
+import itertools
+
 
 
 class Node:
@@ -12,6 +13,9 @@ class Node:
     def __init__(self, prior, config, parent=None, name="root"):
         self.config = config
         self.action_space_size = len(self.config.action_space)
+        # lsit of actions
+        self.action_space = self.config.action_space
+
         self.use_reward = config.predict_reward
         self.parent = parent
 
@@ -103,11 +107,17 @@ class Node:
     def __repr__(self):
         return self.name
 
+    def get_child(self, action):
+        """
+        Get the child of the node.
+        """
+        return self.children[action]
+
+
 
 class MVCNode(Node):
     def __init__(self, prior, config, parent=None, name="root", action = None):
         super().__init__(prior, config, name)
-        self.config = config
         self.parent = parent
 
         self.action = action
@@ -117,30 +127,33 @@ class MVCNode(Node):
         self.policy_value = None
         self.pi_probs = None
 
+        self.discount_factor = config.discount
+
         self.policy = parent.policy if parent is not None else MeanVarianceConstraintPolicy(config)
-        self.name = name
 
         self.children = {}
 
         # fill with self.config.discount**2
         self.children_vars = torch.full(
             (self.action_space_size + 1,),
-            self.config.discount**2,
+            self.discount_factor**2,
             dtype=torch.float32,
         )
         self.children_vals = torch.zeros(self.action_space_size + 1)
         self.children_inv_vars = torch.full(
             (self.action_space_size + 1,),
-            1 / self.config.discount**2,
+            1 / self.discount_factor**2,
             dtype=torch.float32,
         )
         self.children_inv_vars[-1] = 1.0
         self.children_vars[-1] = 1.0
 
+
     def recalculate_val_and_var(self):
         self.reset_all()
-        self.policy_value, self.variance = policy_value_and_variance(self, self.config.discount)
+        self.policy_value, self.variance = self.policy_value_and_variance()
         return self.policy_value, self.variance
+
 
     def get_value(self):
         """
@@ -156,6 +169,7 @@ class MVCNode(Node):
 
         return self.policy_value
 
+
     def set_children_val_and_vars(self, child):
         self.children_vals[child.action] = child.policy_value
         self.children_vars[child.action] = child.variance
@@ -164,6 +178,7 @@ class MVCNode(Node):
 
     def add_val_and_var(self):
         self.children_vals[-1] = self.value_evaluation
+
 
     def get_variance(self):
         if self.variance is None:
@@ -230,6 +245,46 @@ class MVCNode(Node):
         self.inv_var = None
         self.policy_value = None
         self.pi_probs = None
+
+
+
+    def policy_value_and_variance(self):
+        """
+        Calculates the policy value and variance for a node.
+        This is used to calculate the value of a node in the tree.
+        The value is calculated as the sum of the expected value of the children
+        and the expected value of the current node.
+        The variance is calculated as the sum of the variances of the children
+        and the variance of the current node.
+        """
+        discount = self.discount_factor
+
+        pi = self.get_pi(include_self=True)
+
+        reward_variance = 0.0
+        value_evaluation_variance = 1.0
+
+        probabilities: th.Tensor = pi.probs
+        # torch squre for quickness
+        probabilities_squared = th.pow(probabilities, 2)
+        assert probabilities.shape[-1] == self.action_space_size + 1
+        own_propability, child_propabilities = probabilities[-1], probabilities[:-1]
+        own_propability_squared, child_propabilities_squared = probabilities_squared[-1], probabilities_squared[:-1]
+
+        child_values = self.children_vals[:-1]
+        child_variances = self.children_vars[:-1]
+
+        val = self.reward + discount * (
+                own_propability * self.value_evaluation
+                + (child_propabilities * child_values).sum()
+        )
+
+        var = reward_variance + discount ** 2 * (
+                own_propability_squared * value_evaluation_variance
+                + (child_propabilities_squared * child_variances).sum()
+        )
+
+        return val, var  # , probabilities
 
 
     def __repr__(self):
