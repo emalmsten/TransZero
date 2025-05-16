@@ -116,7 +116,7 @@ def get_wandb_artifacts(config, run_id, wandb_model_number = None, download_repl
     run = api.run(f"{entity}/{project}/{run_id}")
     artifacts = run.logged_artifacts()
 
-    latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)[-3:]
+    latest_artifacts = sorted(artifacts, key=lambda a: a.created_at)
 
     if wandb_model_number is not None:
         model_artifact = next(a for a in artifacts if str(wandb_model_number) in a.name)
