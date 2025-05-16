@@ -1,5 +1,5 @@
 {
-  "seed": 0,
+  "seed": 319,
   "network": "transformer",
   "batch_size": 128,
   "lr_init": 0.002,
@@ -11,19 +11,19 @@
   "transformer_hidden_size": 128,
   "td_steps": 25,
   "num_unroll_steps": 7,
-  "append": "_MVC_v2.1",
+  "append": "_MVC_v3.0",
   "softmax_limits": [0.2, 0.4, 0.6, 0.8, 1],
-  "mvc_softmax_temps": [1.25, 1.25, 1.25, 1.0, 1.0],
+  "mvc_softmax_temps": [0.45, 0.3, 0.2, 0.15, 0.05],
+  "use_old_softmax": false,
   "num_simulations": 50,
   "fc_representation_layers": [32],
   "mlp_head_layers": [64, 32],
 
   "action_selection": "mvc",
-  "PUCT_variant": "mvc",
-  "policy_target_type": "mvc",
-  "mvc_beta": 0.005,
   "PUCT_C": 2.5,
-
+  "PUCT_variant": "mvc",
+  "mvc_beta": 0.02,
+  "policy_target_type": "mvc",
   "test_ucb": false,
 
   "training_steps": 300000,
