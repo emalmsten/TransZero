@@ -305,7 +305,8 @@ class SelfPlay:
         return action
 
 
-    def mvc_action_selection(self, tree, temperature):
+    @staticmethod
+    def mvc_action_selection(tree, temperature):
         policy_dist = tree.get_pi(temperature=temperature)
         action = policy_dist.sample().item()
         return action

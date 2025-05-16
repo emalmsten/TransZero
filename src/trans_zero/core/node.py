@@ -2,7 +2,7 @@ import numpy
 import torch
 import torch as th
 
-from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, custom_softmax
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, custom_softmax, custom_softmax_old
 from trans_zero.mvc_utils.utility_functions import policy_value, independent_policy_value_variance, \
     policy_value_and_variance
 
@@ -57,6 +57,7 @@ class Node:
         """
         self.to_play = to_play
         self.reward = reward if self.use_reward else 0
+
         self.value_evaluation = value
         self.add_val_and_var() # reconsider place for this
 
@@ -197,7 +198,11 @@ class MVCNode(Node):
         pi_probs = self.pi_probs if include_self else self.pi_probs[:-1]
 
         if temperature is not None:
-            pi_probs = custom_softmax(pi_probs, temperature)
+            if self.config.use_old_softmax:
+                pi_probs = custom_softmax_old(pi_probs, temperature)
+            else:
+                pi_probs = custom_softmax(pi_probs, temperature)
+
 
         return th.distributions.Categorical(probs=pi_probs)
 

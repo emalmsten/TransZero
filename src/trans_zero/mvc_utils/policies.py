@@ -7,7 +7,7 @@ from .utility_functions import get_children_policy_values_and_inverse_variance
 
 # todo maybe get some more order of mvc utils
 
-def custom_softmax(
+def custom_softmax_old(
     probs: th.Tensor,
     temperature: float | None = None,
     action_mask: th.Tensor | None = None,
@@ -32,6 +32,41 @@ def custom_softmax(
         p = (probs == max_prob).float()
     else:
         p = th.nn.functional.softmax(probs / temperature, dim=-1)
+
+    if action_mask is not None:
+        p[~action_mask] = 0.0
+
+    return p
+
+def custom_softmax(
+    probs: th.Tensor,
+    temperature: float | None = None,
+    action_mask: th.Tensor | None = None,
+) -> th.Tensor:
+    """Applies AlphaZero-style heuristic temperature scaling to the input tensor.
+
+    Args:
+        probs (th.Tensor): Visit counts or unnormalized scores.
+        temperature (float): Temperature value. None means use as-is. 0 means argmax.
+        action_mask (th.Tensor, optional): Mask for invalid actions.
+
+    Returns:
+        th.Tensor: Normalized probability distribution.
+    """
+
+    if action_mask is not None:
+        probs = probs.clone()
+        probs[~action_mask] = 0.0
+
+    if temperature is None:
+        p = probs
+
+    elif temperature == 0.0:
+        max_prob = th.max(probs, dim=-1, keepdim=True).values
+        p = (probs == max_prob).float()
+    else:
+        p = probs ** (1.0 / temperature)
+        p = p / p.sum(dim=-1, keepdim=True)
 
     if action_mask is not None:
         p[~action_mask] = 0.0

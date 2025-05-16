@@ -752,7 +752,6 @@ class ConvRepresentationNet(nn.Module):
             in_channels = out_channels
 
         self.encoder = nn.Sequential(*layers)
-        print("ConvRepresentationNet", self.encoder)
 
 
 
