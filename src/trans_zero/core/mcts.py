@@ -327,9 +327,11 @@ class MCTS:
             f.flush()
 
 
-class MCTS_PLL_1(MCTS):
+
+class MCTS_PLL(MCTS):
     def __init__(self, config):
         super().__init__(config)
+
 
     def run(
             self,
@@ -340,36 +342,37 @@ class MCTS_PLL_1(MCTS):
             add_exploration_noise,
             override_root_with=None,
     ):
+        device = next(model.parameters()).device
+        legal_actions_tensor = torch.tensor(legal_actions, device=device)
 
-        # print(f"is trans net: {is_trans_net}")
-        root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
+        action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence([], device, legal_actions, budget=self.config.expansion_budget+1, include_root=True)
+        pll_args = {
+            "action_sequence": action_seq_for_pred,
+            "custom_pos_indices": pos_indices,
+            "full_seqs": full_seqs,
 
-        if add_exploration_noise:
-            root.add_exploration_noise(
-                dirichlet_alpha=self.config.root_dirichlet_alpha,
-                exploration_fraction=self.config.root_exploration_fraction,
-            )
+            "return_n_last_predictions": action_seq_for_pred.size(1) + 1,
+            "custom_causal_mask": self.make_causal_mask(full_seqs, device=device),
+        }
 
+
+        root, all_scalars = self.expand_root_pll(self.unexpanded_root, observation, model, legal_actions, to_play, pll_args)
 
         max_tree_depth = 0
 
         latent_root_state = root.hidden_state
-        latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+        #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
 
         for _ in range(self.config.num_simulations):
             virtual_to_play = to_play
             node = root
-            search_path = [node]
             actions = []
             current_tree_depth = 0
 
-            # todo reconsider where this should be
-            #node.reset_var()
-
+            # log n
             while node.expanded():
                 current_tree_depth += 1
                 action, node = self.select_child(node)  # tree action selection
-                search_path.append(node)
                 actions.append(action)
 
                 # Players play turn by turn
@@ -378,77 +381,39 @@ class MCTS_PLL_1(MCTS):
                 else:
                     virtual_to_play = self.config.players[0]
 
-            action_sequences_from_node = self.bfs_actions(self.config.expansion_budget, legal_actions)
-            # prepend actions to each
-            action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
-            # make into torch tensor
+            # expand all children instead of just ucb highest one
+            if self.config.expand_all_children:
+                actions = actions[:-1]
+                node = node.parent
 
-            padded_as, pad_masks = self.pad_action_sequences(action_sequences)
-            padded_as = torch.tensor(padded_as).to(latent_root_state.device)
-            # # add singleton dimension as last
-            pad_masks = torch.tensor(pad_masks).to(latent_root_state.device)
+            action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence(actions, device, legal_actions, budget=self.config.expansion_budget, include_root = not self.config.expand_all_children)
+            causal_mask = self.make_causal_mask(full_seqs, device=device)
 
-            # copy root hidden state into size of action sequences in dim 0
 
-            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference_fast(
+            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
+                None, None,
                 latent_root_state=latent_root_state,
-                action_sequence=padded_as,
-                mask=pad_masks,
-                use_causal_mask = True
-            )
-
-            org_node = node
-            for i, action_sequence in enumerate(action_sequences_from_node):
-                for action in action_sequence:
-                    node = node.children[action]
-
-                #full_ac_seq = actions + action_sequence
-                # todo try recurrent inf fast
-                # value_i, reward_i, policy_logits_i, hidden_state = model.recurrent_inference(
-                #     None, None,
-                #     latent_root_state = latent_root_state,
-                #     action_sequence=torch.tensor(full_ac_seq).unsqueeze(0).to(latent_root_state.device),
-                # )
-
-                last_action_idx = len(actions) + len(action_sequence) # not -1 since the observation takes one token (todo see over implementation when using larger token space for obs)
-
-                # just take the last ones
-                # ":" is to keep dimension
-                value_i = all_values[i][[last_action_idx]]
-                reward_i = all_rewards[i][[last_action_idx]]
-                policy_logits_i = all_policy_logits[i][[last_action_idx]]
-
-                # todo emil idea check unceratnity based on several values?
-                # todo alternative emil, instead of expanding bottom up, expand all at once.
-                # for example if having a budget of 6 you could expand A, B, C, AA, AB, AC, or instead do
-                # AA, BA, CA, AB, BB, CB and just fill in the values for A, B and C (given they are already predicted)
-
-                # todo also try longer runs and not capping after terminal state
-                value_i = models.support_to_scalar(value_i, self.config.support_size).item()
-                reward_i = models.support_to_scalar(reward_i, self.config.support_size).item()
-
-                node.expand(
-                    legal_actions,
-                    virtual_to_play,
-                    value_i,
-                    reward_i,
-                    policy_logits_i,
-                    latent_root_state, # todo, make optional
+                action_sequence=action_seq_for_pred,
+                custom_pos_indices = pos_indices,
+                custom_causal_mask=causal_mask,
+                return_n_last_predictions=self.config.expansion_budget
                 )
 
-                self.backpropagate(node, value_i, virtual_to_play)
+            all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
 
-                node = org_node
+            all_actions_from_node = self.trim_sequences(full_seqs, len(actions))
+            all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
 
+            self.multi_expansion(all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play,latent_root_state)
             max_tree_depth = max(max_tree_depth, current_tree_depth)
+
 
         extra_info = {
             "max_tree_depth": max_tree_depth,
-            "root_predicted_value": root_predicted_value,
+            "root_predicted_value": None # todo root_predicted_value,
         }
 
         return root, extra_info
-
 
     def bfs_actions(self, budget, action_space, include_root = False):
         """
@@ -477,34 +442,6 @@ class MCTS_PLL_1(MCTS):
                 queue.append(new_sequence)
 
         return results
-
-    @staticmethod
-    def pad_action_sequences(action_sequences, pad_value=0):
-        # Get the length of the longest sequence, assumed to be the last one.
-        max_length = len(action_sequences[-1])
-
-        padded_sequences = []
-        pad_masks = []
-
-        for seq in action_sequences:
-            # Calculate the number of pad tokens needed for the current sequence.
-            padding_needed = max_length - len(seq)
-
-            # Pad the sequence.
-            padded_seq = seq + [pad_value] * padding_needed
-            padded_sequences.append(padded_seq)
-
-            # Create a mask: False for original entries, True for padded ones.
-            # todo the + 1 is for the state, should be more if state is more tokens
-            mask = [False] * (len(seq) + 1) + [True] * padding_needed
-            pad_masks.append(mask)
-
-        return padded_sequences, pad_masks
-
-
-class MCTS_PLL_2(MCTS_PLL_1):
-    def __init__(self, config):
-        super().__init__(config)
 
 
     def get_unique_nodes_for_sequence(self, sequences):
@@ -793,10 +730,25 @@ class MCTS_PLL_2(MCTS_PLL_1):
     def multi_expansion(self, all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play, root_latent_state):
         all_value_scalars, all_reward_scalars, all_policy_probs = all_scalars
         org_node = node
+
         node_list = []  # todo turn into queue
+
+        start_time = time.time()
+        while node.parent is not None:
+            node = node.parent
+            node_list.append(node)
+
+        # reverse list
+        node_list.reverse()
+        node = org_node
+
+        list_time = time.time()
+
         for i, actions_from_node in enumerate(all_actions_from_node):
+
             for action in actions_from_node:
                 node = node.children[action]
+
 
             last_action_idx = i
 
@@ -805,7 +757,6 @@ class MCTS_PLL_2(MCTS_PLL_1):
             policy_values_i = all_policy_probs[last_action_idx].tolist()
 
             # todo also try longer runs and not capping after terminal state
-
             node.expand(
                 legal_actions,
                 virtual_to_play,
@@ -814,6 +765,7 @@ class MCTS_PLL_2(MCTS_PLL_1):
                 policy_values_i,
                 root_latent_state,  # todo, make optional
             )
+
             node_list.append(node)
             node = org_node
 
@@ -823,13 +775,18 @@ class MCTS_PLL_2(MCTS_PLL_1):
     def backpropagate_more(self, node_list):
 
         # reverse traversal to get children first
-        for node in node_list:
-            self.min_max_stats.update(node.reward + self.config.discount * node.get_value()) # todo check if this should even be used
-            node.reset_var()
-            node.reset_val()
-            node.reset_pi()
-            if node.parent and node.parent not in node_list:
-                node_list.append(node.parent) # todo queue
+        val_list = []
+        for node in reversed(node_list):
+            val, var = node.recalculate_val_and_var()
+            val_list.append(val.item())
+
+            if node.parent is None:
+                break
+
+            node.parent.set_children_val_and_vars(node)
+
+        self.min_max_stats.mass_update(val_list)
+
 
 class PUCT(ABC):
     """
@@ -941,6 +898,10 @@ class MinMaxStats:
     def update(self, value):
         self.maximum = max(self.maximum, value)
         self.minimum = min(self.minimum, value)
+
+    def mass_update(self, values):
+        self.maximum = max(self.maximum, max(values))
+        self.minimum = min(self.minimum, min(values))
 
     def normalize(self, value):
         if self.maximum > self.minimum:

@@ -8,7 +8,7 @@ import torch
 from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from .mcts import MCTS, MCTS_PLL_1, MCTS_PLL_2
+from .mcts import MCTS, MCTS_PLL
 from .node import MVCNode
 from trans_zero.utils.other_utils import set_global_seeds
 
@@ -168,15 +168,7 @@ class SelfPlay:
                 if opponent == "self" or muzero_player == self.game.to_play():
 
                     if self.config.expansion_strategy == 'deep':
-                        root, mcts_info = MCTS_PLL_1(self.config).run(
-                            self.model,
-                            stacked_observations,
-                            self.game.legal_actions(),
-                            self.game.to_play(),
-                            temperature != 0
-                        )
-                    elif self.config.expansion_strategy == 'deep_2':
-                        root, mcts_info = MCTS_PLL_2(self.config).run(
+                        root, mcts_info = MCTS_PLL(self.config).run(
                             self.model,
                             stacked_observations,
                             self.game.legal_actions(),
@@ -296,10 +288,12 @@ class SelfPlay:
             action = numpy.random.choice(actions)
         else:
             # See paper appendix Data Generation
+
             visit_count_distribution = visit_counts ** (1 / temperature)
             visit_count_distribution = visit_count_distribution / sum(
                 visit_count_distribution
             )
+
             action = numpy.random.choice(actions, p=visit_count_distribution)
 
         return action

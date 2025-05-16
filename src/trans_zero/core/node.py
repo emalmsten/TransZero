@@ -140,6 +140,7 @@ class MVCNode(Node):
     def recalculate_val_and_var(self):
         self.reset_all()
         self.policy_value, self.variance = policy_value_and_variance(self, self.config.discount)
+        return self.policy_value, self.variance
 
     def get_value(self):
         """
@@ -150,7 +151,7 @@ class MVCNode(Node):
             if self.is_leaf:
                 self.policy_value = 0.0
             else:
-                raise ValueError("Policy value is None, please call get_policy_value() first")
+                raise ValueError(f"Policy value is None for {self.name}, please call get_policy_value() first")
                 #self.policy_value = policy_value(self, self.policy.discount_factor)
 
         return self.policy_value
@@ -169,7 +170,7 @@ class MVCNode(Node):
             if self.is_leaf:
                 self.variance = self.config.discount**2
             else:
-                raise ValueError("variance is None, please call get_variance() first")
+                raise ValueError(f"Variance is None for {self.name}, please call get_variance() first")
                 # self.variance = independent_policy_value_variance(
                 #     self, self.policy.discount_factor
                 # )
