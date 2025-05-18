@@ -1,14 +1,18 @@
+
+
 import math
 
 import numpy
 import torch
 
 from trans_zero.utils import models
-from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy
-from .node import Node, MVCNode
+from .node import Node, MVCNode, SubTree, SubTreeNode
 
 from abc import ABC, abstractmethod
 import time
+
+from ..utils.other_utils import arg_max_with_tie_breaking
+
 
 # Game independent
 class MCTS:
@@ -138,7 +142,7 @@ class MCTS:
         transformer_net = self.config.network == "transformer"
 
         root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
-        # if calc here
+        # important! if a node has just been expanded this is needed
         root.recalculate_val_and_var()
 
         max_tree_depth = 0
@@ -326,7 +330,6 @@ class MCTS_PLL(MCTS):
     def __init__(self, config):
         super().__init__(config)
 
-
     def run(
             self,
             model,
@@ -491,43 +494,6 @@ class MCTS_PLL(MCTS):
         return attention_mask
 
 
-    def make_causal_mask_fast(self, seqs, device):
-        n = len(seqs)
-        # Convert sequences to tuples for quicker prefix comparisons
-        seqs = [tuple(seq) for seq in seqs]
-        lengths = [len(s) for s in seqs]
-
-        # We'll build a boolean tensor of shape [n, n] for the allowed positions
-        # and incorporate the causal condition (j <= i) in a single loop.
-        allowed_mask = torch.zeros((n, n), dtype=torch.bool, device=device)
-
-        for i in range(n):
-            seq_i = seqs[i]
-            len_i = lengths[i]
-            # Only check j up to i for the causal condition
-            for j in range(i + 1):
-                seq_j = seqs[j]
-                len_j = lengths[j]
-                # Check that seq_j is a prefix of seq_i
-                if len_j <= len_i and seq_i[:len_j] == seq_j:
-                    allowed_mask[i, j] = True
-
-        # Now include the "global" token at index 0 in a new (n+1) x (n+1) matrix
-        new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
-        # Allow the global token to attend only to itself
-        new_allowed[0, 0] = True
-        # All real tokens (1..n) can always attend to the global token (column 0)
-        new_allowed[1:, 0] = True
-        # Copy in our computed mask
-        new_allowed[1:, 1:] = allowed_mask
-
-        # Convert boolean allowed positions to the float mask format (0 for allowed, -inf for disallowed)
-        attention_mask = torch.where(
-            new_allowed,
-            torch.tensor(0.0, device=device),
-            torch.tensor(float('-inf'), device=device)
-        )
-        return attention_mask
 
     def unwind_sequences(self, sequences):
         """
@@ -566,10 +532,10 @@ class MCTS_PLL(MCTS):
         return action_seq, pos_seq
 
 
-    def get_action_sequence(self, actions, device, legal_actions, budget, include_root=False):
-        action_sequences_from_node = self.bfs_actions(budget, legal_actions, include_root)
+    def get_action_sequence(self, actions_from_star_node, device, legal_actions, budget, include_root=False):
+        subtree_actions = self.bfs_actions(budget, legal_actions, include_root)
         # prepend actions to each
-        action_sequences = [actions + action_sequence for action_sequence in action_sequences_from_node]
+        action_sequences = [actions_from_star_node + action_sequence for action_sequence in subtree_actions]
         # get unique nodes for each sequence
         # action_seq, pos_indices = self.unwind_sequences(action_sequences)
         unique_occurrences = self.get_unique_nodes_for_sequence(action_sequences)
@@ -612,14 +578,17 @@ class MCTS_PLL(MCTS):
 
         full_seqs = pll_args.pop("full_seqs")
         # Initial step
+        start_time = time.time()
         (
             all_values,
             all_rewards,
             all_policy_logits,
             root_latent_state,
         ) = model.initial_inference(observation, pll_args=pll_args)
+        init_inf_time = time.time()
 
         all_scalars = self.get_scalars(all_values, all_rewards,all_policy_logits, legal_actions_tensor)
+        scalar_time = time.time()
 
         assert (
             legal_actions
@@ -631,7 +600,9 @@ class MCTS_PLL(MCTS):
         #root.expand(legal_actions, to_play, value, reward, policy_values,)
         full_seqs = [[]] + full_seqs
         self.multi_expansion(all_scalars, root, full_seqs, legal_actions, to_play, root_latent_state)
+        multi_exp_time = time.time()
 
+        #print(f"Init inf time: {init_inf_time - start_time:.4f}s, scalar time: {scalar_time - init_inf_time:.4f}s, multi_exp time: {multi_exp_time - scalar_time:.4f}s")
         return root, all_scalars
 
 
@@ -640,88 +611,9 @@ class MCTS_PLL(MCTS):
                 models.support_to_scalar(all_rewards, self.config.support_size),
                 torch.softmax(all_policy_logits[:, legal_actions_tensor], dim=-1))
 
-    def run(
-            self,
-            model,
-            observation,
-            legal_actions,
-            to_play,
-            add_exploration_noise,
-            override_root_with=None,
-    ):
-        device = next(model.parameters()).device
-        legal_actions_tensor = torch.tensor(legal_actions, device=device)
 
-        action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence([], device, legal_actions, budget=self.config.expansion_budget+1, include_root=True)
-        pll_args = {
-            "action_sequence": action_seq_for_pred,
-            "custom_pos_indices": pos_indices,
-            "full_seqs": full_seqs,
-
-            "return_n_last_predictions": action_seq_for_pred.size(1) + 1,
-            "custom_causal_mask": self.make_causal_mask(full_seqs, device=device),
-        }
-
-        root, all_scalars = self.expand_root_pll(self.unexpanded_root, observation, model, legal_actions, to_play, pll_args)
-
-        max_tree_depth = 0
-
-        latent_root_state = root.hidden_state
-        #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
-
-        for _ in range(self.config.num_simulations):
-            virtual_to_play = to_play
-            node = root
-            actions = []
-            current_tree_depth = 0
-
-            # log n
-            while node.expanded():
-                current_tree_depth += 1
-                action, node = self.select_child(node)  # tree action selection
-                actions.append(action)
-
-                # Players play turn by turn
-                if virtual_to_play + 1 < len(self.config.players):
-                    virtual_to_play = self.config.players[virtual_to_play + 1]
-                else:
-                    virtual_to_play = self.config.players[0]
-
-            # expand all children instead of just ucb highest one
-            if self.config.expand_all_children:
-                actions = actions[:-1]
-                node = node.parent
-
-            action_seq_for_pred, pos_indices, full_seqs = self.get_action_sequence(actions, device, legal_actions, budget=self.config.expansion_budget, include_root = not self.config.expand_all_children)
-            causal_mask = self.make_causal_mask(full_seqs, device=device)
-
-
-            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
-                None, None,
-                latent_root_state=latent_root_state,
-                action_sequence=action_seq_for_pred,
-                custom_pos_indices = pos_indices,
-                custom_causal_mask=causal_mask,
-                return_n_last_predictions=self.config.expansion_budget
-                )
-
-            all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
-
-            all_actions_from_node = self.trim_sequences(full_seqs, len(actions))
-            all_actions_from_node = all_actions_from_node[-self.config.expansion_budget:]
-
-            self.multi_expansion(all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play,latent_root_state)
-            max_tree_depth = max(max_tree_depth, current_tree_depth)
-
-
-        extra_info = {
-            "max_tree_depth": max_tree_depth,
-            "root_predicted_value": None # todo root_predicted_value,
-        }
-
-        return root, extra_info
-
-    def multi_expansion(self, all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play, root_latent_state):
+    def multi_expansion(self, all_scalars, node, all_actions_from_node, legal_actions, virtual_to_play,
+                        root_latent_state):
         all_value_scalars, all_reward_scalars, all_policy_probs = all_scalars
         org_node = node
 
@@ -743,7 +635,6 @@ class MCTS_PLL(MCTS):
             for action in actions_from_node:
                 node = node.children[action]
 
-
             last_action_idx = i
 
             value_i = all_value_scalars[last_action_idx].item()
@@ -763,15 +654,19 @@ class MCTS_PLL(MCTS):
             node_list.append(node)
             node = org_node
 
-        self.backpropagate_more(node_list)
+        for_loop_time = time.time()
 
+        self.backpropagate_more(node_list)
+        backprop_time = time.time()
+
+        #print(f"List time: {list_time - start_time:.4f}s, for loop time: {for_loop_time - list_time:.4f}s, backprop time: {backprop_time - for_loop_time:.4f}s")
 
     def backpropagate_more(self, node_list):
 
         # reverse traversal to get children first
         val_list = []
         for node in reversed(node_list):
-            val, var = node.recalculate_val_and_var()
+            val, _, _ = node.recalculate_val_and_var()
             val_list.append(val.item())
 
             if node.parent is None:
@@ -780,6 +675,240 @@ class MCTS_PLL(MCTS):
             node.parent.set_children_val_and_vars(node)
 
         self.min_max_stats.mass_update(val_list)
+
+
+class MCTS_SubTree(MCTS_PLL):
+    def __init__(self, config, device):
+        super().__init__(config)
+        self.device = device
+        self.unexpanded_subtree_root = SubTree(None, config, device)
+        self.puct = PUCT_Subtree(config, device)
+
+
+    def run(
+            self,
+            model,
+            observation,
+            legal_actions,
+            to_play,
+            add_exploration_noise,
+            override_root_with=None,
+    ):
+
+        legal_actions_tensor = torch.tensor(legal_actions, device=self.device)
+
+        pll_args = self.get_pll_args(self.unexpanded_subtree_root, [])
+
+        root_subtree = self.expand_subtree_root(self.unexpanded_subtree_root, observation, model, legal_actions, to_play, pll_args)
+        vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
+        self.min_max_stats.mass_update(vals)
+
+        max_tree_depth = 0
+
+        latent_root_state = root_subtree.hidden_state
+        #latent_root_state = latent_root_state.repeat(self.config.expansion_budget, 1)  # todo dirty trick, fix better later
+
+        for _ in range(self.config.num_simulations):
+            virtual_to_play = to_play
+            subtree = root_subtree
+            node_idx = 0
+
+            actions = []
+            current_tree_depth = 0
+
+              # tree action selection
+            # log n
+
+            node = SubTreeNode(subtree, node_idx)
+
+            start_time = time.time()
+
+            while node.expanded(): # todo could batch calc UCB scores, but dont know if faster
+                current_tree_depth += 1
+                action, node = self.select_child(node)  # tree action selection
+                actions.append(action)
+
+                # Players play turn by turn
+                if virtual_to_play + 1 < len(self.config.players):
+                    virtual_to_play = self.config.players[virtual_to_play + 1]
+                else:
+                    virtual_to_play = self.config.players[0]
+
+            unexpanded_subtree = SubTree(parent=node)
+            pll_args = self.get_pll_args(unexpanded_subtree, actions)
+
+            all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
+                None, None,
+                latent_root_state=latent_root_state,
+                **pll_args,
+                )
+
+            all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
+
+            unexpanded_subtree.expand(all_scalars)
+            expansion_time = time.time()
+
+            self.backpropagate_subtree(unexpanded_subtree)
+            backprop_time = time.time()
+
+            #print(f"Expansion time: {expansion_time - start_time:.4f}s, backprop time: {backprop_time - expansion_time:.4f}s")
+
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": None # todo root_predicted_value,
+        }
+
+        root = SubTreeNode(root_subtree, 0)
+        return root, extra_info
+
+
+    def get_pll_args(self, unexpanded_tree, action_seq_to_node_star):
+
+        action_seq_from_node_star = unexpanded_tree.get_action_seq()
+        ac_seq_len = len(action_seq_to_node_star)
+        action_seq_to_node_star = torch.tensor(action_seq_to_node_star, device=self.device, dtype=action_seq_from_node_star.dtype)
+        return {
+            "action_sequence": torch.cat((action_seq_to_node_star, action_seq_from_node_star), dim=0),
+            "return_n_last_predictions": unexpanded_tree.size - 1 + unexpanded_tree.is_root,
+            "custom_pos_indices": self.get_pos_indices(unexpanded_tree, prepend_len=ac_seq_len),
+            "custom_causal_mask": self.make_causal_mask_subtree(self.unexpanded_subtree_root, num_global_tokens=1 + ac_seq_len),
+        }
+
+
+    def get_pos_indices(self, subtree, prepend_len):
+
+
+        # shift the subtree positions by prepend_len
+        shifted = subtree.get_positions() + prepend_len
+
+        prefix = torch.arange(
+            1,
+            prepend_len + 1,
+            dtype=shifted.dtype,
+            device=self.device
+        )
+        # concat and return as a 1D tensor
+        return torch.cat([prefix, shifted], dim=0)
+
+
+    @staticmethod
+    def build_sequence_tensor(n, seq):
+
+        # create the [1..n] prefix on seq's device/dtype
+        prefix = torch.arange(1, n + 1, device=seq.device, dtype=seq.dtype)
+
+        # shift seq by n
+        shifted = seq + n
+
+        # concatenate and return
+        return torch.cat([prefix, shifted], dim=0)
+
+
+
+    def expand_subtree_root(self, root_tree, observation, model, legal_actions, to_play, pll_args):
+        legal_actions_tensor = torch.tensor(legal_actions, device=self.device)
+
+        observation = (
+            torch.tensor(observation)
+            .float()
+            .unsqueeze(0)
+            .to(self.device)
+        )
+
+        # Initial step
+        start_time = time.time()
+        (
+            all_values,
+            all_rewards,
+            all_policy_logits,
+            root_latent_state,
+        ) = model.initial_inference(observation, pll_args=pll_args)
+
+        all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
+        scalar_time = time.time()
+
+        assert (
+            legal_actions
+        ), f"Legal actions should not be an empty array. Got {legal_actions}."
+        assert set(legal_actions).issubset(
+            set(self.config.action_space)
+        ), "Legal actions should be a subset of the action space."
+
+        root_tree.expand(all_scalars, root_latent_state)
+
+        return root_tree
+
+    import torch
+
+    def make_causal_mask_subtree(self, subtree, num_global_tokens=1):
+        """
+        Build a causal attention mask with `num_global_tokens` global positions.
+
+        All tokens (real+global) can attend to any global token.
+        Global tokens attend to each other only causally (i.e. triangular).
+        Real tokens obey subtree.get_subtree_mask() causality.
+        """
+        # 1) get the n×n boolean mask for your real tokens
+        real_mask = subtree.get_subtree_mask()  # True = allowed
+        n = real_mask.size(0)
+        G = num_global_tokens
+        total = n + G
+
+        # prepare constants
+        device = self.device
+        neg_inf = float('-inf')
+        zero = torch.tensor(0.0, device=device)
+
+        # 1) start fully masked
+        mask = torch.full((total, total), neg_inf, device=device)
+
+        # 2) real→real from subtree_mask
+        #    where real_mask is True, set 0.0
+        mask[G:, G:] = torch.where(real_mask, zero, neg_inf)
+
+        if G > 0:
+            # 3) global→global causal: allow [i,j] only if j <= i
+            tri = torch.tril(torch.ones((G, G), dtype=torch.bool, device=device))
+            mask[:G, :G][tri] = zero
+
+            # 4) real→global: allow all real rows to see all globals
+            mask[G:, :G] = zero
+
+        return mask
+
+
+    def backpropagate_subtree(self, subtree):
+        # first calc entire subtree that the node is in
+        vals = subtree.calc_entire_policy_value_and_variance_subtree()
+
+        # TODO, if not root you can set the values of the parent to root of previous
+        # todo update the parent of the root node to the values of the root node
+        subtree.set_val_and_var_parent()
+
+        # since root.parent is already set above, take the grandparent
+        node = subtree.parent.parent
+
+        loop_vals = []
+        while True:
+            val, _, _ = node.recalculate_val_and_var()
+            loop_vals.append(val)
+
+            if node.parent is None:
+                break
+
+            node = node.parent
+
+
+        vals = torch.cat((vals.squeeze(-1), *loop_vals), dim=0)  # shape (n + len(loop_vals),)
+
+        self.min_max_stats.mass_update_tensor(vals)
+
+
+    def select_child(self, node):
+        # argmax with random tie-breaking
+        ucb_scores = self.puct.get_ucb_scores(node, self.min_max_stats)
+        action = arg_max_with_tie_breaking(ucb_scores)
+        return action, node.get_child(action)
 
 
 class PUCT(ABC):
@@ -818,6 +947,17 @@ class PUCT(ABC):
         return Q + U
 
 
+    def get_ucb_scores(self, parent, min_max_stats):
+        """
+        Compute the UCB scores for all children of a parent node.
+        """
+        ucb_scores = []
+        for child in parent.children.values():
+            ucb_score = self.ucb_score(parent, child, min_max_stats)
+            ucb_scores.append(ucb_score)
+        return ucb_scores
+
+
 class PUCT_visit(PUCT):
     """
     PUCT (Predictor + UCT) is a Monte Carlo Tree Search algorithm that uses a
@@ -850,7 +990,6 @@ class PUCT_visit(PUCT):
 class PUCT_MVC(PUCT):
     def __init__(self, config):
         super().__init__(config)
-        self.policy = MeanVarianceConstraintPolicy(config=self.config)
 
 
     def Q(self, child):
@@ -864,20 +1003,32 @@ class PUCT_MVC(PUCT):
 
 
 
-    # todo try, seems not to work
-    # def calc_U_mvc_experimental(self, parent, child):
-    #     par_inv_q_var = compute_inverse_q_variance(parent, self.config.discount)
-    #     child_inv_q_var = compute_inverse_q_variance(child, self.config.discount)
-    #
-    #     par_inv_q_var = max(par_inv_q_var/3 - 1, 0)
-    #     child_inv_q_var = max(child_inv_q_var/3 - 1, 0)
-    #
-    #     pb_c_log = math.log(
-    #         (par_inv_q_var + self.config.pb_c_base + 1) / self.config.pb_c_base
-    #     )
-    #     pb_c = pb_c_log + self.config.pb_c_init
-    #     pb_c *= math.sqrt(par_inv_q_var) / (child_inv_q_var + 1)
-    #     return pb_c
+class PUCT_Subtree():
+    def __init__(self, config, device):
+        self.device = device
+        self.config = config
+
+
+    def get_ucb_scores(self, parent, min_max_stats):
+
+        # these should both be torch.Tensors (parent_inv_var is a scalar tensor)
+        parent_inv_var = parent.get_inv_var()  # shape: ()
+        children_inv_var = parent.get_children_inv_vars(include_self=False)  # shape: (n_children,)
+
+        child_priors = parent.get_prior().unsqueeze(1)  # shape: (n_children,)
+
+        # vectorized U computation
+        # sqrt(parent_inv_var) broadcasts over the children dimension
+        U_values = child_priors * self.config.PUCT_C * (parent_inv_var.sqrt() / (children_inv_var + 1))
+
+        Q_values = parent.get_children_vals(include_self=False)
+        # Normalize Q values using min-max stats
+        Q_values = min_max_stats.normalize(Q_values)
+
+        # Combine U and Q values
+        ucb_scores = Q_values + U_values
+        return ucb_scores.squeeze()  # shape: (n_children,)
+
 
 
 class MinMaxStats:
@@ -896,6 +1047,12 @@ class MinMaxStats:
     def mass_update(self, values):
         self.maximum = max(self.maximum, max(values))
         self.minimum = min(self.minimum, min(values))
+
+
+    def mass_update_tensor(self, vals):
+        self.maximum = max(self.maximum, vals.max().item())
+        self.minimum = min(self.minimum, vals.min().item())
+
 
     def normalize(self, value):
         if self.maximum > self.minimum:
@@ -934,3 +1091,44 @@ class MinMaxStats:
     #         # assert that value_sum_2 equals value sum (to a few decimals)
     #
     #         updates(node)
+
+
+
+
+    # def make_causal_mask_fast(self, seqs, device):
+    #     n = len(seqs)
+    #     # Convert sequences to tuples for quicker prefix comparisons
+    #     seqs = [tuple(seq) for seq in seqs]
+    #     lengths = [len(s) for s in seqs]
+    #
+    #     # We'll build a boolean tensor of shape [n, n] for the allowed positions
+    #     # and incorporate the causal condition (j <= i) in a single loop.
+    #     allowed_mask = torch.zeros((n, n), dtype=torch.bool, device=device)
+    #
+    #     for i in range(n):
+    #         seq_i = seqs[i]
+    #         len_i = lengths[i]
+    #         # Only check j up to i for the causal condition
+    #         for j in range(i + 1):
+    #             seq_j = seqs[j]
+    #             len_j = lengths[j]
+    #             # Check that seq_j is a prefix of seq_i
+    #             if len_j <= len_i and seq_i[:len_j] == seq_j:
+    #                 allowed_mask[i, j] = True
+    #
+    #     # Now include the "global" token at index 0 in a new (n+1) x (n+1) matrix
+    #     new_allowed = torch.zeros((n + 1, n + 1), dtype=torch.bool, device=device)
+    #     # Allow the global token to attend only to itself
+    #     new_allowed[0, 0] = True
+    #     # All real tokens (1..n) can always attend to the global token (column 0)
+    #     new_allowed[1:, 0] = True
+    #     # Copy in our computed mask
+    #     new_allowed[1:, 1:] = allowed_mask
+    #
+    #     # Convert boolean allowed positions to the float mask format (0 for allowed, -inf for disallowed)
+    #     attention_mask = torch.where(
+    #         new_allowed,
+    #         torch.tensor(0.0, device=device),
+    #         torch.tensor(float('-inf'), device=device)
+    #     )
+    #     return attention_mask

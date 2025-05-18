@@ -109,7 +109,7 @@ class PolicyDistribution(Policy):
         return node.get_pi().sample().item()
 
     @abstractmethod
-    def _probs(self, node) -> th.Tensor:
+    def _probs(self, node, children_vals, children_inv_vars) -> th.Tensor:
         """
         Returns the relative probabilities of the actions (excluding the special action)
         """
@@ -131,14 +131,30 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         self.discount_factor = config.discount
 
 
-    def _probs(self, node):
+    def _probs(self, node, children_vals, children_inv_vars) -> th.Tensor:
 
         # Build unnormalized probabilities (a typical mean-variance approach)
         #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
-        logits = self.beta * th.nan_to_num(node.children_vals)
+
+
+        logits = self.beta * th.nan_to_num(children_vals)
+        # check if there are any nans
+
 
         # logits - logits.max() is to avoid numerical instability
-        probs = node.children_inv_vars * th.exp(logits - logits.max())
+        probs = children_inv_vars * th.exp(logits - logits.max())
+
+        return probs
+
+
+    def layer_probs(self, layer, children_vals, children_inv_vars):
+
+        # Build unnormalized probabilities (a typical mean-variance approach)
+        #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
+        logits = self.beta * th.nan_to_num(children_vals)
+
+        # logits - logits.max() is to avoid numerical instability
+        probs = children_inv_vars * th.exp(logits - logits.max())
 
         return probs
 
