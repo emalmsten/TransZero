@@ -12,6 +12,13 @@ def set_global_seeds(seed):
 
 import torch
 
+
+def arg_max_with_tie_breaking(x):
+    max_val = x.max()
+    candidates = (x == max_val).nonzero(as_tuple=True)[0]
+    random_choice = candidates[torch.randint(0, len(candidates), (1,))].item()
+    return random_choice
+
 def time_cuda_op(name, op,  *args, warmup=10, runs=100, **kwargs):
     """
     Time a CUDA operation using torch.cuda.Event.

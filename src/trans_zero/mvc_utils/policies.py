@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import torch as th
 
 from .value_transforms import IdentityValueTransform, ValueTransform
-from .utility_functions import get_children_policy_values_and_inverse_variance
 
 # todo maybe get some more order of mvc utils
 
@@ -110,16 +109,13 @@ class PolicyDistribution(Policy):
         return node.get_pi().sample().item()
 
     @abstractmethod
-    def _probs(self, node) -> th.Tensor:
+    def _probs(self, node, children_vals, children_inv_vars) -> th.Tensor:
         """
         Returns the relative probabilities of the actions (excluding the special action)
         """
         pass
 
 
-class RandomPolicy(Policy):
-    def sample(self, node) -> int:
-        return node.action_space.sample()
 
 
 class MeanVarianceConstraintPolicy(PolicyDistribution):
@@ -135,15 +131,30 @@ class MeanVarianceConstraintPolicy(PolicyDistribution):
         self.discount_factor = config.discount
 
 
-    def _probs(self, node):
-        normalized_vals, inv_vars = get_children_policy_values_and_inverse_variance(node)
+    def _probs(self, node, children_vals, children_inv_vars) -> th.Tensor:
 
         # Build unnormalized probabilities (a typical mean-variance approach)
         #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
-        logits = self.beta * th.nan_to_num(normalized_vals)
+
+
+        logits = self.beta * th.nan_to_num(children_vals)
+        # check if there are any nans
+
 
         # logits - logits.max() is to avoid numerical instability
-        probs = inv_vars * th.exp(logits - logits.max())
+        probs = children_inv_vars * th.exp(logits - logits.max())
+
+        return probs
+
+
+    def layer_probs(self, layer, children_vals, children_inv_vars):
+
+        # Build unnormalized probabilities (a typical mean-variance approach)
+        #   unnorm_action_i = (inv_variance) * exp( beta * normalized_value )
+        logits = self.beta * th.nan_to_num(children_vals)
+
+        # logits - logits.max() is to avoid numerical instability
+        probs = children_inv_vars * th.exp(logits - logits.max())
 
         return probs
 

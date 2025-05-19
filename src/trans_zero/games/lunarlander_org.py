@@ -26,6 +26,7 @@ class MuZeroConfig:
 
         self.expansion_strategy = None
         self.expansion_budget = 4 # atleast 1 node needs to be expanded
+        self.subtree_layers = 2
 
         # action selection
         self.action_selection = "visit"  # mvc or std
