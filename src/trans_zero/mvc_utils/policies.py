@@ -6,10 +6,9 @@ from .value_transforms import IdentityValueTransform, ValueTransform
 
 # todo maybe get some more order of mvc utils
 
-def custom_softmax_old(
+def custom_softmax(
     probs: th.Tensor,
     temperature: float | None = None,
-    action_mask: th.Tensor | None = None,
 ) -> th.Tensor:
     """Applies softmax to the input tensor with a temperature parameter.
 
@@ -32,12 +31,11 @@ def custom_softmax_old(
     else:
         p = th.nn.functional.softmax(probs / temperature, dim=-1)
 
-    if action_mask is not None:
-        p[~action_mask] = 0.0
-
     return p
 
-def custom_softmax(
+
+
+def mz_normalizing(
     probs: th.Tensor,
     temperature: float | None = None,
 ) -> th.Tensor:

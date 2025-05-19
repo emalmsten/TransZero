@@ -2,7 +2,7 @@ import numpy
 import torch
 import torch as th
 
-from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, custom_softmax, custom_softmax_old
+from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, mz_normalizing, custom_softmax
 
 import itertools
 
@@ -191,10 +191,10 @@ class MVCNode(Node):
         pi_probs = self.get_pi_probs(include_self)
 
         if temperature is not None:
-            if self.config.use_old_softmax:
-                pi_probs = custom_softmax_old(pi_probs, temperature)
-            else:
+            if self.config.use_softmax:
                 pi_probs = custom_softmax(pi_probs, temperature)
+            else:
+                pi_probs = mz_normalizing(pi_probs, temperature)
 
         return th.distributions.Categorical(probs=pi_probs)
 
@@ -383,10 +383,10 @@ class SubTreeNode():
         pi_probs = self.get_pi_probs(include_self)
 
         if temperature is not None:
-            if self.subtree.config.use_old_softmax:
-                pi_probs = custom_softmax_old(pi_probs, temperature)
-            else:
+            if self.subtree.config.use_softmax:
                 pi_probs = custom_softmax(pi_probs, temperature)
+            else:
+                pi_probs = mz_normalizing(pi_probs, temperature)
 
         return th.distributions.Categorical(probs=pi_probs)
 
