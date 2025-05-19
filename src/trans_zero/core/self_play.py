@@ -176,7 +176,7 @@ class SelfPlay:
                             temperature != 0
                         )
 
-                    if self.config.expansion_strategy == 'deep_new':
+                    elif self.config.expansion_strategy == 'deep_new':
                         device = next(self.model.parameters()).device
                         root, mcts_info = MCTS_SubTree(self.config, device).run(
                             self.model,
