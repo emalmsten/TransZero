@@ -40,7 +40,6 @@ def custom_softmax_old(
 def custom_softmax(
     probs: th.Tensor,
     temperature: float | None = None,
-    action_mask: th.Tensor | None = None,
 ) -> th.Tensor:
     """Applies AlphaZero-style heuristic temperature scaling to the input tensor.
 
@@ -53,10 +52,6 @@ def custom_softmax(
         th.Tensor: Normalized probability distribution.
     """
 
-    if action_mask is not None:
-        probs = probs.clone()
-        probs[~action_mask] = 0.0
-
     if temperature is None:
         p = probs
 
@@ -67,8 +62,13 @@ def custom_softmax(
         p = probs ** (1.0 / temperature)
         p = p / p.sum(dim=-1, keepdim=True)
 
-    if action_mask is not None:
-        p[~action_mask] = 0.0
+        inf_mask = th.isinf(p)
+        if inf_mask.any():
+            # give each infinite-entry an equal share
+            p = inf_mask.to(p.dtype) / inf_mask.sum()
+        else:
+            # otherwise do the normal normalization
+            p = p / p.sum(dim=-1, keepdim=True)
 
     return p
 
