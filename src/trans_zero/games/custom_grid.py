@@ -116,9 +116,9 @@ class MuZeroConfig:
         self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
 
 
-        self.expansion_strategy = "deep_2" #None #
+        self.expansion_strategy = None #"deep_2" #None #
         self.expansion_budget = 12 # atleast 1 node needs to be expanded
-        self.num_simulations = 5  # Number of future moves self-simulated
+        self.num_simulations = 25  # Number of future moves self-simulated
         self.max_seq_length = 25 # todo reconsider length
         self.expand_all_children = True
 
@@ -184,7 +184,7 @@ class MuZeroConfig:
         self.opponent = None  # Hard coded agent that MuZero faces to assess his progress in multiplayer games. It doesn't influence training. None, "random" or "expert" if implemented in the Game class
 
         ### Self-Play
-        self.num_workers = 8 # Number of simultaneous threads/workers self-playing to feed the replay buffer
+        self.num_workers = 2#8 # Number of simultaneous threads/workers self-playing to feed the replay buffer
         self.max_moves = max_moves[self.custom_map] # Maximum number of moves if game is not finished before
         self.discount = 0.997  # Chronological discount of the reward
         self.temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
@@ -227,7 +227,7 @@ class MuZeroConfig:
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "res"  # "res", "cnn" or "mlp"
+        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -259,11 +259,11 @@ class MuZeroConfig:
         self.lr_init = 0.001 # res: 0.015
         self.lr_decay_rate = 0.95
         self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
-        self.warmup_steps = 0.025 * self.training_steps if self.network == "transformer" else 0
+        self.warmup_steps = 0.1 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
         self.replay_buffer_size = 150000  # Number of self-play games to keep in the replay buffer
-        self.num_unroll_steps = 10  # Number of game moves to keep for every batch element
+        self.num_unroll_steps = 7#10  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
         self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
