@@ -158,6 +158,7 @@ class MVCNode(Node):
 
     def recalculate_val_and_var(self):
         self.reset_all()
+        # todo note the setting of pi_probs here is unecessary, since it is set in the policy_value_and_variance
         self.policy_value, self.variance, self.pi_probs = policy_value_and_variance(self, self.discount_factor)
         return self.policy_value, self.variance, self.pi_probs
 
@@ -184,6 +185,11 @@ class MVCNode(Node):
     def get_pi_probs(self, include_self=False):
         return self.pi_probs if include_self else self.pi_probs[:-1]
 
+    def set_pi_probs(self, raw_pi_probs):
+        """
+        Set the policy distribution for the node.
+        """
+        self.pi_probs = raw_pi_probs
 
     def get_pi(self, include_self=False, temperature = None):
         """

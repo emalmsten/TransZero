@@ -14,11 +14,16 @@ def policy_value_and_variance(node, discount):
     The variance is calculated as the sum of the variances of the children
     and the variance of the current node.
     """
+    # todo can move this part until ===== to its own method
     children_vals = node.get_children_vals(include_self=True).squeeze()
     children_vars = node.get_children_vars(include_self=True).squeeze()
     children_inv_vars = node.get_children_inv_vars(include_self=True).squeeze()
 
-    pi_probs = node.policy._probs(node, children_vals=children_vals, children_inv_vars=children_inv_vars)
+    # reclaculation of pi
+    raw_pi_probs = node.policy._probs(node, children_vals=children_vals, children_inv_vars=children_inv_vars)
+    node.set_pi_probs(raw_pi_probs)
+    pi_probs = node.get_pi(include_self=True).probs
+    # =======
 
     reward_variance = 0.0
     value_evaluation_variance = 1.0
