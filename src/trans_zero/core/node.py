@@ -158,9 +158,9 @@ class MVCNode(Node):
 
     def recalculate_val_and_var(self):
         self.reset_all()
-        # todo note the setting of pi_probs here is unecessary, since it is set in the policy_value_and_variance
-        self.policy_value, self.variance, self.pi_probs = policy_value_and_variance(self, self.discount_factor)
-        return self.policy_value, self.variance, self.pi_probs
+        # todo note that pi probs is cached in that method
+        self.policy_value, self.variance= policy_value_and_variance(self, self.discount_factor)
+        return self.policy_value, self.variance
 
 
     def get_value(self):
@@ -381,6 +381,13 @@ class SubTreeNode():
 
         return child_inv_vars
 
+    def set_pi_probs(self, raw_pi_probs):
+        """
+        Set the policy distribution for the node.
+        """
+        # todo make set attr for this
+        self.subtree.pi_probs[self.idx] = raw_pi_probs
+
 
     def get_pi(self, include_self=False, temperature=None):
         """
@@ -404,16 +411,16 @@ class SubTreeNode():
 
 
     def recalculate_val_and_var(self):
-        val, var, pi_probs = policy_value_and_variance(self, self.discount)
-        self.set_val_and_vars(val, var, pi_probs)
-        return val, var, pi_probs
+        val, var = policy_value_and_variance(self, self.discount)
+        self.set_val_and_vars(val, var)
+        return val, var
 
 
-    def set_val_and_vars(self, val, var, pi_probs):
+    def set_val_and_vars(self, val, var):
         self.subtree.vals[self.idx] = val
         self.subtree.vars[self.idx] = var
         self.subtree.inv_vars[self.idx] = 1 / var
-        self.subtree.pi_probs[self.idx] = pi_probs
+        # self.subtree.pi_probs[self.idx] = pi_probs # set in policy_value_and_variance
 
         return val
 
@@ -510,11 +517,36 @@ class SubTreeLayer:
 
 
 
-    def set_val_and_vars(self, val, var, pi_probs):
+    def set_val_and_vars(self, val, var):
         self.subtree.vals[self.layer_slice] = val
         self.subtree.vars[self.layer_slice] = var
         self.subtree.inv_vars[self.layer_slice] = 1.0 / var
-        self.subtree.pi_probs[self.layer_slice] = pi_probs
+        #self.subtree.pi_probs[self.layer_slice] = pi_probs # set in policy_value_and_variance_layer
+
+
+    def set_pi_probs(self, raw_pi_probs):
+        """
+        Set the policy distribution for the node.
+        """
+        # todo make set attr for this
+        self.subtree.pi_probs[self.layer_slice] = raw_pi_probs
+
+
+    def get_pi_layer(self, include_self=False, temperature=None):
+        """
+        # todo is exact same as node, consider refactoring
+        Get the policy distribution for the node.
+        """
+        pi_probs = self.get_pi_probs()
+
+        if temperature is not None or include_self is False:
+            raise NotImplementedError("Temperature nro include self is not implemented for SubTreeLayer")
+            if self.subtree.config.use_softmax:
+                pi_probs = custom_softmax(pi_probs, temperature)
+            else:
+                pi_probs = mz_normalizing(pi_probs, temperature)
+
+        return th.distributions.Categorical(probs=pi_probs)
 
 
 
@@ -589,11 +621,12 @@ class SubTree():
         self.prior[0] = self.prior[0] * (1 - frac) + noise * frac
 
 
-    def set_val_and_var_parent(self):
+    def set_val_and_var_probs_parent(self):
         """
         Set the value and variance of the parent node.
         """
-        self.parent.set_val_and_vars(self.vals[0], self.vars[0], self.pi_probs[0])
+        self.parent.set_val_and_vars(self.vals[0], self.vars[0])
+        self.parent.set_pi_probs(self.pi_probs[0])
 
 
     def get_list_slice(self, attr, range_slice):
@@ -770,8 +803,8 @@ class SubTree():
         # reverse range
         for layer_num in reversed(range(0, self.num_layers+1)):
             layer = SubTreeLayer(self, layer_num)
-            val, var, pi_probs = policy_value_and_variance_layer(layer, self.discount)
-            layer.set_val_and_vars(val, var, pi_probs)
+            val, var = policy_value_and_variance_layer(layer, self.discount)
+            layer.set_val_and_vars(val, var)
 
         return self.vals
 

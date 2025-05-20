@@ -671,7 +671,7 @@ class MCTS_PLL(MCTS):
         # reverse traversal to get children first
         val_list = []
         for node in reversed(node_list):
-            val, _, _ = node.recalculate_val_and_var()
+            val, _ = node.recalculate_val_and_var()
             val_list.append(val.item())
 
             if node.parent is None:
@@ -897,14 +897,14 @@ class MCTS_SubTree(MCTS_PLL):
 
         # TODO, if not root you can set the values of the parent to root of previous
         # todo update the parent of the root node to the values of the root node
-        subtree.set_val_and_var_parent()
+        subtree.set_val_and_var_probs_parent()
 
         # since root.parent is already set above, take the grandparent
         node = subtree.parent.parent
 
         loop_vals = []
         while True:
-            val, _, _ = node.recalculate_val_and_var()
+            val, _ = node.recalculate_val_and_var()
             loop_vals.append(val)
 
             if node.parent is None:

@@ -47,7 +47,7 @@ def policy_value_and_variance(node, discount):
             + (child_propabilities_squared * child_variances).sum()
     )
 
-    return val, var, pi_probs  # , probabilities
+    return val, var
 
 
 
@@ -57,7 +57,9 @@ def policy_value_and_variance_layer(layer, discount):
     children_vars = layer.get_child_layer_vars(include_self=True)
     children_inv_vars = layer.get_child_layer_inv_vars(include_self=True)
 
-    pi_probs = layer.subtree.policy.layer_probs(layer, children_vals=children_vals, children_inv_vars=children_inv_vars)
+    raw_pi_probs = layer.subtree.policy.layer_probs(layer, children_vals=children_vals, children_inv_vars=children_inv_vars)
+    layer.set_pi_probs(raw_pi_probs) # todo
+    pi_probs = layer.get_pi_layer(include_self=True).probs # todo
 
     reward_var = layer.get_reward_vars()
     value_eval_var = layer.get_value_eval_vars()
@@ -90,7 +92,7 @@ def policy_value_and_variance_layer(layer, discount):
             )
     )
 
-    return val, var, pi_probs
+    return val, var
 
 
 
