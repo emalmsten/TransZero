@@ -123,11 +123,11 @@ class MuZeroConfig:
         self.expand_all_children = True
 
         # action selection
-        self.action_selection = "visit" # mvc or visit
+        self.action_selection = "mvc" # mvc or visit
         self.PUCT_C = 2.5
-        self.PUCT_variant = "visit"
+        self.PUCT_variant = "mvc"
         self.mvc_beta = 0.3
-        self.policy_target_type = "visit"
+        self.policy_target_type = "mvc"
         self.test_ucb = False
 
         # Local
