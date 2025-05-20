@@ -352,8 +352,13 @@ class MCTS_PLL(MCTS):
             "custom_causal_mask": self.make_causal_mask(full_seqs, device=device),
         }
 
-
         root, all_scalars = self.expand_root_pll(self.unexpanded_root, observation, model, legal_actions, to_play, pll_args)
+
+        if False and add_exploration_noise: # TODO
+            root.add_exploration_noise(
+                dirichlet_alpha=self.config.root_dirichlet_alpha,
+                exploration_fraction=self.config.root_exploration_fraction,
+            )
 
         max_tree_depth = 0
 
@@ -700,6 +705,13 @@ class MCTS_SubTree(MCTS_PLL):
         pll_args = self.get_pll_args(self.unexpanded_subtree_root, [])
 
         root_subtree = self.expand_subtree_root(self.unexpanded_subtree_root, observation, model, legal_actions, to_play, pll_args)
+
+        if False and add_exploration_noise:
+            root_subtree.add_exploration_noise(
+                dirichlet_alpha=self.config.root_dirichlet_alpha,
+                exploration_fraction=self.config.root_exploration_fraction,
+            )
+
         vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
         self.min_max_stats.mass_update(vals)
 
@@ -835,6 +847,8 @@ class MCTS_SubTree(MCTS_PLL):
         ), "Legal actions should be a subset of the action space."
 
         root_tree.expand(all_scalars, root_latent_state)
+
+
 
         return root_tree
 

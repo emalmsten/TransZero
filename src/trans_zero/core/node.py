@@ -80,6 +80,7 @@ class Node:
     def get_child_name(self, action):
         return f"{self.name}_{action}" if self.name != "root" else f"r_{action}"
 
+
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         """
         At the start of each search, we add dirichlet noise to the prior of the root to
@@ -412,6 +413,9 @@ class SubTreeNode():
 
 
 
+
+
+
 class SubTreeLayer:
     """
     SubTreeLayer is a special node that is used to represent the PLL (Permutation, Location, and Layer) of the grid.
@@ -567,6 +571,18 @@ class SubTree():
             raise AttributeError(f"{type(self).__name__} has no attribute {item}")
 
 
+    def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
+        """
+        At the start of each search, we add dirichlet noise to the prior of the root to
+        encourage the search to explore new actions.
+        """
+        noise = numpy.random.dirichlet([dirichlet_alpha] * self.action_space_size)
+        frac = exploration_fraction
+        # for a, n in zip(actions, noise):
+        #     self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
+        self.prior[0] = self.prior[0] * (1 - frac) + noise * frac
+
+
     def set_val_and_var_parent(self):
         """
         Set the value and variance of the parent node.
@@ -716,6 +732,9 @@ class SubTree():
             self.mask = self.make_subtree_mask()
 
         return self.mask
+
+
+
 
 
     def bfs_sequences(self):
