@@ -256,7 +256,7 @@ class MuZeroConfig:
 
         # Exponential learning rate schedule
         self.lr_init = 0.001 # res: 0.015
-        self.lr_decay_rate = 0.95
+        self.lr_decay_rate = 0.99
         self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
         self.warmup_steps = 0.1 * self.training_steps if self.network == "transformer" else 0
 
