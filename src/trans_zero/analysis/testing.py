@@ -6,8 +6,76 @@ from trans_zero.utils import models
 import trans_zero.networks.muzero_network as mz_net
 
 import json
+from trans_zero.core import self_play
+
+import ray
+import numpy
+
 
 # todo consider cleaning up this file
+
+
+def time_trial(
+        muzero, opponent=None, muzero_player=None, num_tests=1
+):
+    """
+    Test the model in a dedicated thread.
+
+    Args:
+        render (bool): To display or not the environment. Defaults to True.
+
+        opponent (str): "self" for self-play, "human" for playing against MuZero and "random"
+        for a random agent, None will use the opponent in the config. Defaults to None.
+
+        muzero_player (int): Player number of MuZero in case of multiplayer
+        games, None let MuZero play all players turn by turn, None will use muzero_player in
+        the config. Defaults to None.
+
+        num_tests (int): Number of games to average. Defaults to 1.
+
+        num_gpus (int): Number of GPUs to use, 0 forces to use the CPU. Defaults to 0.
+    """
+    warmup_games = 1
+    warmup_steps = 5
+
+    opponent = opponent if opponent else muzero.config.opponent
+    muzero_player = muzero_player if muzero_player else muzero.config.muzero_player
+
+    self_play_worker = self_play.SelfPlay.options(
+        num_cpus=0,
+        num_gpus=1,
+    ).remote(muzero.checkpoint, muzero.Game, muzero.config, numpy.random.randint(10000))
+
+    results = []
+    for i in range(num_tests):
+        print(f"Game {i} of {num_tests}")
+
+        res = ray.get(
+                self_play_worker.play_game.remote(
+                    0,
+                    0,
+                    False,
+                    opponent,
+                    muzero_player,
+                    0,
+                    time_trial=True
+                )
+            )
+
+        if i >= warmup_games:
+            results.append(res)
+
+    self_play_worker.close_game.remote()
+
+    # todo consider what to do with result
+    results = [games[warmup_steps:] for games in results if len(games) > warmup_steps]
+    result_means_per_game = [numpy.mean(game) for game in results]
+
+    for game_mean in result_means_per_game:
+        print(f"{game_mean}")
+    print("====================")
+    print(f"Average time: {numpy.mean(result_means_per_game)}")
+
 
 def seq_testing(muzero, file, results_file):
     from trans_zero.core.self_play import update_pred_dict
@@ -145,6 +213,11 @@ def setup_testing(muzero, args):
         # put results into file
         with open(f"{PROJECT_ROOT}/data/predictions/results/{name}", "w") as f:
             json.dump(results, f)
+
+    if "time_trial" in args.test_mode:
+        num_games = int(args.test_mode.split("_")[-1])
+        print(f"Testing {num_games} games")
+        time_trial(muzero, opponent="self", muzero_player=None, num_tests=num_games)
 
     else:
         results = muzero.test(render=True, opponent="self", muzero_player=None)

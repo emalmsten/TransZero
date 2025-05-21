@@ -165,24 +165,23 @@ def load_config(config):
 
 
 def setup_local_args(cmd_args, test):
-    cmd_args.game_name = "custom_grid" #"lunarlander_org" #
-    # args.wandb_run_id = "6k4ghx4k"
-    # args.wandb_model_number = 320000
+    cmd_args.game_name = "lunarlander_org" #"custom_grid" #
+    #args.wandb_run_id = "r7qidz0i"
+    #args.wandb_model_number = 320000
     # args.model_path = "models/trans/trans_lunar_320k.checkpoint"
+    if cmd_args.config is None:
+        cmd_args.config = {}
 
     if test:
-        cmd_args.test_mode = "n_maps!!"  #
-        cmd_args.config = {"testing": True}
+        cmd_args.test_mode = "time_trial_3"  #
+        cmd_args.config["testing"] = True
 
-    cmd_args.config = {
-        "debug_mode": False or (sys.gettrace() is not None),
-    }
+    cmd_args.config["debug_mode"] = False or (sys.gettrace() is not None)
 
     # remove logger and use only 1 worker if in debug mode
     if test or cmd_args.config["debug_mode"]:
         cmd_args.config["logger"] = None
         cmd_args.config["num_workers"] = 1
-
 
     return cmd_args
 
@@ -225,7 +224,8 @@ def main(args):
     if checkpoint_path:
         muzero.load_model(checkpoint_path, replay_buffer_path)
 
-    if args.test_mode:
+    if args.test_mode: # todo
+        print("Testing mode")
         setup_testing(muzero, args)
     else:
         muzero.train()

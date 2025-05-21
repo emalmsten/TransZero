@@ -86,7 +86,7 @@ def refresh(cfg):
 
     if cfg.testing:
         reason = "testing is True"
-        set_attributes(cfg, "show_preds", True, reason)
+        #set_attributes(cfg, "show_preds", True, reason)
 
     if cfg.debug_mode:
         reason = "debug mode is True"

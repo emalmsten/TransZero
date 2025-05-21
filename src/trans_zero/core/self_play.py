@@ -28,6 +28,7 @@ class SelfPlay:
 
         # Initialize the network
         self.model = mz_net.MuZeroNetwork(self.config)
+
         try:
             self.model.set_weights(initial_checkpoint["weights"])
         except Exception:
@@ -128,7 +129,7 @@ class SelfPlay:
 
 
     def play_game(
-        self, temperature, temperature_threshold, render, opponent, muzero_player, game_number
+        self, temperature, temperature_threshold, render, opponent, muzero_player, game_number, time_trial=False
     ):
         """
         Play one game with actions based on the Monte Carlo tree search at each moves.
@@ -145,6 +146,9 @@ class SelfPlay:
 
         if render:
             self.game.render()
+
+        if time_trial:
+            times = []
 
         if self.config.show_preds:
             game_dict = {"game": game_number, "results": [], "chosen_actions": []}
@@ -163,6 +167,11 @@ class SelfPlay:
                 stacked_observations = game_history.get_stacked_observations(
                     -1, self.config.stacked_observations, len(self.config.action_space)
                 )
+
+                if time_trial:
+
+                    torch.cuda.synchronize()
+                    start_time = time.time()
 
                 # Choose the action
                 if opponent == "self" or muzero_player == self.game.to_play():
@@ -202,6 +211,14 @@ class SelfPlay:
                         else 0,
                     )
 
+                    if time_trial:
+                        torch.cuda.synchronize()
+                        end_time = time.time()
+                        action = 0
+
+                        elapsed_time = end_time - start_time
+                        times.append(elapsed_time)
+
                     if render:
                         print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                         print(f"Root value for player {self.game.to_play()}: {root.get_value():.2f}")
@@ -239,6 +256,8 @@ class SelfPlay:
                 f.write('\n')  # Add a newline after each JSON object
                 f.flush()
 
+        if time_trial:
+            return times
 
         return game_history
 

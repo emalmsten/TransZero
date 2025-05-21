@@ -4,18 +4,14 @@ import json
 import math
 import pathlib
 import pickle
-import os
 
 # todo rename models
-from trans_zero.utils import models
 
 import numpy
 import ray
 import torch
 
-from trans_zero.analysis.diagnose_model import DiagnoseModel
 from . import replay_buffer, self_play, shared_storage, trainer
-import wandb
 from trans_zero.utils.config_utils import print_config, init_config
 
 from trans_zero.utils.muzero_logger import logging_loop, get_initial_checkpoint
@@ -92,6 +88,7 @@ class MuZero:
         """
         logger = self.config.logger
 
+
         # Manage GPUs
         num_gpus_per_worker = calc_num_gpus_per_worker(self.num_gpus, self.config, logger)
 
@@ -133,6 +130,7 @@ class MuZero:
             )
             for seed in range(self.config.num_workers)
         ]
+
 
         # Launch workers
         [
