@@ -57,16 +57,10 @@ def mz_normalizing(
         max_prob = th.max(probs, dim=-1, keepdim=True).values
         p = (probs == max_prob).float()
     else:
-        p = probs ** (1.0 / temperature)
-        p = p / p.sum(dim=-1, keepdim=True)
+        eps = 1e-8
+        p = probs.clamp_min(eps) ** (1.0 / temperature)
+        p = p / p.sum(dim=-1, keepdim=True).clamp_min(eps)
 
-        inf_mask = th.isinf(p)
-        if inf_mask.any():
-            # give each infinite-entry an equal share
-            p = inf_mask.to(p.dtype) / inf_mask.sum()
-        else:
-            # otherwise do the normal normalization
-            p = p / p.sum(dim=-1, keepdim=True)
 
     return p
 
