@@ -2,7 +2,7 @@
   "custom_map": "5x5_9h_3d",
   "representation_network_type": "res",
   "positional_embedding_type": "sinus",
-  "network": "res",
+  "network": "resnet",
   "random_map": false,
   "start_pos": null,
   "max_seq_length": 25,
