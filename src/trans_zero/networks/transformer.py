@@ -509,7 +509,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         )
 
         if just_state:
-            return None, state_reward, encoded_state, None
+            return None, state_reward, None, encoded_state
 
         if pll_args is not None:
             return self.pll_initial_inference(encoded_state, state_reward, pll_args)
