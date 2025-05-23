@@ -1,6 +1,6 @@
 {
   "custom_map": "5x5_9h_3d",
-  "representation_network_type": "res",
+  "representation_network_type": "cnn_mlp",
   "positional_embedding_type": "sinus",
   "network": "transformer",
   "random_map": false,
