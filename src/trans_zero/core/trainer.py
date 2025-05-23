@@ -314,10 +314,15 @@ class Trainer:
 
         targets = (target_value, target_reward, target_policy)
 
-        value, reward, policy_logits, hidden_state = self.model.initial_inference(
-            observation_batch,
-            only_state = transformer_net
-        )
+        if transformer_net:
+            value, reward, policy_logits, hidden_state = self.model.initial_inference(
+                observation_batch,
+                just_state = transformer_net
+            )
+        else:
+            value, reward, policy_logits, hidden_state = self.model.initial_inference(
+                observation_batch,
+            )
         init_predictions = (value, reward, policy_logits)
         latent_root_state = hidden_state
 
