@@ -223,9 +223,9 @@ class Trainer:
         )
         # todo, only really reward necessary
         # set the 0th value from the inital inference
-        trans_value[:, 0] = value
+        #trans_value[:, 0] = value
         trans_reward[:, 0] = reward
-        trans_policy_logits[:, 0] = policy_logits
+        #trans_policy_logits[:, 0] = policy_logits
         predictions = (trans_value, trans_reward, trans_policy_logits)
 
         return predictions, transformer_output
@@ -314,7 +314,10 @@ class Trainer:
 
         targets = (target_value, target_reward, target_policy)
 
-        value, reward, policy_logits, hidden_state = self.model.initial_inference(observation_batch)
+        value, reward, policy_logits, hidden_state = self.model.initial_inference(
+            observation_batch,
+            only_state = transformer_net
+        )
         init_predictions = (value, reward, policy_logits)
         latent_root_state = hidden_state
 

@@ -123,11 +123,11 @@ class MuZeroConfig:
         self.expand_all_children = True
 
         # action selection
-        self.action_selection = "mvc" # mvc or visit
+        self.action_selection = "visit" # mvc or visit
         self.PUCT_C = 2.5
-        self.PUCT_variant = "mvc"
+        self.PUCT_variant = "visit"
         self.mvc_beta = 0.3
-        self.policy_target_type = "mvc"
+        self.policy_target_type = "visit"
         self.test_ucb = False
 
         # Local
@@ -147,7 +147,7 @@ class MuZeroConfig:
         self.custom_map = "3x3_2h_2d" #"4x4_3h_3d" # #
         self.start_pos = None #(3,1) #None #(0,1)
         self.start_dir = None # 0: right, 1: down, 2: left, 3: up
-        self.random_map = False
+        self.random_map = True
         self.pov = '1_hot_god' # agent, god, 1_hot_god, 2_hot_god
 
         # Naming

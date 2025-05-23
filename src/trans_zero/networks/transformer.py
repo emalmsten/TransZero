@@ -116,6 +116,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     norm_layer=norm_layer,
                 )
             )
+        elif representation_network_type == "cnn_pool":
+            self.representation_network = cond_wrap(MiniGridCNN())
+
+        elif representation_network_type == "cls":
+            self.representation_network = cond_wrap(
+                RepWithCLS(6)
+            )
 
 
         elif representation_network_type == "cnn":
@@ -369,11 +376,16 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
             return self.representation_mlp(observation)
+        elif self.representation_network_type == "cnn_pool":
+            return self.representation_res(observation)
         elif self.representation_network_type == "cnn":
             return self.representation_res(observation)
         elif self.representation_network_type == "cnn_mlp":
             enc_obs = self.cnn(observation)
             return self.representation_mlp(enc_obs)
+        elif self.representation_network_type == "cls":
+            return self.representation_network(observation)
+
         elif self.representation_network_type == "none":
 
             # flatten observation
@@ -435,9 +447,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         max_encoded_state = encoded_state.max(1, keepdim=True)[0]
         scale_encoded_state = max_encoded_state - min_encoded_state
         scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
-        encoded_state_normalized = (
-                                           encoded_state - min_encoded_state
-                                   ) / scale_encoded_state
+        encoded_state_normalized = ( encoded_state - min_encoded_state) / scale_encoded_state
         return encoded_state_normalized
 
 
@@ -483,7 +493,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         return values, rewards, all_policy_logits, encoded_state
 
 
-    def initial_inference(self, observation, pll_args=None):
+    def initial_inference(self, observation, just_state=False, pll_args=None):
         # only in the parallel version are the optional arguments used
 
         encoded_state = self.representation(observation)
@@ -497,6 +507,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 .to(observation.device)
             )
         )
+
+        if just_state:
+            return None, state_reward, encoded_state, None
 
         if pll_args is not None:
             return self.pll_initial_inference(encoded_state, state_reward, pll_args)
@@ -740,6 +753,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+
+class MiniGridCNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # self.conv = nn.Sequential(
+        #     nn.Conv2d(6, 16, kernel_size=2),  # (6,3,3) -> (16,2,2)
+        #     nn.ReLU(),
+        # )
+        self.conv = nn.Sequential(
+            nn.Conv2d(6, 32, kernel_size=3, padding=1),  # → (32, 3, 3)
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),  # → (32, 1, 1)
+        )
+
+        self.pool = nn.AdaptiveMaxPool2d((1, 1))  # (16,2,2) -> (16,1,1)
+        self.flatten = nn.Flatten()               # -> (16)
+        #self.fc = nn.Linear(32, 32)               # -> (32)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.pool(x)
+        x = self.flatten(x)
+        #x = self.fc(x)
+        return x
+
+
 class ConvRepresentationNet(nn.Module):
     def __init__(self, input_channels, conv_layers, activation=nn.ELU):
         super().__init__()
@@ -762,6 +801,39 @@ class ConvRepresentationNet(nn.Module):
         """
         return self.encoder(x)
 
+import torch
+import torch.nn as nn
+
+class RepWithCLS(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        # stem & residuals as before, ending in (B, 32, 3, 3)…
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, 32, 3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            ResidualBlock(32),
+            ResidualBlock(32),
+        )
+        # one learned CLS token per batch (we'll expand it)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, 32))
+        # a tiny transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=32, nhead=4)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
+
+    def forward(self, x):
+        B = x.size(0)
+        x = self.stem(x)                    # → (B, 32, 3, 3)
+        tokens = x.flatten(2).transpose(1, 2)  # → (B,  9, 32)
+        # prepend CLS:
+        cls = self.cls_token.expand(B, -1, -1)  # → (B, 1, 32)
+        seq = torch.cat([cls, tokens], dim=1)   # → (B, 10, 32)
+        # Transformer wants (seq_len, batch, dim):
+        seq = seq.transpose(0, 1)               # → (10, B, 32)
+        out = self.encoder(seq)                 # → (10, B, 32)
+        cls_out = out[0]                        # → (B, 32)
+        return cls_out                       # single state token
 
 
 #
