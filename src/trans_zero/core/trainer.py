@@ -422,9 +422,9 @@ class Trainer:
         scaling_factors = gradient_scale_batch + 1e-8  # Shape: (batch_size, sequence_length)
 
         # Apply scaling from index 1 onwards
-        value_losses[:, 1:] = value_losses[:, 1:] / scaling_factors[:, 1:]
-        reward_losses[:, 1:] = reward_losses[:, 1:] / scaling_factors[:, 1:]
-        policy_losses[:, 1:] = policy_losses[:, 1:] / scaling_factors[:, 1:]
+        value_losses = value_losses / scaling_factors
+        reward_losses = reward_losses / scaling_factors
+        policy_losses = policy_losses / scaling_factors
 
         value_loss = value_losses.sum(dim=1)  # Shape: (batch_size,)
         reward_loss = reward_losses.sum(dim=1)
