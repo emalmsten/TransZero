@@ -7,7 +7,7 @@
   "start_pos": null,
   "max_seq_length": 25,
   "training_steps": 25000,
-  "lr_init": 0.0005,
+  "lr_init": 0.00025,
   "lr_decay_rate": 0.99,
   "transformer_layers": 4,
   "fc_layers_trans": [128, 64],
