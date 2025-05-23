@@ -414,9 +414,9 @@ class Trainer:
         non_padding_mask = ~action_mask
         # Apply mask to losses
         # todo consider if you should really remove losses after game ended
-        value_losses = value_losses * non_padding_mask
-        reward_losses = reward_losses * non_padding_mask
-        policy_losses = policy_losses * non_padding_mask
+        # value_losses = value_losses * non_padding_mask
+        # reward_losses = reward_losses * non_padding_mask
+        # policy_losses = policy_losses * non_padding_mask
 
         # Directly scale the losses, add an epsilon to avoid dividing by zero
         scaling_factors = gradient_scale_batch + 1e-8  # Shape: (batch_size, sequence_length)
