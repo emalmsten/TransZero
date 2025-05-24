@@ -317,7 +317,7 @@ class Trainer:
         if transformer_net: # todo
             value, reward, policy_logits, hidden_state = self.model.initial_inference(
                 observation_batch,
-                just_state = transformer_net
+                just_state = transformer_net and not self.config.use_s0_for_pred
             )
         else:
             value, reward, policy_logits, hidden_state = self.model.initial_inference(
