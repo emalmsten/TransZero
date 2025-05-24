@@ -270,6 +270,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
     def prediction(self, latent_root_state, action_sequence=None, custom_pos_indices=None, custom_causal_mask=None,
                    return_n_last_predictions=1):
 
+        if action_sequence is None and self.config.use_s0_for_pred:
+            return self.policy_head(latent_root_state), self.value_head(latent_root_state), None
+
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence, custom_pos_indices=custom_pos_indices)
 
         # Pass through the transformer encoder

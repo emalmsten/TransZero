@@ -221,11 +221,11 @@ class Trainer:
         trans_value, trans_reward, trans_policy_logits, transformer_output = self.model.recurrent_inference_fast(
             latent_root_state, action_batch[:, 1:].squeeze(-1), mask_batch
         )
-        # todo, only really reward necessary
         # set the 0th value from the inital inference
-        #trans_value[:, 0] = value
         trans_reward[:, 0] = reward
-        #trans_policy_logits[:, 0] = policy_logits
+        if self.config.use_s0_for_pred:
+            trans_value[:, 0] = value
+            trans_policy_logits[:, 0] = policy_logits
         predictions = (trans_value, trans_reward, trans_policy_logits)
 
         return predictions, transformer_output
