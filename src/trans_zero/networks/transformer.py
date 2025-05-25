@@ -85,6 +85,22 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     state_size=self.state_size
                 )
             )
+
+        elif representation_network_type == "res_pool":
+            self.representation_network = cond_wrap(
+                RepresentationNetworkPool(
+                    observation_shape,
+                    stacked_observations,
+                    num_blocks=res_blocks,
+                    num_channels=64,
+                    downsample=downsample,
+                    fc_layers=fc_layers,
+                    encoding_size=self.transformer_hidden_size,
+                    norm_layer=norm_layer,
+                    state_size=self.state_size
+                )
+            )
+
         elif representation_network_type == "mlp":
             self.representation_network = cond_wrap(
                 mlp(
@@ -377,6 +393,8 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 return self.representation_3d(observation)
             else:
                 return self.representation_res(observation)
+        elif self.representation_network_type == "res_pool":
+            return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
             return self.representation_mlp(observation)
         elif self.representation_network_type == "cnn_pool":
@@ -386,7 +404,10 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         elif self.representation_network_type == "cnn_mlp":
             enc_obs = self.cnn(observation)
             return self.representation_mlp(enc_obs)
-        elif self.representation_network_type == "cls":
+
+
+
+        elif self.representation_network_type == "cls" or self.representation_network_type == "cls_adv":
             return self.representation_network(observation)
 
         elif self.representation_network_type == "none":
@@ -751,6 +772,68 @@ class RepresentationNetwork(torch.nn.Module):
         return x
 
 
+
+class RepresentationNetworkPool(nn.Module):
+    def __init__(
+        self,
+        observation_shape,
+        stacked_observations,
+        num_blocks,
+        num_channels,
+        downsample,
+        fc_layers=None,
+        encoding_size=32,
+        activation=nn.ELU,
+        norm_layer=True,
+        state_size=None
+    ):
+        super().__init__()
+        self.state_size = state_size
+        self.downsample = downsample
+
+        in_ch = observation_shape[0] * (stacked_observations + 1) + stacked_observations
+        if observation_shape[1] == 1 or observation_shape[2] == 1:
+            conv_type = "1x1"
+        else:
+            conv_type = "3x3"
+        self.front = nn.Sequential(
+            conv3x3(in_ch, num_channels, conv_type=conv_type),
+            nn.BatchNorm2d(num_channels),
+            nn.ReLU(inplace=True),
+        )
+
+        # residual blocks
+        self.resblocks = nn.ModuleList([ResidualBlock(num_channels) for _ in range(num_blocks)])
+        # global average pooling
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # build FC net
+        if fc_layers is None:
+            fc_layers = [128, 64]
+
+        layers = []
+        in_size = num_channels  # after pool we have [B, num_channels, 1, 1]
+        for h in fc_layers:
+            layers += [nn.Linear(in_size, h), activation()]
+            in_size = h
+        layers.append(nn.Linear(in_size, encoding_size))
+        if norm_layer:
+            layers.append(nn.LayerNorm(encoding_size))
+
+        self.fc = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.front(x)
+        for block in self.resblocks:
+            x = block(x)
+        if self.state_size is None:
+            x = self.global_pool(x)           # [B, C, 1, 1]
+            x = x.view(x.size(0), -1)         # [B, C]
+            x = self.fc(x)
+        return x
+
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -806,6 +889,17 @@ class ConvRepresentationNet(nn.Module):
 
 import torch
 import torch.nn as nn
+
+
+
+
+
+
+
+
+
+
+
 
 class RepWithCLS(nn.Module):
     def __init__(self, in_channels):
