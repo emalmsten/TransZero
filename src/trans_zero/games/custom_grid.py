@@ -235,6 +235,11 @@ class MuZeroConfig:
                 (32, 3, 1),
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
+        self.conv_pool_config = [
+            {'out_channels': 16, 'kernel_size': 3, 'padding': 1, 'pool_kernel': 2},
+            {'out_channels': 32, 'kernel_size': 3, 'padding': 1},
+            {'out_channels': 64, 'kernel_size': 3, 'padding': 1},
+        ]
         self.fc_layers_trans = [128, 64]
         self.mlp_head_layers = [32, 16]
         self.cum_reward = False

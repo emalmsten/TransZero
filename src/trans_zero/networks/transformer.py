@@ -135,9 +135,36 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         elif representation_network_type == "cnn_pool":
             self.representation_network = cond_wrap(MiniGridCNN())
 
-        elif representation_network_type == "cls":
+        elif representation_network_type == "cnn_pool2":
             self.representation_network = cond_wrap(
-                RepWithCLS(6)
+                CNNPool(
+                    input_channels=6,
+                    conv_configs=self.config.conv_pool_config,
+                    fc_layers=fc_layers,
+                )
+            )
+
+        elif representation_network_type == "cls":
+            self.register_buffer(
+                'positional_encoding_state',
+                self.positionalencoding2d(transformer_hidden_size, self.state_size[1], self.state_size[2])
+            )
+
+            self.representation_network = cond_wrap(
+                RepWithCLS(6, self.positional_encoding_state)
+            )
+
+        elif representation_network_type == "cls_adv":
+
+
+            self.representation_network = cond_wrap(
+                AdvancedRepWithCLS(
+                    observation_shape,
+                    stacked_observations,
+                    num_blocks=res_blocks,
+                    num_channels=transformer_hidden_size,
+                    downsample=downsample,
+                )
             )
 
 
@@ -397,9 +424,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             return self.representation_res(observation)
         elif self.representation_network_type == "mlp":
             return self.representation_mlp(observation)
-        elif self.representation_network_type == "cnn_pool":
-            return self.representation_res(observation)
-        elif self.representation_network_type == "cnn":
+        elif self.representation_network_type in ["cnn", "cnn_pool", "cnn_pool2"]:
             return self.representation_res(observation)
         elif self.representation_network_type == "cnn_mlp":
             enc_obs = self.cnn(observation)
@@ -864,6 +889,99 @@ class MiniGridCNN(nn.Module):
         #x = self.fc(x)
         return x
 
+import torch
+import torch.nn as nn
+
+class CNNPool(nn.Module):
+    """
+    A flexible CNN for arbitrary-size grid inputs that uses optional per-layer max pooling
+    and ends with a 1×1 adaptive max pool before optional FC layers.
+
+    This module accepts any spatial dimensions (height, width) at runtime, thanks to the
+    final AdaptiveMaxPool2d((1,1)).
+
+    Args:
+        input_channels (int): Number of channels in the input tensor.
+        conv_configs (list of dict, optional): Specs for each conv block. Each dict may include:
+            - out_channels (int): number of filters.
+            - kernel_size (int or tuple): conv kernel size (default=3).
+            - stride (int or tuple): conv stride (default=1).
+            - padding (int or tuple): conv padding (default=0).
+            - pool_kernel (int or tuple, optional): if set, applies MaxPool2d after ReLU.
+        fc_layers (list of int, optional): Sizes for fully connected layers after flattening.
+    """
+    def __init__(self,
+                 input_channels=6,
+                 conv_configs=None,
+                 fc_layers=None):
+        super().__init__()
+
+        if conv_configs is None:
+            conv_configs = [
+                {'out_channels': 32, 'kernel_size': 3, 'padding': 1}
+            ]
+
+        layers = []
+        in_ch = input_channels
+        for cfg in conv_configs:
+            layers.append(
+                nn.Conv2d(
+                    in_ch,
+                    cfg['out_channels'],
+                    kernel_size=cfg.get('kernel_size', 3),
+                    stride=cfg.get('stride', 1),
+                    padding=cfg.get('padding', 0)
+                )
+            )
+            layers.append(nn.ELU())
+            if 'pool_kernel' in cfg and cfg['pool_kernel']:
+                layers.append(nn.MaxPool2d(kernel_size=cfg['pool_kernel']))
+            in_ch = cfg['out_channels']
+
+        self.conv = nn.Sequential(*layers)
+        # final adaptive max pool to 1×1 ensures spatial agnosticism
+        self.adaptive_pool = nn.AdaptiveMaxPool2d((1, 1))
+
+        # optional fully connected head
+        self.fc = None
+        if fc_layers:
+            fc_layers = []
+            in_features = in_ch
+            for size in fc_layers:
+                fc_layers.append(nn.Linear(in_features, size))
+                fc_layers.append(nn.ELU())
+                in_features = size
+            self.fc = nn.Sequential(*fc_layers)
+
+    def forward(self, x):
+        """
+        Args:
+            x (Tensor): shape (batch, channels, height, width)
+        Returns:
+            Tensor: shape (batch, fc_sizes[-1] or in_channels) after adaptive pooling and optional FC
+        """
+        x = self.conv(x)
+        x = self.adaptive_pool(x)
+        x = torch.flatten(x, 1)
+        if self.fc:
+            x = self.fc(x)
+        return x
+
+# Example usage:
+# ----------------------------------------------------------------
+# Any input spatial size works, e.g., 5×5, 8×8, 10×10, etc.
+# model = CNNFeatureExtractor(
+#     input_channels=6,
+#     conv_configs=[
+#         {'out_channels': 16, 'kernel_size': 3, 'padding': 1, 'pool_kernel': 2},
+#         {'out_channels': 32, 'kernel_size': 3, 'padding': 1},
+#         {'out_channels': 64, 'kernel_size': 3, 'padding': 1},
+#     ],
+#     fc_sizes=[128, 64]
+# )
+# print(model)
+
+
 
 class ConvRepresentationNet(nn.Module):
     def __init__(self, input_channels, conv_layers, activation=nn.ELU):
@@ -902,7 +1020,7 @@ import torch.nn as nn
 
 
 class RepWithCLS(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, pos_enc):
         super().__init__()
         # stem & residuals as before, ending in (B, 32, 3, 3)…
         self.stem = nn.Sequential(
@@ -912,6 +1030,7 @@ class RepWithCLS(nn.Module):
             ResidualBlock(32),
             ResidualBlock(32),
         )
+        self.pos_enc = pos_enc
         # one learned CLS token per batch (we'll expand it)
         self.cls_token = nn.Parameter(torch.randn(1, 1, 32))
         # a tiny transformer encoder
@@ -923,6 +1042,11 @@ class RepWithCLS(nn.Module):
         B = x.size(0)
         x = self.stem(x)                    # → (B, 32, 3, 3)
         tokens = x.flatten(2).transpose(1, 2)  # → (B,  9, 32)
+
+        pe = self.positionalencoding2d(self.transformer_hidden_size, 3, 3).to(x.device)  # [transformer_hidden_size, H, W]
+        pe = pe.view(-1, -1, self.transformer_hidden_size)
+        tokens = tokens + pe  # add positional encoding to tokens
+
         # prepend CLS:
         cls = self.cls_token.expand(B, -1, -1)  # → (B, 1, 32)
         seq = torch.cat([cls, tokens], dim=1)   # → (B, 10, 32)
@@ -932,6 +1056,81 @@ class RepWithCLS(nn.Module):
         cls_out = out[0]                        # → (B, 32)
         return cls_out                       # single state token
 
+
+class AdvancedRepWithCLS(nn.Module):
+    def __init__(
+        self,
+        observation_shape,
+        stacked_observations,
+        num_blocks,
+        num_channels,
+        downsample=None,
+        nheads=4,
+        nlayers=1,
+    ):
+        super().__init__()
+        # --- build the conv / downsample stem exactly as in RepresentationNetwork ---
+        self.downsample = downsample
+        in_ch = observation_shape[0] * (stacked_observations + 1) + stacked_observations
+
+        if self.downsample:
+            if self.downsample == "resnet_s":
+                self.conv_stem = DownSampleTrans(in_ch, num_channels)
+            elif self.downsample == "CNN":
+                self.conv_stem = DownsampleCNN(
+                    in_ch,
+                    num_channels,
+                    (
+                        math.ceil(observation_shape[1] / 16),
+                        math.ceil(observation_shape[2] / 16),
+                    ),
+                )
+            else:
+                raise NotImplementedError('downsample must be "resnet_s" or "CNN"')
+        else:
+            # regular conv + BN + ReLU
+            conv_type = "1x1" if (observation_shape[1] == 1 or observation_shape[2] == 1) else "3x3"
+            self.conv_stem = conv3x3(in_ch, num_channels, conv_type=conv_type)
+            self.bn = nn.BatchNorm2d(num_channels)
+
+        # residual blocks
+        self.resblocks = nn.ModuleList(
+            [ResidualBlock(num_channels) for _ in range(num_blocks)]
+        )
+
+        # --- now the CLS token + transformer encoder ---
+        self.cls_token = nn.Parameter(torch.randn(1, 1, num_channels))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=num_channels, nhead=nheads, activation='gelu')
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
+
+    def forward(self, x):
+        # conv / downsample stem
+        if self.downsample:
+            x = self.conv_stem(x)
+        else:
+            x = self.conv_stem(x)
+            x = self.bn(x)
+            x = F.relu(x)
+
+        # residual blocks
+        for block in self.resblocks:
+            x = block(x)
+
+        # make tokens: (B, C, H, W) → (B, H*W, C)
+        B, C, H, W = x.shape
+        tokens = x.flatten(2).transpose(1, 2)  # → (B, H*W, C)
+
+        # prepend CLS token
+        cls = self.cls_token.expand(B, -1, -1)  # → (B, 1, C)
+        seq = torch.cat([cls, tokens], dim=1)   # → (B, 1 + H*W, C)
+
+        # transformer wants (seq_len, batch, dim)
+        seq = seq.transpose(0, 1)               # → (1 + H*W, B, C)
+        out = self.encoder(seq)                 # → (1 + H*W, B, C)
+
+        # take CLS output
+        cls_out = out[0]                        # → (B, C)
+        return cls_out
 
 #
 # class ConvRepresentationNet(nn.Module):
