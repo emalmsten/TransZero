@@ -139,6 +139,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = cond_wrap(
                 CNNPool(
                     input_channels=6,
+                    transformer_hidden_size=transformer_hidden_size,
                     conv_configs=self.config.conv_pool_config,
                     fc_layers=fc_layers,
                 )
@@ -866,7 +867,7 @@ import torch.nn.functional as F
 
 
 class MiniGridCNN(nn.Module):
-    def __init__(self):
+    def __init__(self, out_channels, fc_layers):
         super().__init__()
         # self.conv = nn.Sequential(
         #     nn.Conv2d(6, 16, kernel_size=2),  # (6,3,3) -> (16,2,2)
@@ -888,6 +889,8 @@ class MiniGridCNN(nn.Module):
         x = self.flatten(x)
         #x = self.fc(x)
         return x
+
+
 
 import torch
 import torch.nn as nn
@@ -912,8 +915,10 @@ class CNNPool(nn.Module):
     """
     def __init__(self,
                  input_channels=6,
+                 transformer_hidden_size=32,
                  conv_configs=None,
-                 fc_layers=None):
+                 fc_layers=None,
+                 activation=nn.ELU):
         super().__init__()
 
         if conv_configs is None:
@@ -933,7 +938,7 @@ class CNNPool(nn.Module):
                     padding=cfg.get('padding', 0)
                 )
             )
-            layers.append(nn.ELU())
+            layers.append(activation())
             if 'pool_kernel' in cfg and cfg['pool_kernel']:
                 layers.append(nn.MaxPool2d(kernel_size=cfg['pool_kernel']))
             in_ch = cfg['out_channels']
@@ -943,15 +948,21 @@ class CNNPool(nn.Module):
         self.adaptive_pool = nn.AdaptiveMaxPool2d((1, 1))
 
         # optional fully connected head
-        self.fc = None
-        if fc_layers:
+        if fc_layers is None:
             fc_layers = []
-            in_features = in_ch
-            for size in fc_layers:
-                fc_layers.append(nn.Linear(in_features, size))
-                fc_layers.append(nn.ELU())
-                in_features = size
-            self.fc = nn.Sequential(*fc_layers)
+        fc_modules = []
+        in_size = in_ch  # after conv+pool, shape is [B, in_ch, 1, 1]
+        for h in fc_layers:
+            fc_modules.append(nn.Linear(in_size, h))
+            fc_modules.append(activation())
+            in_size = h
+
+        # final proj to transformer size
+        fc_modules.append(nn.Linear(in_size, transformer_hidden_size))
+
+        # *** use the fc_modules list here! ***
+        self.fc = nn.Sequential(*fc_modules)
+
 
     def forward(self, x):
         """
