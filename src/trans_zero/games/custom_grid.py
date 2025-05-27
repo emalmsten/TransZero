@@ -227,7 +227,11 @@ class MuZeroConfig:
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
-        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
+        self.representation_network_type = "ViT"  # "res", "cnn" or "mlp"
+        self.vit_heads = 4
+        self.vit_depth = 4
+        self.vit_patch_size = 1
+        self.vit_mlp_dim = 64
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -261,9 +265,9 @@ class MuZeroConfig:
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
-        self.lr_init = 0.001 # res: 0.015
-        self.lr_decay_rate = 0.99
-        self.lr_decay_steps = 5000 # todo 1000 for res but test if it can just be 5000
+        self.lr_init = 0.0015 # res: 0.015
+        self.lr_decay_rate = 0.98
+        self.lr_decay_steps = 1000 # todo 1000 for res but test if it can just be 5000
         self.warmup_steps = 0.1 * self.training_steps if self.network == "transformer" else 0
 
         ### Replay Buffer
@@ -271,7 +275,7 @@ class MuZeroConfig:
         self.num_unroll_steps = 7  # Number of game moves to keep for every batch element
         self.td_steps = 20  # Number of steps in the future to take into account for calculating the target value
         self.PER = True  # Prioritized Replay (See paper appendix Training), select in priority the elements in the replay buffer which are unexpected for the network
-        self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
+        self.PER_alpha = 0.25  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
 
         # Reanalyze (See paper appendix Reanalyse)
         self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)

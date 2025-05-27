@@ -58,6 +58,12 @@ class MuZeroNetwork:
                 state_size=config.state_size,
                 stable_transformer=config.stable_transformer,
                 config=config, # TODO important, temporary
+                vit_params = {
+                    "vit_patch_size": config.vit_patch_size,
+                    "vit_depth": config.vit_depth,
+                    "vit_heads": config.vit_heads,
+                    "vit_mlp_dim": config.vit_mlp_dim,
+                }
             )
         elif config.network == "resnet":
             return MuZeroResidualNetwork(

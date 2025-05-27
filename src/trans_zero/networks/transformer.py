@@ -1,4 +1,5 @@
 import torch
+from vit_pytorch import ViT
 
 from trans_zero.utils import models
 from trans_zero.networks.abstract_network import AbstractNetwork
@@ -45,6 +46,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         stable_transformer = True,
 
         config = None,
+        vit_params = None, # vit_patch_size, vit_depth, vit_heads, vit_mlp_dim
     ):
         super().__init__()
         self.config = config
@@ -143,6 +145,21 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     conv_configs=self.config.conv_pool_config,
                     fc_layers=fc_layers,
                 )
+            )
+
+        elif representation_network_type == "ViT":
+            assert vit_params is not None, "vit_params must be provided for ViT representation network"
+            self.representation_network = cond_wrap(
+                RepViT(
+                    in_channels = observation_shape[0],
+                    size = observation_shape[1],
+                    transformer_hidden_size= transformer_hidden_size,
+                    patch_size = vit_params["vit_patch_size"],
+                    depth = vit_params["vit_depth"],
+                    heads = vit_params["vit_heads"],
+                    mlp_dim = vit_params["vit_mlp_dim"],
+                )
+
             )
 
         elif representation_network_type == "cls":
@@ -433,7 +450,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
 
 
 
-        elif self.representation_network_type == "cls" or self.representation_network_type == "cls_adv":
+        elif self.representation_network_type == "cls" or self.representation_network_type == "cls_adv" or self.representation_network_type == "ViT":
             return self.representation_network(observation)
 
         elif self.representation_network_type == "none":
@@ -1025,8 +1042,28 @@ import torch.nn as nn
 
 
 
+class RepViT(nn.Module):
+    def __init__(self, in_channels, size, transformer_hidden_size, patch_size=1, depth =4, heads=4, mlp_dim=64):
+        super().__init__()
+        # stem & residuals as before, ending in (B, 32, 3, 3)…
+        self.model = ViT(
+            image_size=size,  # Grid is 3x3
+            patch_size=patch_size,  # Use 1x1 patches to preserve all 9 positions
+            num_classes=1,  # We want a single output token
+            dim=transformer_hidden_size,  # Hidden size
+            depth=depth,  # Number of transformer layers (can be tuned)
+            heads=heads,  # Number of attention heads
+            mlp_dim=mlp_dim,  # Dimension of the MLP inside each transformer block
+            channels=in_channels,  # Number of input channels per grid cell
+            pool='cls'  # Use CLS token for final output
+        )
 
+        # To get the CLS token instead of classification:
+        self.model.mlp_head = torch.nn.Identity()
 
+    def forward(self, x):
+        out = self.model(x)  # Output shape: (batch_size, transformer_hidden_size)
+        return out
 
 
 
