@@ -399,7 +399,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             # append false to action mask beginning
             action_mask = torch.cat([torch.zeros(action_mask.size(0), (flat_size-1), dtype=torch.bool, device=action_mask.device), action_mask], dim=1)
 
-        action_mask = action_mask.float().masked_fill(action_mask, float('-inf'))
+        #action_mask = action_mask.float().masked_fill(action_mask, float('-inf'))
 
         input_sequence = self.create_input_sequence(latent_root_state, action_sequence) # Shape: (B, sequence_length, transformer_hidden_size)
         if use_causal_mask:
@@ -411,7 +411,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         if self.stable_transformer:
             transformer_output = self.stable_transformer_forward(input_sequence, causal_mask)
         else:
-            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
+            transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask)#, src_key_padding_mask=action_mask)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         policy_logits = self.policy_head(transformer_output)  # Shape: (B, sequence_length, action_space_size)
         value = self.value_head(transformer_output)  # Shape: (B, sequence_length, full_support_size)
