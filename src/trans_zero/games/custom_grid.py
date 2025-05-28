@@ -228,6 +228,7 @@ class MuZeroConfig:
         self.norm_layer = True
         self.use_proj = False
         self.representation_network_type = "ViT"  # "res", "cnn" or "mlp"
+        self.use_simple_vit = True
         self.vit_heads = 4
         self.vit_depth = 4
         self.vit_patch_size = 1

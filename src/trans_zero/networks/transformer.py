@@ -1,5 +1,5 @@
 import torch
-from vit_pytorch import ViT
+from vit_pytorch import ViT, SimpleViT
 
 from trans_zero.utils import models
 from trans_zero.networks.abstract_network import AbstractNetwork
@@ -156,7 +156,6 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     transformer_hidden_size= transformer_hidden_size,
                     vit_params = vit_params,
                 )
-
             )
 
         elif representation_network_type == "cls":
@@ -1043,21 +1042,35 @@ class RepViT(nn.Module):
     def __init__(self, in_channels, size, transformer_hidden_size, vit_params):
         super().__init__()
         # stem & residuals as before, ending in (B, 32, 3, 3)…
-        self.model = ViT(
-            image_size=size,  # Grid is 3x3
-            patch_size=vit_params["vit_patch_size"],  # Use 1x1 patches to preserve all 9 positions
-            num_classes=1,  # We want a single output token
-            dim=transformer_hidden_size,  # Hidden size
-            depth=vit_params["vit_depth"],  # Number of transformer layers (can be tuned)
-            heads=vit_params["vit_heads"],  # Number of attention heads
-            mlp_dim=vit_params["vit_mlp_dim"],  # Dimension of the MLP inside each transformer block
-            dropout=vit_params["vit_dropout"],  # Dropout rate
-            channels=in_channels,  # Number of input channels per grid cell
-            pool='cls'  # Use CLS token for final output
-        )
+        if vit_params["use_simple_vit"]:
+            print("Using SimpleViT for representation")
+            self.model = SimpleViT(
+                image_size=size,  # Grid is 3x3
+                patch_size=vit_params["vit_patch_size"],  # Use 1x1 patches to preserve all 9 positions
+                num_classes=transformer_hidden_size,  # We want a single output token
+                dim=transformer_hidden_size,  # Hidden size
+                depth=vit_params["vit_depth"],  # Number of transformer layers (can be tuned)
+                heads=vit_params["vit_heads"],  # Number of attention heads
+                mlp_dim=vit_params["vit_mlp_dim"],  # Dimension of the MLP inside each transformer block
+                #dropout=vit_params["vit_dropout"],  # Dropout rate
+                channels=in_channels,  # Number of input channels per grid cell
+            )
+        else:
+            self.model = ViT(
+                image_size=size,  # Grid is 3x3
+                patch_size=vit_params["vit_patch_size"],  # Use 1x1 patches to preserve all 9 positions
+                num_classes=1,  # We want a single output token
+                dim=transformer_hidden_size,  # Hidden size
+                depth=vit_params["vit_depth"],  # Number of transformer layers (can be tuned)
+                heads=vit_params["vit_heads"],  # Number of attention heads
+                mlp_dim=vit_params["vit_mlp_dim"],  # Dimension of the MLP inside each transformer block
+                dropout=vit_params["vit_dropout"],  # Dropout rate
+                channels=in_channels,  # Number of input channels per grid cell
+                pool='cls'  # Use CLS token for final output
+            )
 
-        # To get the CLS token instead of classification:
-        self.model.mlp_head = torch.nn.Identity()
+            # To get the CLS token instead of classification:
+            self.model.mlp_head = torch.nn.Identity()
 
     def forward(self, x):
         out = self.model(x)  # Output shape: (batch_size, transformer_hidden_size)

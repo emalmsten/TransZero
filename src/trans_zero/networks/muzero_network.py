@@ -64,6 +64,7 @@ class MuZeroNetwork:
                     "vit_heads": config.vit_heads,
                     "vit_mlp_dim": config.vit_mlp_dim,
                     "vit_dropout": config.vit_dropout,
+                    "use_simple_vit": config.use_simple_vit,
                 }
             )
         elif config.network == "resnet":
