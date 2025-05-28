@@ -63,6 +63,7 @@ class MuZeroNetwork:
                     "vit_depth": config.vit_depth,
                     "vit_heads": config.vit_heads,
                     "vit_mlp_dim": config.vit_mlp_dim,
+                    "vit_dropout": config.vit_dropout,
                 }
             )
         elif config.network == "resnet":
@@ -144,7 +145,6 @@ class MuZeroNetwork:
                 trans_network,
                 fully_network,
             )
-
 
         else:
             raise NotImplementedError(

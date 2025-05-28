@@ -232,6 +232,7 @@ class MuZeroConfig:
         self.vit_depth = 4
         self.vit_patch_size = 1
         self.vit_mlp_dim = 64
+        self.vit_dropout = 0.1
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
