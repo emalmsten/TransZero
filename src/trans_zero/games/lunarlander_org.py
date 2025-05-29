@@ -18,6 +18,7 @@ class MuZeroConfig:
     def __init__(self, root=None):
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
+        self.use_s0_for_pred = True  # Use the output of the representation network for the first prediction
 
         self.max_time_minutes = None
         self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
@@ -127,6 +128,9 @@ class MuZeroConfig:
         self.transformer_layers = 4
         self.transformer_heads = 16
         self.transformer_hidden_size = 64
+        self.transformer_dropout = 0.0
+        self.transformer_mlp_dim = 2048 #2048
+
         self.max_seq_length = 50
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
@@ -146,6 +150,16 @@ class MuZeroConfig:
         self.stable_transformer = False
         self.use_forward_causal_mask = True
         self.get_fast_predictions = True
+
+
+        # Vision Transformer
+        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
+        self.use_simple_vit = True
+        self.vit_heads = 8
+        self.vit_depth = 4
+        self.vit_patch_size = 1
+        self.vit_mlp_dim = 512
+        self.vit_dropout = 0.01
 
 
         ### Training
