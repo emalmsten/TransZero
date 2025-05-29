@@ -35,13 +35,19 @@ class MuZeroNetwork:
                 config.fc_representation_layers,
                 config.support_size,
 
-                config.transformer_layers,
-                config.transformer_heads,
-                config.transformer_hidden_size,
+
                 config.max_seq_length,
                 config.positional_embedding_type,  # sinus or learned
 
                 debug_mode,
+
+                transformer_params = {
+                    "transformer_layers": config.transformer_layers,
+                    "transformer_heads": config.transformer_heads,
+                    "transformer_hidden_size": config.transformer_hidden_size,
+                    "transformer_dropout": config.transformer_dropout,
+                    "transformer_mlp_dim": config.transformer_mlp_dim,
+                },
 
                 res_blocks=config.blocks,
                 res_channels=config.channels,

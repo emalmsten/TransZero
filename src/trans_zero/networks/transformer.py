@@ -21,13 +21,13 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         fc_representation_layers,
         support_size,
 
-        transformer_layers,
-        transformer_heads,
-        transformer_hidden_size,
         max_seq_length,
         positional_embedding_type,  # sinus or learned
 
         seq_mode,
+
+        transformer_params,
+
         norm_layer = True,
         use_proj = False,
 
@@ -71,7 +71,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             return net if self.seq_mode else torch.nn.DataParallel(net)
 
         # Transformer components for value prediction
-        self.transformer_hidden_size = transformer_hidden_size
+        self.transformer_hidden_size = transformer_params["transformer_hidden_size"]
 
         if representation_network_type == "res":
             self.representation_network = cond_wrap(
@@ -112,7 +112,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     * (stacked_observations + 1)
                     + stacked_observations * observation_shape[1] * observation_shape[2],
                     fc_representation_layers,
-                    encoding_size if self.use_proj else transformer_hidden_size,
+                    encoding_size if self.use_proj else self.transformer_hidden_size,
                     norm_layer=norm_layer,
                 )
             )
@@ -130,7 +130,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     * (stacked_observations + 1)
                     + stacked_observations * observation_shape[1] * observation_shape[2],
                     fc_representation_layers,
-                    encoding_size if self.use_proj else transformer_hidden_size,
+                    encoding_size if self.use_proj else self.transformer_hidden_size,
                     norm_layer=norm_layer,
                 )
             )
@@ -141,7 +141,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = cond_wrap(
                 CNNPool(
                     input_channels=6,
-                    transformer_hidden_size=transformer_hidden_size,
+                    transformer_hidden_size=self.transformer_hidden_size,
                     conv_configs=self.config.conv_pool_config,
                     fc_layers=fc_layers,
                 )
@@ -153,7 +153,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 RepViT(
                     in_channels = observation_shape[0],
                     size = observation_shape[1],
-                    transformer_hidden_size= transformer_hidden_size,
+                    transformer_hidden_size= self.transformer_hidden_size,
                     vit_params = vit_params,
                 )
             )
@@ -161,7 +161,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
         elif representation_network_type == "cls":
             self.register_buffer(
                 'positional_encoding_state',
-                self.positionalencoding2d(transformer_hidden_size, self.state_size[1], self.state_size[2])
+                self.positionalencoding2d(self.transformer_hidden_size, self.state_size[1], self.state_size[2])
             )
 
             self.representation_network = cond_wrap(
@@ -176,7 +176,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     observation_shape,
                     stacked_observations,
                     num_blocks=res_blocks,
-                    num_channels=transformer_hidden_size,
+                    num_channels=self.transformer_hidden_size,
                     downsample=downsample,
                 )
             )
@@ -188,7 +188,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                     observation_shape[0] * (stacked_observations + 1) + stacked_observations,
                     observation_shape[1],
                     observation_shape[2],
-                    encoding_size if self.use_proj else transformer_hidden_size,
+                    encoding_size if self.use_proj else self.transformer_hidden_size,
                     norm_layer=norm_layer,
                     conv_layers=conv_layers,
                     fc_layers=fc_layers,
@@ -197,54 +197,56 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             )
         elif representation_network_type == "none":
             flat_size = observation_shape[0] * observation_shape[1] * observation_shape[2]
-            self.representation_network = nn.Linear(flat_size, transformer_hidden_size)
+            self.representation_network = nn.Linear(flat_size, self.transformer_hidden_size)
 
-        self.action_embedding = nn.Embedding(action_space_size, transformer_hidden_size)
+        self.action_embedding = nn.Embedding(action_space_size, self.transformer_hidden_size)
 
         # only used if rep net is none
         if self.state_size is not None:
             # linear embedding
-            self.state_embedding = nn.Embedding(self.state_values, transformer_hidden_size) if self.num_state_values else nn.Linear(self.state_size[0], transformer_hidden_size)
+            self.state_embedding = nn.Embedding(self.state_values, self.transformer_hidden_size) if self.num_state_values else nn.Linear(self.state_size[0], transformer_hidden_size)
             #self.state_embedding =
 
-        self.hidden_state_proj = nn.Linear(encoding_size, transformer_hidden_size) # only used if use_proj is True
+        self.hidden_state_proj = nn.Linear(encoding_size, self.transformer_hidden_size) # only used if use_proj is True
 
         if positional_embedding_type == 'learned':
-            self.positional_encoding = nn.Embedding(max_seq_length + 1, transformer_hidden_size)
+            self.positional_encoding = nn.Embedding(max_seq_length + 1, self.transformer_hidden_size)
             if self.state_size is not None:
-                self.positional_encoding_state_row = nn.Embedding(self.state_size[1], transformer_hidden_size)
-                self.positional_encoding_state_col = nn.Embedding(self.state_size[2], transformer_hidden_size)
+                self.positional_encoding_state_row = nn.Embedding(self.state_size[1], self.transformer_hidden_size)
+                self.positional_encoding_state_col = nn.Embedding(self.state_size[2], self.transformer_hidden_size)
         elif positional_embedding_type == 'sinus':
             self.register_buffer(
           'positional_encoding',
-                self.sinusoidal_positional_embedding(max_seq_length + 1, transformer_hidden_size)
+                self.sinusoidal_positional_embedding(max_seq_length + 1, self.transformer_hidden_size)
             )
             if self.state_size is not None:
                 self.register_buffer(
                     'positional_encoding_state',
-                    self.positionalencoding2d(transformer_hidden_size, self.state_size[1], self.state_size[2])
+                    self.positionalencoding2d(self.transformer_hidden_size, self.state_size[1], self.state_size[2])
                 )
 
             #self.positional_encoding_state = nn.Embedding(self.state_size[1] * self.state_size[2], transformer_hidden_size)
 
         self.transformer_layer = nn.TransformerEncoderLayer(
-            d_model=transformer_hidden_size,
-            nhead=transformer_heads,
+            d_model=transformer_params["transformer_hidden_size"],
+            nhead=transformer_params["transformer_heads"],
+            dim_feedforward=transformer_params["transformer_mlp_dim"],
+            dropout=transformer_params["transformer_dropout"],
             batch_first=True,
         )
         self.transformer_encoder = nn.TransformerEncoder(
             self.transformer_layer,
-            num_layers=transformer_layers,
-            norm = nn.LayerNorm(transformer_hidden_size)
+            num_layers=transformer_params["transformer_layers"],
+            norm = nn.LayerNorm(self.transformer_hidden_size)
         )
 
         if self.stable_transformer:
             self.transformer_encoder = StableTransformerXL(
-                d_input=transformer_hidden_size,
-                n_layers=transformer_layers,
-                n_heads=transformer_heads,
-                d_head_inner=transformer_hidden_size // transformer_heads,  # Adjust if needed
-                d_ff_inner=4 * transformer_hidden_size,  # Common practice
+                d_input=transformer_params["transformer_hidden_size"],
+                n_layers=transformer_params["transformer_layers"],
+                n_heads=transformer_params["transformer_heads"],
+                d_head_inner=self.transformer_hidden_size // transformer_params["transformer_heads"],  # Adjust if needed
+                d_ff_inner=4 * self.transformer_hidden_size,  # Common practice
                 dropout=0.1,
                 dropouta=0.0,
                 mem_len=100,  # Adjust memory length as per requirement
@@ -268,9 +270,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
                 self.full_support_size,
             )
         else:
-            self.policy_head = nn.Linear(transformer_hidden_size, self.action_space_size)
-            self.value_head = nn.Linear(transformer_hidden_size, self.full_support_size)
-            self.reward_head = nn.Linear(transformer_hidden_size, self.full_support_size)
+            self.policy_head = nn.Linear(self.transformer_hidden_size, self.action_space_size)
+            self.value_head = nn.Linear(self.transformer_hidden_size, self.full_support_size)
+            self.reward_head = nn.Linear(self.transformer_hidden_size, self.full_support_size)
 
 
     def sinusoidal_positional_embedding(self, length, d_model, n=10000.0):

@@ -223,17 +223,21 @@ class MuZeroConfig:
         # Transformer
         self.transformer_layers = 4
         self.transformer_heads = 8
-        self.transformer_hidden_size = 32
+        self.transformer_hidden_size = 64
+        self.transformer_dropout = 0.2
+        self.transformer_mlp_dim = 512 #2048
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
         self.use_proj = False
+
+
         self.representation_network_type = "ViT"  # "res", "cnn" or "mlp"
         self.use_simple_vit = True
-        self.vit_heads = 4
+        self.vit_heads = 8
         self.vit_depth = 4
         self.vit_patch_size = 1
-        self.vit_mlp_dim = 64
-        self.vit_dropout = 0.1
+        self.vit_mlp_dim = 512
+        self.vit_dropout = 0.2
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
