@@ -1,5 +1,8 @@
 import torch
-from vit_pytorch import ViT, SimpleViT
+try:
+    from vit_pytorch import ViT, SimpleViT
+except ImportError:
+    print("VitPytorch not installed, install to use ViT representation network.")
 
 from trans_zero.utils import models
 from trans_zero.networks.abstract_network import AbstractNetwork
