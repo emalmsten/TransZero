@@ -590,10 +590,8 @@ class MCTS_PLL(MCTS):
             all_policy_logits,
             root_latent_state,
         ) = model.initial_inference(observation, pll_args=pll_args)
-        init_inf_time = time.time()
 
         all_scalars = self.get_scalars(all_values, all_rewards,all_policy_logits, legal_actions_tensor)
-        scalar_time = time.time()
 
         assert (
             legal_actions

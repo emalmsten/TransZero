@@ -357,6 +357,9 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             transformer_output = self.transformer_encoder(input_sequence, mask=causal_mask, is_causal=is_causal)  # Shape: (B, sequence_length, transformer_hidden_size)
 
         # Shape: (B, sequence_length, transformer_hidden_size)
+        if self.config.use_s0_for_pred:
+            # Use the latent root state as the transformer output
+            transformer_output[:, 0, :] = latent_root_state
 
         # Obtain the value prediction from the last token's output
         if return_n_last_predictions == 1:
