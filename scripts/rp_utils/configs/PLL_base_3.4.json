@@ -29,5 +29,6 @@
   "test_ucb": false,
 
   "training_steps": 300000,
-  "num_workers": 1
+  "num_workers": 1,
+  "seed": 207
 }
