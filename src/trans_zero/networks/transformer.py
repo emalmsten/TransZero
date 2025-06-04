@@ -155,7 +155,7 @@ class MuZeroTransformerNetwork(AbstractNetwork):
             self.representation_network = cond_wrap(
                 RepViT(
                     in_channels = observation_shape[0],
-                    size = observation_shape[1],
+                    size = (observation_shape[1], observation_shape[2]),
                     transformer_hidden_size= self.transformer_hidden_size,
                     vit_params = vit_params,
                 )
