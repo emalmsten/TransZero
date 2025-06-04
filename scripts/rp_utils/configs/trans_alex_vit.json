@@ -16,6 +16,6 @@
   "num_simulations": 50,
   "fc_representation_layers": [32],
   "mlp_head_layers": [64, 32],
-  "representation_network_type": "ViT",
+  "representation_network_type": "ViT"
 
 }
