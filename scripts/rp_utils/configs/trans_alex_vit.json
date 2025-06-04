@@ -1,5 +1,5 @@
 {
-  "training_steps": 600000,
+  "training_steps": 300000,
   "network": "transformer",
   "batch_size": 128,
   "lr_init": 0.001,
