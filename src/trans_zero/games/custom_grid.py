@@ -537,7 +537,7 @@ class Game(AbstractGame):
         Returns:
             An array of integers, subset of the action space.
         """
-        return list(range(3))
+        return self.config.action_space
 
     def reset(self):
         """
