@@ -110,7 +110,8 @@ class MuZeroConfig:
     def __init__(self, root=None):
         self.root = PROJECT_ROOT if root is None else root
         cuda = torch.cuda.is_available()
-        self.use_s0_for_pred = True  # Use the output of the representation network for the first prediction
+        self.use_s0_for_pred = True  # True if Use the output of the representation network for the first prediction
+        self.alt_leafs = False
 
         self.max_time_minutes = None
         self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
