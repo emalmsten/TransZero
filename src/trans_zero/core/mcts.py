@@ -710,7 +710,7 @@ class MCTS_SubTree(MCTS_PLL):
                 exploration_fraction=self.config.root_exploration_fraction,
             )
 
-        vals = root_subtree.calc_entire_policy_value_and_variance_subtree(root=True)
+        vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
 
         self.min_max_stats.mass_update_tensor(vals)
 
