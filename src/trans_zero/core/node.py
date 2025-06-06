@@ -7,6 +7,7 @@ from trans_zero.mvc_utils.policies import MeanVarianceConstraintPolicy, mz_norma
 import itertools
 
 from trans_zero.mvc_utils.utility_functions import policy_value_and_variance_layer, policy_value_and_variance
+from trans_zero.paths import PROJECT_ROOT
 
 
 class Node:
@@ -740,10 +741,30 @@ class SubTree():
 
 
     def set_pll_args(self):
-        self.seqs, positions, action_seq = self.bfs_sequences()
-        self.positions = torch.tensor(positions, dtype=torch.long, device=self.device)
-        self.action_seq = torch.tensor(action_seq, dtype=torch.long, device=self.device)
+        # build the folder path based on action_space_size and num_layers
+        folder = PROJECT_ROOT / "cache" / "PLL_arrays" / f"AS_{self.action_space_size}" / f"Lay_{self.num_layers}"
 
+        if folder.exists():
+            # if folder is already there, load saved data
+            self.seqs = torch.load(folder / "seqs.pt")
+            # load CPU tensors and move them to the right device
+            self.positions = torch.load(folder / "positions.pt").to(device=self.device)
+            self.action_seq = torch.load(folder / "action_seq.pt").to(device=self.device)
+        else:
+            print("creating new PLL arrays for action_space_size =", self.action_space_size, "and num_layers =", self.num_layers)
+            # folder doesn’t exist: create it, run bfs_sequences(), then save everything
+            folder.mkdir(parents=True, exist_ok=True)
+
+            self.seqs, positions, action_seq = self.bfs_sequences()
+            # save the raw Python object for seqs
+            torch.save(self.seqs, folder / "seqs.pt")
+
+            # convert to tensors on device, then save CPU copies
+            self.positions = torch.tensor(positions, dtype=torch.long, device=self.device)
+            torch.save(self.positions.cpu(), folder / "positions.pt")
+
+            self.action_seq = torch.tensor(action_seq, dtype=torch.long, device=self.device)
+            torch.save(self.action_seq.cpu(), folder / "action_seq.pt")
 
     def get_seqs(self):
         if self.seqs is None:
