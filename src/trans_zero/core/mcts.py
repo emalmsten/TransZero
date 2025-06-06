@@ -143,7 +143,7 @@ class MCTS:
 
         root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
         # important! if a node has just been expanded this is needed
-        root.recalculate_val_and_var()
+        root.recalculate_val_and_var(newly_expanded=True)
 
         max_tree_depth = 0
 
@@ -238,6 +238,7 @@ class MCTS:
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root
         """
+        newly_expanded=True
         if len(self.config.players) == 1:
             while True:
                 if not isinstance(node, MVCNode):
@@ -247,7 +248,8 @@ class MCTS:
                     self.min_max_stats.update(node.reward + self.config.discount * node.get_value())
 
                 else:
-                    node.recalculate_val_and_var()
+                    node.recalculate_val_and_var(newly_expanded=newly_expanded)
+                    newly_expanded = False
                     self.min_max_stats.update(node.get_value())
 
                 if node.parent is None:
@@ -622,7 +624,6 @@ class MCTS_PLL(MCTS):
 
         node_list = []  # todo turn into queue
 
-        start_time = time.time()
         while node.parent is not None:
             node = node.parent
             node_list.append(node)
@@ -630,8 +631,6 @@ class MCTS_PLL(MCTS):
         # reverse list
         node_list.reverse()
         node = org_node
-
-        list_time = time.time()
 
         for i, actions_from_node in enumerate(all_actions_from_node):
 
@@ -657,10 +656,7 @@ class MCTS_PLL(MCTS):
             node_list.append(node)
             node = org_node
 
-        for_loop_time = time.time()
-
         self.backpropagate_more(node_list)
-        backprop_time = time.time()
 
         #print(f"List time: {list_time - start_time:.4f}s, for loop time: {for_loop_time - list_time:.4f}s, backprop time: {backprop_time - for_loop_time:.4f}s")
 
@@ -731,12 +727,10 @@ class MCTS_SubTree(MCTS_PLL):
 
             node = SubTreeNode(subtree, node_idx)
 
-            start_time = time.time()
-
             while node.expanded(): # todo could batch calc UCB scores, but dont know if faster
                 current_tree_depth += 1
                 action, node = self.select_child(node)  # tree action selection
-                actions.append(action)
+                actions.append(action) # temp
 
                 # Players play turn by turn
                 if virtual_to_play + 1 < len(self.config.players):
@@ -744,7 +738,7 @@ class MCTS_SubTree(MCTS_PLL):
                 else:
                     virtual_to_play = self.config.players[0]
 
-            unexpanded_subtree = SubTree(parent=node)
+            unexpanded_subtree = SubTree(connecting_node=node)
             pll_args = self.get_pll_args(unexpanded_subtree, actions)
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
@@ -756,10 +750,7 @@ class MCTS_SubTree(MCTS_PLL):
             all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
 
             unexpanded_subtree.expand(all_scalars)
-            expansion_time = time.time()
-
             self.backpropagate_subtree(unexpanded_subtree)
-            backprop_time = time.time()
 
             #print(f"Expansion time: {expansion_time - start_time:.4f}s, backprop time: {backprop_time - expansion_time:.4f}s")
 
@@ -826,7 +817,6 @@ class MCTS_SubTree(MCTS_PLL):
         )
 
         # Initial step
-        start_time = time.time()
         (
             all_values,
             all_rewards,
@@ -835,7 +825,6 @@ class MCTS_SubTree(MCTS_PLL):
         ) = model.initial_inference(observation, pll_args=pll_args)
 
         all_scalars = self.get_scalars(all_values, all_rewards, all_policy_logits, legal_actions_tensor)
-        scalar_time = time.time()
 
         assert (
             legal_actions
@@ -895,10 +884,10 @@ class MCTS_SubTree(MCTS_PLL):
 
         # TODO, if not root you can set the values of the parent to root of previous
         # todo update the parent of the root node to the values of the root node
-        subtree.set_val_and_var_probs_parent()
+        subtree.set_val_and_var_probs_connecting_node()
 
         # since root.parent is already set above, take the grandparent
-        node = subtree.parent.parent
+        node = subtree.connecting_node.parent
 
         loop_vals = []
         while True:
@@ -908,7 +897,17 @@ class MCTS_SubTree(MCTS_PLL):
             if node.parent is None:
                 break
 
+            if node.idx == 0: # otherwise this is skipped and not looked at later
+                node.subtree.set_val_and_var_probs_connecting_node()
+
             node = node.parent
+
+        # assert that connecting node is always the same as root
+        while subtree.connecting_node is not None:
+            root = SubTreeNode(subtree, 0)
+            assert root.get_value() == subtree.connecting_node.get_value(), "Connecting node value should be the same as its parent's value."
+            assert root.get_value_eval() == subtree.connecting_node.get_value_eval(), "Connecting node value eval should be the same as its parent's value eval."
+            subtree = subtree.connecting_node.subtree
 
 
         vals = torch.cat((vals.squeeze(-1), *loop_vals), dim=0)  # shape (n + len(loop_vals),)
@@ -920,6 +919,7 @@ class MCTS_SubTree(MCTS_PLL):
         # argmax with random tie-breaking
         ucb_scores = self.puct.get_ucb_scores(node, self.min_max_stats)
         action = arg_max_with_tie_breaking(ucb_scores)
+        #action = 0
         return action, node.get_child(action)
 
 

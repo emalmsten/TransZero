@@ -124,7 +124,7 @@ class Node:
 
 class MVCNode(Node):
     def __init__(self, prior, config, parent=None, name="root", action = None):
-        super().__init__(prior, config, name)
+        super().__init__(prior, config, name=name)
         self.parent = parent
 
         self.action = action
@@ -156,10 +156,10 @@ class MVCNode(Node):
         self.children_vars[-1] = 1.0
 
 
-    def recalculate_val_and_var(self):
+    def recalculate_val_and_var(self, newly_expanded=False):
         self.reset_all()
         # todo note that pi probs is cached in that method
-        self.policy_value, self.variance= policy_value_and_variance(self, self.discount_factor)
+        self.policy_value, self.variance= policy_value_and_variance(self, self.discount_factor, newly_expanded=newly_expanded)
         return self.policy_value, self.variance
 
 
@@ -300,6 +300,9 @@ class SubTreeNode():
         """
         return self.get_val() # todo
 
+    def get_value_eval_var(self):
+        return self.subtree.value_eval_vars[0] # all are the same anyways
+
 
     @property
     def parent(self):
@@ -309,18 +312,23 @@ class SubTreeNode():
             else:
                 # get the parent node of this subtree (is the same* node as the root of this tree),
                 # then return its parent. *same values etc, but different object
-                return self.subtree.parent.parent
+                return self.subtree.connecting_node.parent
         else:
             return SubTreeNode(self.subtree, self.subtree.get_parent_idx(self.idx))
 
 
     def get_child(self, action):
         if self.is_in_final_layer:
-            subtree = self.subtree.get_child_tree(self.idx)
-            return SubTreeNode(subtree, action)
+            assert False
+            child_subtree = self.subtree.get_child_tree(self.idx)
+            return SubTreeNode(child_subtree, action)
         else:
             idx = self.subtree.get_child_idx(self.idx, action)
-            return SubTreeNode(self.subtree, idx)
+            node = SubTreeNode(self.subtree, idx)
+            if node.is_in_final_layer and node.subtree.get_child_tree(idx) is not None:
+                child_subtree = self.subtree.get_child_tree(idx)
+                node = SubTreeNode(child_subtree, 0)  # idx 0 is the root of the child subtree
+            return node
 
     def get_pi_probs(self, include_self=False):
         """
@@ -441,6 +449,7 @@ class SubTreeLayer:
 
         self.start, self.end = self.subtree.get_layers_indices(layer_number)
         self.layer_slice = slice(self.start, self.end)
+        self.layer_size = self.end - self.start
 
         self.is_final_layer = self.subtree.num_layers == layer_number
         if not self.is_final_layer:
@@ -462,7 +471,8 @@ class SubTreeLayer:
         except AttributeError:
             raise AttributeError(f"Neither SubTree nor {type(self).__name__} has the attribute {name}")
 
-
+    def get_value_eval_vars(self):
+        return self.subtree.value_eval_vars[0:self.layer_size]
 
     def get_child_layer_vals(self, include_self):
         """
@@ -556,10 +566,10 @@ class SubTree():
     It is used in the MVC algorithm to represent the state of the grid.
     """
 
-    def __init__(self, parent = None, config=None, device=None):
+    def __init__(self, connecting_node = None, config=None, device=None):
 
-        self.is_root = parent is None
-        self.parent = parent
+        self.is_root = connecting_node is None
+        self.connecting_node = connecting_node
 
         if self.is_root:
             self.config, self.device = config, device
@@ -576,18 +586,23 @@ class SubTree():
             self.non_leaf_size = (self.action_space_size ** self.num_layers) // (self.action_space_size - 1) # geometric series of size
 
             final_layer_size = self.action_space_size ** self.num_layers
-            self.leaf_vars = torch.full((final_layer_size, self.action_space_size), self.discount**2, dtype=torch.float32, device=self.device)
-            self.leaf_inv_vars = torch.full((final_layer_size, self.action_space_size), 1 / self.discount**2, dtype=torch.float32, device=self.device)
-            self.leaf_vals = torch.zeros((final_layer_size, self.action_space_size), dtype=torch.float32, device=self.device)
-            self.value_eval_vars = torch.ones((self.size, 1), dtype=torch.float32, device=self.device)
-            self.reward_vars = torch.zeros((self.size, 1), dtype=torch.float32, device=self.device)
+            semi_final_layer_size = self.action_space_size ** (self.num_layers - 1)
+            if self.config.alt_leafs:
+                self.leaf_vars = torch.full((final_layer_size, self.action_space_size), self.discount**2, dtype=torch.float32, device=self.device)
+                self.leaf_inv_vars = torch.full((final_layer_size, self.action_space_size), 1 / self.discount**2, dtype=torch.float32, device=self.device)
+                self.leaf_vals = torch.zeros((final_layer_size, self.action_space_size), dtype=torch.float32, device=self.device)
+                self.value_eval_vars = torch.ones((final_layer_size, 1), dtype=torch.float32, device=self.device)
+            else:
+                self.value_eval_vars = torch.ones((semi_final_layer_size, 1), dtype=torch.float32, device=self.device)
+
+            #self.reward_vars = torch.zeros((self.size, 1), dtype=torch.float32, device=self.device)
 
         else:
             # for attr in ['config', 'device', 'policy', 'seqs', 'positions', 'action_seq', 'mask',
             #              'leaf_vars', 'leaf_inv_vars', 'leaf_vals']:
             #     setattr(self, attr, getattr(parent_tree, attr))
-            parent_tree = self.parent.subtree
-            parent_tree.set_child_tree(self, self.parent.idx)
+            parent_tree = self.connecting_node.subtree
+            parent_tree.set_child_tree(self, self.connecting_node.idx)
 
             #
             # def __getattr__(self, item): takes care of the rest of the attributes
@@ -604,7 +619,7 @@ class SubTree():
 
     def __getattr__(self, item):
         try:
-            return getattr(self.parent.subtree, item)
+            return getattr(self.connecting_node.subtree, item)
         except AttributeError:
             raise AttributeError(f"{type(self).__name__} has no attribute {item}")
 
@@ -621,12 +636,12 @@ class SubTree():
         self.prior[0] = self.prior[0] * (1 - frac) + noise * frac
 
 
-    def set_val_and_var_probs_parent(self):
+    def set_val_and_var_probs_connecting_node(self):
         """
         Set the value and variance of the parent node.
         """
-        self.parent.set_val_and_vars(self.vals[0], self.vars[0])
-        self.parent.set_pi_probs(self.pi_probs[0])
+        self.connecting_node.set_val_and_vars(self.vals[0], self.vars[0])
+        self.connecting_node.set_pi_probs(self.pi_probs[0])
 
 
     def get_list_slice(self, attr, range_slice):
@@ -674,6 +689,7 @@ class SubTree():
 
         return self.get_child_tree(idx) is not None
 
+
     def get_child_tree(self, idx):
         """
         Get the child tree of the node.
@@ -716,9 +732,9 @@ class SubTree():
             self.hidden_state = root_hidden_state
         else:
             # prepend the parent node value evaluation, reward and policy probs
-            self.value_evals = th.cat((self.parent.get_value_eval().unsqueeze(0), self.value_evals), dim=0)
-            self.rewards = th.cat((self.parent.get_reward().unsqueeze(0), self.rewards), dim=0)
-            self.all_policy_probs = th.cat((self.parent.get_prior().unsqueeze(0), self.all_policy_probs), dim=0)
+            self.value_evals = th.cat((self.connecting_node.get_value_eval().unsqueeze(0), self.value_evals), dim=0)
+            self.rewards = th.cat((self.connecting_node.get_reward().unsqueeze(0), self.rewards), dim=0)
+            self.all_policy_probs = th.cat((self.connecting_node.get_prior().unsqueeze(0), self.all_policy_probs), dim=0)
 
         self.priors = self.all_policy_probs # todo reconsider this
 

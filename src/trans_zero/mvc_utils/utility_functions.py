@@ -5,7 +5,7 @@ import torch as th
 from .value_transforms import IdentityValueTransform, ValueTransform
 
 
-def policy_value_and_variance(node, discount):
+def policy_value_and_variance(node, discount, newly_expanded=False):
     """
     Calculates the policy value and variance for a node.
     This is used to calculate the value of a node in the tree.
@@ -14,6 +14,13 @@ def policy_value_and_variance(node, discount):
     The variance is calculated as the sum of the variances of the children
     and the variance of the current node.
     """
+    if newly_expanded and not node.config.alt_leafs:
+        val = node.get_reward() + discount * node.get_value_eval()
+        var = discount ** 2
+        return val, var
+
+
+
     # todo can move this part until ===== to its own method
     children_vals = node.get_children_vals(include_self=True).squeeze()
     children_vars = node.get_children_vars(include_self=True).squeeze()
@@ -42,8 +49,8 @@ def policy_value_and_variance(node, discount):
             + (child_propabilities * child_values).sum()
     )
 
-    var = reward_variance + discount ** 2 * (
-            own_propability_squared * value_evaluation_variance
+    var = discount ** 2 * ( #reward_variance +
+            own_propability_squared # * value_evaluation_variance
             + (child_propabilities_squared * child_variances).sum()
     )
 
@@ -53,6 +60,13 @@ def policy_value_and_variance(node, discount):
 
 # todo see if can refactor this to use the node version
 def policy_value_and_variance_layer(layer, discount):
+
+    if layer.is_final_layer and not layer.config.alt_leafs:
+        val = layer.get_rewards() + discount * layer.get_value_evals()
+        var = discount ** 2
+        return val, var
+
+
     children_vals = layer.get_child_layer_vals(include_self=True)
     children_vars = layer.get_child_layer_vars(include_self=True)
     children_inv_vars = layer.get_child_layer_inv_vars(include_self=True)
@@ -61,8 +75,8 @@ def policy_value_and_variance_layer(layer, discount):
     layer.set_pi_probs(raw_pi_probs) # todo
     pi_probs = layer.get_pi_layer(include_self=True).probs # todo
 
-    reward_var = layer.get_reward_vars()
-    value_eval_var = layer.get_value_eval_vars()
+    #reward_var = layer.get_reward_vars()
+    #value_eval_var = layer.get_value_eval_vars()
 
     probs_squared = th.pow(pi_probs, 2)
     own_prob, child_prob_excl = pi_probs[:, -1:], pi_probs[:, :-1]
@@ -85,10 +99,10 @@ def policy_value_and_variance_layer(layer, discount):
     )
 
     var = (
-            reward_var
-            + discount ** 2 * (
+            # reward_var +, is just 0 anyways so waste of space and time
+            discount ** 2 * (
                     (child_prob_excl_squared * child_vars_excl).sum(dim=1, keepdim=True)
-                    + own_prob_squared * value_eval_var
+                    + own_prob_squared# * value_eval_var, is just 1 so waster of space and time:
             )
     )
 
