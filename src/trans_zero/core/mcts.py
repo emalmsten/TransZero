@@ -677,10 +677,14 @@ class MCTS_PLL(MCTS):
 
 
 class MCTS_SubTree(MCTS_PLL):
-    def __init__(self, config, device):
+    def __init__(self, config, device, override_root_with=None):
         super().__init__(config)
         self.device = device
-        self.unexpanded_subtree_root = SubTree(None, config, device)
+        if override_root_with is not None:
+            override_root_with.reinit()
+            self.unexpanded_subtree_root = override_root_with
+        else:
+            self.unexpanded_subtree_root = SubTree(None, config, device)
         self.puct = PUCT_Subtree(config, device)
 
 
@@ -706,8 +710,9 @@ class MCTS_SubTree(MCTS_PLL):
                 exploration_fraction=self.config.root_exploration_fraction,
             )
 
-        vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
-        self.min_max_stats.mass_update(vals)
+        vals = root_subtree.calc_entire_policy_value_and_variance_subtree(root=True)
+
+        self.min_max_stats.mass_update_tensor(vals)
 
         max_tree_depth = 0
 

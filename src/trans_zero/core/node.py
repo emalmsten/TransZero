@@ -568,7 +568,6 @@ class SubTree():
     """
 
     def __init__(self, connecting_node = None, config=None, device=None):
-
         self.is_root = connecting_node is None
         self.connecting_node = connecting_node
 
@@ -608,14 +607,18 @@ class SubTree():
             #
             # def __getattr__(self, item): takes care of the rest of the attributes
 
+        self.reinit()
+
+
+    def reinit(self):
         self.child_trees = [None] * (self.action_space_size ** self.num_layers)
         self.value_evals, self.rewards, self.all_policy_probs, self.root_hidden_state = None, None, None, None
 
-        self.vals = torch.empty((self.size, 1), dtype = torch.float32,device=self.device)
-        self.inv_vars = torch.empty((self.size, 1), dtype=torch.float32,device=self.device)
-        self.vars = torch.empty((self.size, 1), dtype=torch.float32,device=self.device)
+        self.vals = torch.empty((self.size, 1), dtype=torch.float32, device=self.device)
+        self.inv_vars = torch.empty((self.size, 1), dtype=torch.float32, device=self.device)
+        self.vars = torch.empty((self.size, 1), dtype=torch.float32, device=self.device)
         # size =
-        self.pi_probs = torch.empty((self.size, self.action_space_size + 1), dtype=torch.float32,device=self.device)
+        self.pi_probs = torch.empty((self.size, self.action_space_size + 1), dtype=torch.float32, device=self.device)
 
 
     def __getattr__(self, item):
@@ -741,30 +744,10 @@ class SubTree():
 
 
     def set_pll_args(self):
-        # build the folder path based on action_space_size and num_layers
-        folder = PROJECT_ROOT / "cache" / "PLL_arrays" / f"AS_{self.action_space_size}" / f"Lay_{self.num_layers}"
+        self.seqs, positions, action_seq = self.bfs_sequences()
+        self.positions = torch.tensor(positions, dtype=torch.long, device=self.device)
+        self.action_seq = torch.tensor(action_seq, dtype=torch.long, device=self.device)
 
-        if folder.exists():
-            # if folder is already there, load saved data
-            self.seqs = torch.load(folder / "seqs.pt")
-            # load CPU tensors and move them to the right device
-            self.positions = torch.load(folder / "positions.pt").to(device=self.device)
-            self.action_seq = torch.load(folder / "action_seq.pt").to(device=self.device)
-        else:
-            print("creating new PLL arrays for action_space_size =", self.action_space_size, "and num_layers =", self.num_layers)
-            # folder doesn’t exist: create it, run bfs_sequences(), then save everything
-            folder.mkdir(parents=True, exist_ok=True)
-
-            self.seqs, positions, action_seq = self.bfs_sequences()
-            # save the raw Python object for seqs
-            torch.save(self.seqs, folder / "seqs.pt")
-
-            # convert to tensors on device, then save CPU copies
-            self.positions = torch.tensor(positions, dtype=torch.long, device=self.device)
-            torch.save(self.positions.cpu(), folder / "positions.pt")
-
-            self.action_seq = torch.tensor(action_seq, dtype=torch.long, device=self.device)
-            torch.save(self.action_seq.cpu(), folder / "action_seq.pt")
 
     def get_seqs(self):
         if self.seqs is None:

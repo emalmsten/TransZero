@@ -154,6 +154,7 @@ class SelfPlay:
             game_dict = {"game": game_number, "results": [], "chosen_actions": []}
 
         with torch.no_grad():
+            cached_root_subtree = None
 
             while (
                 not done and len(game_history.action_history) <= self.config.max_moves
@@ -187,13 +188,14 @@ class SelfPlay:
 
                     elif self.config.expansion_strategy == 'deep_new':
                         device = next(self.model.parameters()).device
-                        root, mcts_info = MCTS_SubTree(self.config, device).run(
+                        root, mcts_info = MCTS_SubTree(self.config, device, override_root_with=cached_root_subtree).run(
                             self.model,
                             stacked_observations,
                             self.game.legal_actions(),
                             self.game.to_play(),
                             temperature != 0
                         )
+                        cached_root_subtree = root.subtree
 
                     else:
                         root, mcts_info = MCTS(self.config).run(
