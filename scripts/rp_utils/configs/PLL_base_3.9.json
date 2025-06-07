@@ -16,7 +16,6 @@
   "fc_representation_layers": [32],
   "mlp_head_layers": [64, 32],
   "use_softmax": true,
-  "representation_network": "mlp",
 
   "expansion_strategy": "deep_new",
   "subtree_layers": 2,

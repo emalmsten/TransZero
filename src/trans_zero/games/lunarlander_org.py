@@ -153,7 +153,7 @@ class MuZeroConfig:
 
 
         # Vision Transformer
-        self.representation_network_type = "ViT"  # "res", "cnn" or "mlp"
+        self.representation_network_type = "mlp"  # "res", "cnn" or "mlp"
         self.use_simple_vit = True
         self.vit_heads = 8
         self.vit_depth = 2
