@@ -10,6 +10,7 @@
 
   "transformer_hidden_size": 128,
   "transformer_dropout": 0.0,
+  "representation_network_type": "mlp",
 
   "td_steps": 25,
   "num_unroll_steps": 7,
