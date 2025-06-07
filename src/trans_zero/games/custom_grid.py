@@ -38,12 +38,12 @@ maps = {
         "FHHF",
         "FFFF",
     ],
-    "5x5_3h_3d": [
-        "SFHFG",
-        "FFHFF",
-        "FFHFF",
-        "FFFFF",
-        "FFFFF"
+    "5x5_4h_4d": [
+        "FFFSF",
+        "HFFFF",
+        "FFHHF",
+        "FFFFH",
+        "FFFFG"
     ],
     "5x5_9h_3d": [
         "SHHHG",
@@ -89,6 +89,7 @@ max_moves = {
     "6x6_3h_3d": 25,
 
     "5x5_4h_1d": 25,
+    "5x5_4h_4d": 25,
     "6x6_5h_1d": 25
 }
 
@@ -114,7 +115,7 @@ class MuZeroConfig:
 
         self.max_time_minutes = None
         self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
-        self.training_steps = 25000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 50000  # Total number of training steps (ie weights update according to a batch)
 
         self.expansion_strategy = None #"deep_new" #"deep" #None #
         self.subtree_layers = 2
@@ -224,7 +225,7 @@ class MuZeroConfig:
         self.transformer_layers = 4
         self.transformer_heads = 8
         self.transformer_hidden_size = 64
-        self.transformer_dropout = 0.2
+        self.transformer_dropout = 0.0
         self.transformer_mlp_dim = 512 #2048
         self.positional_embedding_type = "sinus"
         self.norm_layer = True
@@ -234,10 +235,10 @@ class MuZeroConfig:
         self.representation_network_type = "ViT"  # "res", "cnn" or "mlp"
         self.use_simple_vit = True
         self.vit_heads = 8
-        self.vit_depth = 4
+        self.vit_depth = 2
         self.vit_patch_size = 1
-        self.vit_mlp_dim = 512
-        self.vit_dropout = 0.2
+        self.vit_mlp_dim = 1024
+        self.vit_dropout = 0.0
         # if cnn
         self.conv_layers_trans = [
                 # (out_channels, kernel_size, stride)
@@ -246,11 +247,9 @@ class MuZeroConfig:
                 # (128, 3, 1)# Output: (batch_size, 32, 1, 1)
             ]
         self.conv_pool_config = [
-            {'out_channels': 16, 'kernel_size': 3, 'padding': 1, 'pool_kernel': 2},
-            {'out_channels': 32, 'kernel_size': 3, 'padding': 1},
-            {'out_channels': 64, 'kernel_size': 3, 'padding': 1},
-        ]
-        self.fc_layers_trans = [128, 64]
+                {'out_channels': 32, 'kernel_size': 3, 'padding': 1}
+            ]
+        self.fc_layers_trans = [128]
         self.mlp_head_layers = [32, 16]
         self.cum_reward = False
         self.state_size = None #(16, 4, 4) # same as
@@ -291,10 +290,10 @@ class MuZeroConfig:
         self.training_delay = 0  # Number of seconds to wait after each training step
         self.ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
         # fmt: on
-        self.use_softmax = True
+        self.use_softmax = False
         self.softmax_limits = [0.25, 0.5, 0.75, 1] # res: 0.25, 0.5, 1
-        self.softmax_temps =  [1, 0.5, 0.25, 0.1] # res 1, 0.5, 0.25
-        self.mvc_softmax_temps = None #[1, 0.75, 0.5, 0.25] #None #[1, 0.5, 0.25, 0.1]
+        self.softmax_temps =  [1, 0.6, 0.4, 0.2] # res 1, 0.5, 0.25
+        self.mvc_softmax_temps = [1, 0.75, 0.5, 0.25] #None #[1, 0.5, 0.25, 0.1]
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
@@ -506,6 +505,8 @@ class Game(AbstractGame):
         Returns:
             The new observation, the reward and a boolean if the game has ended.
         """
+        #self.render()
+
         obs, reward, done, _, _ = self.env.step(action)
         obs = Game.shape_observation(self.config.pov, self.size, obs)
 
@@ -563,7 +564,14 @@ class Game(AbstractGame):
         """
         Display the game observation.
         """
-        #self.env.render()
+        return
+        from matplotlib import pyplot as plt
+        img = self.env.unwrapped.grid.render(tile_size=128, agent_pos=self.env.unwrapped.agent_pos, agent_dir=self.env.unwrapped.agent_dir)
+
+        plt.imshow(img)
+        plt.axis("off")
+        plt.show()
+
         # sleep for 1 second
         time.sleep(0.1)
         #input("Press enter to take a step ")
