@@ -633,11 +633,14 @@ class SubTree():
         At the start of each search, we add dirichlet noise to the prior of the root to
         encourage the search to explore new actions.
         """
-        noise = numpy.random.dirichlet([dirichlet_alpha] * self.action_space_size)
+        alpha = torch.full((self.action_space_size,), dirichlet_alpha, device=self.priors.device,
+                           dtype=self.priors.dtype)
+        dist = torch.distributions.Dirichlet(alpha)
+        noise = dist.sample()  # shape (m,)
         frac = exploration_fraction
-        # for a, n in zip(actions, noise):
-        #     self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
-        self.prior[0] = self.prior[0] * (1 - frac) + noise * frac
+
+        # Inject noise into priors[0] element-wise
+        self.priors[0] = self.priors[0] * (1 - frac) + noise * frac
 
 
     def set_val_and_var_probs_connecting_node(self):
