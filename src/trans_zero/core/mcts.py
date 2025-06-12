@@ -704,7 +704,7 @@ class MCTS_SubTree(MCTS_PLL):
 
         root_subtree = self.expand_subtree_root(self.unexpanded_subtree_root, observation, model, legal_actions, to_play, pll_args)
 
-        if False and add_exploration_noise:
+        if add_exploration_noise:
             root_subtree.add_exploration_noise(
                 dirichlet_alpha=self.config.root_dirichlet_alpha,
                 exploration_fraction=self.config.root_exploration_fraction,
