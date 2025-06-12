@@ -19,7 +19,7 @@ class MuZeroConfig:
         self.root = root or pathlib.Path(__file__).resolve().parents[1]
         cuda = torch.cuda.is_available()
         self.use_s0_for_pred = True  # Use the output of the representation network for the first prediction
-        self.alt_leafs = False  # Use the alternative leafs, which are not the same as the root node, but the last node of the subtree
+        self.alt_leafs = True  # Use the alternative leafs, which are not the same as the root node, but the last node of the subtree
 
         self.max_time_minutes = None
         self.stopping_criterion = 'num_played_steps'  # 'num_played_steps' or 'training_step'
