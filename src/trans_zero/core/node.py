@@ -94,7 +94,7 @@ class Node:
             self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
 
 
-    def recalculate_val_and_var(self):
+    def recalculate_val_and_var(self, newly_expanded=False):
         pass
         #raise NotImplementedError("This method should be overridden in subclasses")
 
