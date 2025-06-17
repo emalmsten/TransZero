@@ -698,10 +698,18 @@ class MCTS_SubTree(MCTS_PLL):
             override_root_with=None,
     ):
 
+        e1 = torch.cuda.Event(enable_timing=True)
+        e2 = torch.cuda.Event(enable_timing=True)
+        e3 = torch.cuda.Event(enable_timing=True)
+        e4 = torch.cuda.Event(enable_timing=True)
+        torch.cuda.synchronize()
+
         legal_actions_tensor = torch.tensor(legal_actions, device=self.device)
 
+        e1.record()
         pll_args = self.get_pll_args(self.unexpanded_subtree_root, [])
 
+        e2.record()
         root_subtree = self.expand_subtree_root(self.unexpanded_subtree_root, observation, model, legal_actions, to_play, pll_args)
 
         if add_exploration_noise:
@@ -710,7 +718,20 @@ class MCTS_SubTree(MCTS_PLL):
                 exploration_fraction=self.config.root_exploration_fraction,
             )
 
+        e3.record()
         vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
+        e4.record()
+        torch.cuda.synchronize()
+
+
+        timings = []
+
+        timings.append(f"PLL args time: {e1.elapsed_time(e2):.4f}s")
+        timings.append(f"Expand root time: {e2.elapsed_time(e3):.4f}s")
+        timings.append(f"Calc vals time: {e3.elapsed_time(e4):.4f}s")
+        print("Timings for MCTS_SubTree run:")
+        for timing in timings:
+            print(timing)
 
         self.min_max_stats.mass_update_tensor(vals)
 
