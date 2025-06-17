@@ -698,6 +698,9 @@ class MCTS_SubTree(MCTS_PLL):
             override_root_with=None,
     ):
 
+        torch.cuda.reset_peak_memory_stats()
+        # run your code here
+
         e1 = torch.cuda.Event(enable_timing=True)
         e2 = torch.cuda.Event(enable_timing=True)
         e3 = torch.cuda.Event(enable_timing=True)
@@ -732,6 +735,9 @@ class MCTS_SubTree(MCTS_PLL):
         print("Timings for MCTS_SubTree run:")
         for timing in timings:
             print(timing)
+
+        peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 2)  # in MB
+        print(f"Peak memory usage: {peak_memory:.2f} MB")
 
         self.min_max_stats.mass_update_tensor(vals)
 
