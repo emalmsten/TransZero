@@ -139,6 +139,7 @@ class MCTS:
         We then run a Monte Carlo Tree Search using only action sequences and the model
         learned by the network.
         """
+        torch.cuda.reset_peak_memory_stats()
         transformer_net = self.config.network == "transformer"
 
         root, root_predicted_value = self.init_root(observation, model, legal_actions, to_play, override_root_with, add_exploration_noise)
@@ -200,6 +201,8 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root_predicted_value,
         }
+
+
 
         return root, extra_info
 
@@ -698,21 +701,10 @@ class MCTS_SubTree(MCTS_PLL):
             override_root_with=None,
     ):
 
-        torch.cuda.reset_peak_memory_stats()
-        # run your code here
-
-        e1 = torch.cuda.Event(enable_timing=True)
-        e2 = torch.cuda.Event(enable_timing=True)
-        e3 = torch.cuda.Event(enable_timing=True)
-        e4 = torch.cuda.Event(enable_timing=True)
-        torch.cuda.synchronize()
-
         legal_actions_tensor = torch.tensor(legal_actions, device=self.device)
 
-        e1.record()
         pll_args = self.get_pll_args(self.unexpanded_subtree_root, [])
 
-        e2.record()
         root_subtree = self.expand_subtree_root(self.unexpanded_subtree_root, observation, model, legal_actions, to_play, pll_args)
 
         if add_exploration_noise:
@@ -721,23 +713,8 @@ class MCTS_SubTree(MCTS_PLL):
                 exploration_fraction=self.config.root_exploration_fraction,
             )
 
-        e3.record()
         vals = root_subtree.calc_entire_policy_value_and_variance_subtree()
-        e4.record()
-        torch.cuda.synchronize()
 
-
-        timings = []
-
-        timings.append(f"PLL args time: {e1.elapsed_time(e2):.4f}s")
-        timings.append(f"Expand root time: {e2.elapsed_time(e3):.4f}s")
-        timings.append(f"Calc vals time: {e3.elapsed_time(e4):.4f}s")
-        print("Timings for MCTS_SubTree run:")
-        for timing in timings:
-            print(timing)
-
-        peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 2)  # in MB
-        print(f"Peak memory usage: {peak_memory:.2f} MB")
 
         self.min_max_stats.mass_update_tensor(vals)
 
@@ -757,6 +734,7 @@ class MCTS_SubTree(MCTS_PLL):
               # tree action selection
             # log n
 
+
             node = SubTreeNode(subtree, node_idx)
 
             while node.expanded(): # todo could batch calc UCB scores, but dont know if faster
@@ -772,6 +750,9 @@ class MCTS_SubTree(MCTS_PLL):
 
             unexpanded_subtree = SubTree(connecting_node=node)
             pll_args = self.get_pll_args(unexpanded_subtree, actions)
+
+            # start cuda time
+
 
             all_values, all_rewards, all_policy_logits, _ = model.recurrent_inference(
                 None, None,
@@ -871,7 +852,6 @@ class MCTS_SubTree(MCTS_PLL):
 
         return root_tree
 
-    import torch
 
     def make_causal_mask_subtree(self, subtree, num_global_tokens=1):
         """
