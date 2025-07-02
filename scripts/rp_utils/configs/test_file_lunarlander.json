@@ -1,0 +1,153 @@
+
+Deep 2 - 5
+python -u src/trans_zero/main.py -rfc rp -game "custom_grid" -tm "time_trials_11" -c '{
+  "expansion_strategy": "deep_new",
+  "subtree_layers": 3,
+  "num_simulations": 1,
+  "action_space": [0, 1, 2, 3],
+  "max_seq_length": 10000,
+  "positional_embedding_type": "sinus",
+  "network": "transformer",
+  "action_selection": "mvc",
+  "PUCT_variant": "mvc",
+  "policy_target_type": "mvc",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "transformer_layers": 4,
+  "fc_layers_trans": [128, 64],
+  "mlp_head_layers": [32, 16],
+  "transformer_hidden_size": 128,
+  "transformer_heads": 8,
+  "representation_network_type": "mlp",
+  "vit_depth": 2,
+  "logger": null
+}'
+
+
+'python -u src/trans_zero/main.py -rfc rp -game "custom_grid" -tm "time_trials_5" -c '{
+  "expansion_strategy": null,
+  "subtree_layers": 2,
+  "num_simulations": 25,
+  "action_space": [0, 1, 2],
+  "max_seq_length": 10000,
+  "positional_embedding_type": "sinus",
+  "network": "transformer",
+  "action_selection": "mvc",
+  "PUCT_variant": "mvc",
+  "policy_target_type": "mvc",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "transformer_layers": 4,
+  "fc_layers_trans": [128, 64],
+  "mlp_head_layers": [32, 16],
+  "transformer_hidden_size": 128,
+  "transformer_heads": 8,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
+
+
+
+Deep 3 - 0
+python -u src/trans_zero/main.py -rfc rp -game "lunarlander_org" -tm "time_trials_2" -c '{
+  "expansion_strategy": "deep_new",
+  "subtree_layers": 1,
+  "num_simulations": 15,
+  "positional_embedding_type": "sinus",
+  "network": "transformer",
+  
+  "action_selection": "mvc",
+  "PUCT_variant": "mvc",
+  "policy_target_type": "mvc",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "transformer_layers": 4,
+  "fc_layers_trans": [128, 64],
+  "mlp_head_layers": [32, 16],
+  "transformer_hidden_size": 32,
+  "transformer_heads": 8,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
+
+
+
+MVC
+python -u src/trans_zero/main.py -rfc rp -game "lunarlander_org" -tm "time_trials_2" -c '{
+  "expansion_strategy": null,
+
+  "subtree_layers": 2,
+  "num_simulations": 50,
+  "positional_embedding_type": "sinus",
+  "network": "transformer",
+  
+  "action_selection": "mvc",
+  "PUCT_variant": "mvc",
+  "policy_target_type": "mvc",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "transformer_layers": 4,
+  "fc_layers_trans": [128, 64],
+  "mlp_head_layers": [32, 16],
+  "transformer_hidden_size": 32,
+  "transformer_heads": 8,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
+
+
+Trans
+python -u src/trans_zero/main.py -rfc rp -game "lunarlander_org" -tm "time_trials_2" -c '{
+  "expansion_strategy": null,
+
+  "subtree_layers": 2,
+  "num_simulations": 50,
+  "positional_embedding_type": "sinus",
+  "network": "transformer",
+  
+  "action_selection": "visit",
+  "PUCT_variant": "visit",
+  "policy_target_type": "visit",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
+
+
+Res
+python -u src/trans_zero/main.py -rfc rp -game "lunarlander_org" -tm "time_trials_2" -c '{
+  "expansion_strategy": null,
+
+  "subtree_layers": 2,
+  "num_simulations": 50,
+  "positional_embedding_type": "sinus",
+  "network": "resnet",
+  
+  "action_selection": "visit",
+  "PUCT_variant": "visit",
+  "policy_target_type": "visit",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
+
+
+FC
+python -u src/trans_zero/main.py -rfc rp -game "lunarlander_org" -tm "time_trials_2" -c '{
+  "expansion_strategy": null,
+
+  "subtree_layers": 2,
+  "num_simulations": 50,
+  "positional_embedding_type": "sinus",
+  "network": "fully_connected",
+  
+  "action_selection": "visit",
+  "PUCT_variant": "visit",
+  "policy_target_type": "visit",
+  "use_softmax": false,
+  "use_forward_causal_mask": true,
+  "representation_network_type": "mlp",
+  "logger": null
+}'
