@@ -1,4 +1,4 @@
-# MuZero Project
+# TransZero
 
 This code is built on top of the original [muzero-general implementation](https://github.com/werner-duvaud/muzero-general) and is used in our experiments for the paper:
 
