@@ -18,7 +18,7 @@ You can run the code in two ways:
   bash scripts/rp_utils/rp_run.sh
   ```
 
-## Coming Soon (before July 10)
+## Coming Soon (before August 10)
 
 * Clearer comments throughout the code
 * Hyperparameter settings used in our experiments
