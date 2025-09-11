@@ -18,3 +18,8 @@ You can run the code in two ways:
   bash scripts/rp_utils/rp_run.sh
   ```
 
+Note that the code needs some cleaning up and commenting, this will be done during September.
+  
+## Hyperparameters
+
+The Hyperparameters used can be found in the folder _hyperparmas_
