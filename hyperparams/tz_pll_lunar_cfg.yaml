@@ -1,0 +1,270 @@
+PER:
+    value: true
+PER_alpha:
+    value: 0.5
+PUCT_C:
+    value: 0.5
+PUCT_variant:
+    value: mvc
+action_selection:
+    value: mvc
+action_space:
+    value:
+        - 0
+        - 1
+        - 2
+        - 3
+alt_leafs:
+    value: true
+batch_size:
+    value: 128
+blocks:
+    value: 3
+channels:
+    value: 16
+checkpoint_interval:
+    value: 10
+conv_layers_trans:
+    value:
+        - - 32
+          - 1
+          - 1
+        - - 64
+          - 1
+          - 1
+cum_reward:
+    value: false
+debug_mode:
+    value: false
+discount:
+    value: 0.999
+downsample:
+    value: false
+encoding_loss_weight:
+    value: null
+encoding_size:
+    value: 10
+expand_all_children:
+    value: true
+expansion_budget:
+    value: 12
+expansion_strategy:
+    value: deep_new
+fc_dynamics_layers:
+    value:
+        - 64
+fc_layers_trans:
+    value:
+        - 64
+fc_policy_layers:
+    value:
+        - 64
+fc_representation_layers:
+    value:
+        - 32
+fc_reward_layers:
+    value:
+        - 64
+fc_value_layers:
+    value:
+        - 64
+game_name:
+    value: lunarlander_org
+get_fast_predictions:
+    value: true
+gif_name:
+    value: test
+logger:
+    value: wandb
+loss_weight_decay:
+    value: null
+lr_decay_rate:
+    value: 0.99
+lr_decay_steps:
+    value: 8000
+lr_init:
+    value: 0.00125
+max_moves:
+    value: 700
+max_num_gpus:
+    value: null
+max_seq_length:
+    value: 50
+max_time_minutes:
+    value: null
+mlp_head_layers:
+    value:
+        - 64
+        - 32
+momentum:
+    value: 0.9
+muzero_player:
+    value: 0
+mvc_beta:
+    value: 0.01
+mvc_softmax_temps:
+    value:
+        - 1
+        - 0.9
+        - 0.8
+        - 0.75
+        - 0.7
+network:
+    value: transformer
+norm_layer:
+    value: true
+num_simulations:
+    value: 1
+num_unroll_steps:
+    value: 7
+num_workers:
+    value: 1
+observation_shape:
+    value:
+        - 1
+        - 1
+        - 8
+opponent:
+    value: null
+optimizer:
+    value: Adam
+pb_c_base:
+    value: 19652
+pb_c_init:
+    value: 1.25
+players:
+    value:
+        - 0
+policy_network:
+    value: transformer
+policy_target_type:
+    value: mvc
+positional_embedding_type:
+    value: sinus
+predict_reward:
+    value: true
+project:
+    value: TransZeroV3
+ratio:
+    value: null
+reanalyse_on_gpu:
+    value: true
+reduced_channels_policy:
+    value: 4
+reduced_channels_reward:
+    value: 4
+reduced_channels_value:
+    value: 4
+render_mode:
+    value: null
+replay_buffer_size:
+    value: 200
+representation_network_type:
+    value: mlp
+resnet_fc_policy_layers:
+    value:
+        - 16
+resnet_fc_reward_layers:
+    value:
+        - 16
+resnet_fc_value_layers:
+    value:
+        - 16
+reward_network:
+    value: transformer
+root:
+    value: /kaggle/working/TransZero/src/trans_zero
+root_dirichlet_alpha:
+    value: 0.3
+root_exploration_fraction:
+    value: 0
+save_interval:
+    value: 10000
+save_model:
+    value: true
+self_play_delay:
+    value: 0
+selfplay_on_gpu:
+    value: true
+show_preds:
+    value: false
+softmax_limits:
+    value:
+        - 0.2
+        - 0.4
+        - 0.6
+        - 0.8
+        - 1
+softmax_temps:
+    value:
+        - 0.45
+        - 0.4
+        - 0.35
+        - 0.2
+        - 0.05
+stable_transformer:
+    value: false
+stacked_observations:
+    value: 0
+state_size:
+    value: null
+stopping_criterion:
+    value: num_played_steps
+subtree_layers:
+    value: 3
+support_size:
+    value: 20
+td_steps:
+    value: 25
+temperature_threshold:
+    value: null
+test_ucb:
+    value: false
+testing:
+    value: false
+train_on_gpu:
+    value: true
+training_delay:
+    value: 0
+training_steps:
+    value: 300000
+transformer_dropout:
+    value: 0
+transformer_heads:
+    value: 16
+transformer_hidden_size:
+    value: 128
+transformer_layers:
+    value: 4
+transformer_mlp_dim:
+    value: 2048
+use_forward_causal_mask:
+    value: true
+use_last_model_value:
+    value: true
+use_proj:
+    value: false
+use_s0_for_pred:
+    value: true
+use_simple_vit:
+    value: true
+use_softmax:
+    value: true
+value_loss_weight:
+    value: 0.5
+value_network:
+    value: transformer
+vit_depth:
+    value: 2
+vit_dropout:
+    value: 0
+vit_heads:
+    value: 8
+vit_mlp_dim:
+    value: 2048
+vit_patch_size:
+    value: 1
+warmup_steps:
+    value: 30000
+weight_decay:
+    value: 0.0001
