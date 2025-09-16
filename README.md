@@ -1,8 +1,6 @@
 # TransZero
+This code builds on the original [muzero-general implementation](https://github.com/werner-duvaud/muzero-general) and was used in our work on **[Parallel Tree Expansion in MuZero using Transformer Networks](https://repository.tudelft.nl/record/uuid:00d171fe-328e-4c78-a981-050e08c2ba08)** (see also the [arXiv paper](https://arxiv.org/abs/2509.11233)).
 
-This code is built on top of the original [muzero-general implementation](https://github.com/werner-duvaud/muzero-general) and is used in our experiments for the paper:
-
-**[Parallel Tree Expansion in MuZero using Transformer Networks](https://repository.tudelft.nl/record/uuid:00d171fe-328e-4c78-a981-050e08c2ba08)**
 
 ## How to Run
 
