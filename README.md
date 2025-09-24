@@ -20,4 +20,4 @@ Note that the code needs some cleaning up and commenting, this will be done duri
   
 ## Hyperparameters
 
-The Hyperparameters used can be found in the folder _hyperparmas_
+The Hyperparameters used can be found in the folder _hyperparams_
